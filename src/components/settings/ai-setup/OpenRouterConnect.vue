@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppInput from '@/components/ui/input/AppInput.vue'
 
 import SetupScreen from './SetupScreen.vue'
@@ -66,25 +67,25 @@ function authorize() {
       </div>
     </template>
     <template v-else-if="state === 'cancelled' || state === 'expired'">
-      <p role="alert">
-        {{
+      <AppAlert
+        tone="warning"
+        :heading="
           state === 'cancelled'
             ? 'Authorization cancelled. No connection was added.'
             : 'The sign-in link expired. Connect again to continue.'
-        }}
-      </p>
+        "
+      />
       <div class="flex gap-2">
         <AppButton color="primary" variant="solid" @click="authorize">Connect again</AppButton
         ><AppButton @click="useKey">Use an API key instead</AppButton>
       </div>
     </template>
     <template v-else>
-      <p role="status" class="flex items-center gap-2">
-        <icon-lucide-check class="size-4" />Connected
-      </p>
-      <p class="text-xs text-muted">
-        No task assignments changed. You can choose models for your tasks after connecting.
-      </p>
+      <AppAlert
+        tone="success"
+        heading="Connected"
+        description="No task assignments changed. You can choose models for your tasks after connecting."
+      />
       <div class="flex justify-end">
         <AppButton color="primary" variant="solid" @click="emit('done')">Done</AppButton>
       </div>

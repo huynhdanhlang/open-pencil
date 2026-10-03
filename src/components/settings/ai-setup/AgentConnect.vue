@@ -2,8 +2,11 @@
 import { tv } from 'tailwind-variants'
 import { computed, ref } from 'vue'
 
+import SettingsGroup from '@/components/settings/layout/SettingsGroup.vue'
+import SettingsRow from '@/components/settings/layout/SettingsRow.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
-import theme from '@/theme/ai-setup/agent-status'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
+import theme from '@/theme/settings/ai-setup/agent-status'
 
 import SetupScreen from './SetupScreen.vue'
 type State = 'missing' | 'sign-in' | 'starting' | 'ready' | 'disconnected' | 'browser'
@@ -42,18 +45,15 @@ function start() {
       </div>
     </template>
     <template v-else>
-      <dl :class="styles.root()">
-        <div :class="styles.row()">
-          <dt>{{ agent }} installation</dt>
-          <dd :class="styles.value()">{{ installation }}</dd>
-        </div>
-        <div :class="styles.row()">
-          <dt>{{ agent === 'Pi' ? 'Provider account' : `${agent} account` }}</dt>
-          <dd :class="styles.value()">{{ account }}</dd>
-        </div>
-        <div :class="styles.row()">
-          <dt>Agent connection</dt>
-          <dd :class="styles.value()" :data-state="state">
+      <SettingsGroup>
+        <SettingsRow :label="`${agent} installation`">
+          <span :class="styles.value()">{{ installation }}</span>
+        </SettingsRow>
+        <SettingsRow :label="agent === 'Pi' ? 'Provider account' : `${agent} account`">
+          <span :class="styles.value()">{{ account }}</span>
+        </SettingsRow>
+        <SettingsRow label="Agent connection">
+          <span :class="styles.value()" :data-state="state">
             {{
               state === 'ready'
                 ? 'Ready'
@@ -63,9 +63,9 @@ function start() {
                     ? 'Disconnected'
                     : 'Not started'
             }}
-          </dd>
-        </div>
-      </dl>
+          </span>
+        </SettingsRow>
+      </SettingsGroup>
       <template v-if="state === 'missing'"
         ><p class="text-sm text-muted">
           {{
@@ -87,22 +87,27 @@ function start() {
         }}</AppButton>
       </template>
       <template v-else-if="state === 'starting'"
-        ><p role="status">Starting the agent and connecting OpenPencil tools…</p>
+        ><AppAlert heading="Starting the agent and connecting OpenPencil tools…" />
         <AppButton class="self-start" variant="outline" @click="state = 'disconnected'"
           >Cancel</AppButton
         ></template
       >
       <template v-else-if="state === 'disconnected'"
-        ><p role="alert">The agent stopped. Your document is unchanged. Reconnect to continue.</p>
+        ><AppAlert
+          tone="warning"
+          heading="The agent stopped."
+          description="Your document is unchanged. Reconnect to continue."
+        />
         <AppButton class="self-end" color="primary" variant="solid" @click="start"
           >Reconnect</AppButton
         ></template
       >
       <template v-else
-        ><p role="status">{{ agent }} is ready to edit your document.</p>
-        <p class="text-sm text-muted">
-          Model selection is managed by the agent. A separate visual-feedback API is not configured.
-        </p>
+        ><AppAlert
+          tone="success"
+          :heading="`${agent} is ready to edit your document.`"
+          description="Model selection is managed by the agent. A separate visual-feedback API is not configured."
+        />
         <AppButton class="self-end" color="primary" variant="solid" @click="emit('start')"
           >Done</AppButton
         ></template

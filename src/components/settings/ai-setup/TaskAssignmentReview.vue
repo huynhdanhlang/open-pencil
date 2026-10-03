@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import SettingsGroup from '@/components/settings/layout/SettingsGroup.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 
 import type { TaskProposal } from './recommendations'
@@ -58,7 +59,7 @@ function confirm() {
           : 'We’ve selected defaults from your connected access. Adjust them before finishing.'
       }}
     </p>
-    <div class="divide-y divide-border rounded-md border border-border px-3">
+    <SettingsGroup>
       <TaskAssignmentField
         v-for="proposal in proposals"
         :key="proposal.task"
@@ -79,7 +80,7 @@ function confirm() {
           proposal.requires ? `Set up ${proposal.requires}` : 'Choose another connection'
         }}</AppButton>
       </TaskAssignmentField>
-    </div>
+    </SettingsGroup>
     <p class="text-xs text-muted">
       Paid fallback is off. Connecting an account alone does not change task assignments.
     </p>

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppInput from '@/components/ui/input/AppInput.vue'
 import AppCombobox from '@/components/ui/select/AppCombobox.vue'
 
@@ -34,11 +35,14 @@ const models = [
       >Server URL<AppInput v-model="endpoint" aria-label="Server URL"
     /></label>
     <AppButton class="self-start" variant="outline" @click="emit('check')">Check server</AppButton>
-    <p v-if="initialState === 'unreachable'" role="alert">
-      Can’t reach the server. Make sure it’s running and allows connections from this browser.
-    </p>
+    <AppAlert
+      v-if="initialState === 'unreachable'"
+      tone="error"
+      heading="Can’t reach the server."
+      description="Make sure it’s running and allows connections from this browser."
+    />
     <template v-if="initialState === 'discovered'"
-      ><p role="status">Server connected · 2 models available</p>
+      ><AppAlert tone="success" heading="Server connected · 2 models available" />
       <label class="flex flex-col gap-2 text-xs"
         >Model<AppCombobox
           v-model="model"

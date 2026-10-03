@@ -9,7 +9,6 @@ export default {
     ai: 'rounded-lg border border-accent/25 bg-accent/5 p-4',
     aiHeader: 'flex flex-wrap items-center justify-between gap-2',
     aiHeading: 'text-sm font-semibold',
-    recommendation: 'rounded bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-surface',
     capabilities: 'my-3 flex flex-col gap-2 text-xs leading-relaxed',
     guidance: 'text-xs leading-relaxed text-muted',
     actions: 'flex flex-wrap items-center justify-between gap-3',

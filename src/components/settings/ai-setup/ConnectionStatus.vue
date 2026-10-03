@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
 
-import theme from '@/theme/ai-setup/connection-status'
+import theme from '@/theme/settings/ai-setup/connection-status'
 const { status } = defineProps<{
   status: 'connected' | 'ready' | 'starting' | 'sign-in' | 'unavailable'
 }>()

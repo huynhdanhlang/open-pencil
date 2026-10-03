@@ -2,7 +2,8 @@
 import { tv } from 'tailwind-variants'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
-import theme from '@/theme/ai-setup/welcome'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+import theme from '@/theme/settings/ai-setup/welcome'
 
 const emit = defineEmits<{ setup: []; skip: [] }>()
 const styles = tv(theme)()
@@ -36,7 +37,7 @@ const styles = tv(theme)()
         <h2 id="welcome-ai-heading" :class="styles.aiHeading()">
           Make it your AI design workspace
         </h2>
-        <span :class="styles.recommendation()">Recommended</span>
+        <AppBadge>Recommended</AppBadge>
       </div>
       <ul :class="styles.capabilities()">
         <li>Describe changes and let an agent edit the canvas.</li>

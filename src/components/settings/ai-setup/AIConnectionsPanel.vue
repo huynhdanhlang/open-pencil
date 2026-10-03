@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import SettingsGroup from '@/components/settings/layout/SettingsGroup.vue'
+import SettingsSection from '@/components/settings/layout/SettingsSection.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 
 import ConnectionItem from './ConnectionItem.vue'
 import { goals, routes } from './recommendations'
 import SetupActions from './SetupActions.vue'
-import SetupSection from './SetupSection.vue'
 import TaskAssignmentField from './TaskAssignmentField.vue'
 const {
   connected = ['Codex', 'OpenRouter'],
@@ -42,16 +43,13 @@ function save() {
         <h1 class="text-base font-semibold">AI setup</h1>
         <p class="mt-1 text-xs text-muted">Your accounts and models, organized by task.</p>
       </div>
-      <AppButton
-        class="shrink-0 whitespace-nowrap"
-        variant="outline"
-        size="sm"
-        @click="emit('review')"
+      <AppButton class="shrink-0" variant="outline" size="sm" @click="emit('review')"
         >Review setup</AppButton
       >
     </header>
-    <SetupSection heading="Connections">
-      <template #action
+    <SettingsSection>
+      <template #title>Connections</template>
+      <template #actions
         ><AppButton size="xs" @click="emit('add')"
           ><template #leading><icon-lucide-plus /></template>Add connection</AppButton
         ></template
@@ -69,9 +67,10 @@ function save() {
       <p v-if="!connected.length" class="py-3 text-xs text-muted">
         Connect an account or local server to choose models for your tasks.
       </p>
-    </SetupSection>
-    <SetupSection heading="Tasks">
-      <div class="divide-y divide-border border-y border-border">
+    </SettingsSection>
+    <SettingsSection>
+      <template #title>Tasks</template>
+      <SettingsGroup>
         <TaskAssignmentField
           v-for="goal in goals"
           :key="goal.id"
@@ -89,11 +88,11 @@ function save() {
           :detail="detail(goal.label)"
           @update:model-value="edits[goal.label] = $event"
         />
-      </div>
+      </SettingsGroup>
       <p class="text-[11px] text-muted">
         Paid fallback is off. Each task uses only the account shown.
       </p>
-    </SetupSection>
+    </SettingsSection>
     <SetupActions v-if="dirty"
       ><template #secondary><AppButton @click="edits = {}">Discard changes</AppButton></template
       ><AppButton color="primary" variant="solid" @click="save"

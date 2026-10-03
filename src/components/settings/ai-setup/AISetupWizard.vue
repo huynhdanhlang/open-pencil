@@ -3,7 +3,9 @@ import { tv } from 'tailwind-variants'
 import { computed, reactive, ref } from 'vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
-import theme from '@/theme/ai-setup/wizard'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
+import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
+import theme from '@/theme/settings/ai-setup/wizard'
 
 import { accounts, goals, proposeSetup, type SetupAnswers } from './recommendations'
 import SetupActions from './SetupActions.vue'
@@ -48,6 +50,11 @@ const titles = [
   'Your AI setup'
 ]
 const waiting = ref('')
+function toggle<T>(list: T[], value: T, checked: boolean) {
+  const index = list.indexOf(value)
+  if (checked && index === -1) list.push(value)
+  if (!checked && index !== -1) list.splice(index, 1)
+}
 function connect(provider: string) {
   waiting.value = provider
   emit('connect', provider)
@@ -92,7 +99,11 @@ function confirm(assignments: Record<string, string>) {
           :label="goal.label"
           :description="goal.description"
         >
-          <input v-model="answers.goals" type="checkbox" :value="goal.id" />
+          <AppCheckbox
+            :model-value="answers.goals.includes(goal.id)"
+            :ariaLabel="goal.label"
+            @update:model-value="toggle(answers.goals, goal.id, $event)"
+          />
         </SetupChoice>
         <p :class="styles.help()">You can change these choices later.</p>
       </template>
@@ -102,11 +113,10 @@ function confirm(assignments: Record<string, string>) {
           Select all that apply. If you don’t have an account yet, just continue.
         </p>
         <SetupChoice v-for="account in accounts" :key="account.value" :label="account.label">
-          <input
-            v-model="answers.accounts"
-            type="checkbox"
-            name="existing-account"
-            :value="account.value"
+          <AppCheckbox
+            :model-value="answers.accounts.includes(account.value)"
+            :ariaLabel="account.label"
+            @update:model-value="toggle(answers.accounts, account.value, $event)"
           />
         </SetupChoice>
       </template>
@@ -139,17 +149,16 @@ function confirm(assignments: Record<string, string>) {
             {{ proposals.find((item) => item.requires === provider)?.billing }}
           </p>
         </div>
-        <p v-if="required.includes('OpenRouter')" :class="styles.status()">
-          <strong>Why OpenRouter?</strong> Access models from several vendors with one account.
-          Start with one model for editing and image input; API requests use separate credits.
-        </p>
-        <p
+        <AppAlert
+          v-if="required.includes('OpenRouter')"
+          heading="Why OpenRouter?"
+          description="Access models from several vendors with one account. Start with one model for editing and image input; API requests use separate credits."
+        />
+        <AppAlert
           v-if="waiting && !verifiedConnections.includes(waiting)"
-          role="status"
-          :class="styles.status()"
-        >
-          Complete {{ waiting }} setup to continue. Task assignments will be confirmed separately.
-        </p>
+          :heading="`Complete ${waiting} setup to continue.`"
+          description="Task assignments will be confirmed separately."
+        />
         <p v-if="!required.length" :class="styles.help()">
           No suitable access selected. Go back to choose an account or set up a connection manually.
         </p>
