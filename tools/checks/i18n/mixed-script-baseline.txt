@@ -12,7 +12,6 @@ ja:ai.aiSetupReviewDescription
 ja:ai.aiSetupSavedTitle
 ja:ai.aiSetupSpendingDescription
 ja:ai.aiSetupStart
-ja:ai.aiSetupTitle
 ja:ai.aiSetupWelcomeAIDescription
 ja:ai.aiSetupWelcomeAITitle
 ja:ai.aiSetupWelcomeDescription
@@ -166,7 +165,6 @@ zh-cn:ai.aiSetupReviewDescription
 zh-cn:ai.aiSetupSavedTitle
 zh-cn:ai.aiSetupSpendingDescription
 zh-cn:ai.aiSetupStart
-zh-cn:ai.aiSetupTitle
 zh-cn:ai.aiSetupWelcomeAIDescription
 zh-cn:ai.aiSetupWelcomeAITitle
 zh-cn:ai.aiSetupWelcomeDescription

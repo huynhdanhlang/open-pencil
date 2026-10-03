@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Подключите ИИ, которым вы уже пользуетесь, чтобы редактировать холст и проверять дизайн. Это можно изменить позже в настройках.",
   "aiSetupStart": "Настроить ИИ",
   "aiSetupSkip": "Начать работу",
-  "aiSetupTitle": "Настройка ИИ",
   "aiSetupProgress": "Шаг {current} из {total}",
   "aiSetupAdvanced": "Расширенные настройки",
   "aiSetupContinue": "Далее",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Завершить настройку",
   "aiSetupSavedTitle": "ИИ готов к работе",
   "aiSetupSavedDescription": "Модели и роли можно изменить в любой момент в настройках.",
-  "aiSetupRun": "Пройти пошаговую настройку"
+  "aiSetupRun": "Пройти пошаговую настройку",
+  "aiSetupServerKeyHint": "Если сервер не проверяет ключи, введите любое значение.",
+  "aiSetupAlreadyConnected": "Всё выбранное уже подключено."
 }

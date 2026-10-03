@@ -192,3 +192,69 @@ describe('isUnconfiguredModelSettings', () => {
     expect(isUnconfiguredModelSettings(server)).toBe(false)
   })
 })
+
+describe('applyOnboardingPlan with configured models', () => {
+  test('keeps a configured profile with its own settings', () => {
+    const before = configured()
+    const { settings } = applyOnboardingPlan({
+      settings: before,
+      plan: planOnboarding(
+        { goals: ['design'], access: ['anthropic'], spending: 'existing' },
+        {
+          agentsAvailable: true,
+          current: {
+            design: {
+              providerID: 'anthropic',
+              modelID: 'claude-opus-5',
+              name: 'Claude Opus 5',
+              capabilities: ['tools', 'vision'],
+              profileId: 'model-opus'
+            },
+            vision: 'design'
+          }
+        }
+      ),
+      goals: ['design'],
+      details: {},
+      createId: sequentialIds()
+    })
+    expect(settings).toEqual(before)
+  })
+
+  test('does not give the vision role to a matching profile without image input', () => {
+    const before = configured()
+    before.models.push({
+      id: 'model-gpt-text',
+      name: 'GPT-5.6 text',
+      connectionId: 'connection-openai',
+      modelID: '',
+      customModelID: 'gpt-5.6',
+      maxOutputTokens: 16_384,
+      thinkingLevel: 'default',
+      capabilities: ['tools']
+    })
+    before.connections.push({
+      id: 'connection-openai',
+      providerID: 'openai',
+      customBaseURL: '',
+      customAPIType: 'completions',
+      credentialProfileId: 'connection-openai'
+    })
+    const { settings } = apply(before, {
+      goals: ['vision'],
+      access: ['openai'],
+      spending: 'existing'
+    })
+    const vision = settings.models.find((profile) => profile.id === settings.assignments.vision)
+    expect(vision?.id).not.toBe('model-gpt-text')
+    expect(vision?.capabilities).toContain('vision')
+  })
+
+  test('clears an explicit vision assignment to a profile without image input', () => {
+    const before = configured()
+    before.models[0].capabilities = ['tools']
+    before.assignments.vision = 'model-opus'
+    const { settings } = apply(before, { goals: ['design'], access: [], spending: 'existing' })
+    expect(settings.assignments.vision).toBeNull()
+  })
+})

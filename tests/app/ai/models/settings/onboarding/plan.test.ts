@@ -82,3 +82,56 @@ describe('planOnboarding', () => {
     expect(plan.vision).toMatchObject({ providerID: 'openai' })
   })
 })
+
+describe('planOnboarding with configured models', () => {
+  const opus = {
+    providerID: 'anthropic' as const,
+    modelID: 'claude-opus-5',
+    name: 'Claude Opus 5',
+    capabilities: ['tools' as const, 'vision' as const],
+    profileId: 'model-opus' as const
+  }
+  const zai = {
+    providerID: 'zai' as const,
+    modelID: 'glm-5v-turbo',
+    name: 'GLM-5V-Turbo',
+    capabilities: ['tools' as const, 'vision' as const],
+    profileId: 'model-glm' as const
+  }
+
+  test('keeps a configured design model while its access is still selected', () => {
+    const plan = planOnboarding(answers({ access: ['anthropic'] }), {
+      ...desktop,
+      current: { design: opus, vision: null }
+    })
+    expect(plan.design).toBe(opus)
+    expect(plan.connections).toEqual([])
+  })
+
+  test('replaces a configured design model whose access was deselected', () => {
+    const plan = planOnboarding(answers({ access: ['openai'] }), {
+      ...desktop,
+      current: { design: opus, vision: null }
+    })
+    expect(plan.design).toMatchObject({ providerID: 'openai' })
+    expect(plan.design?.profileId).toBeUndefined()
+  })
+
+  test('keeps models from providers onboarding does not offer', () => {
+    const plan = planOnboarding(
+      answers({ goals: ['design', 'vision'], access: ['openai-compatible'] }),
+      { ...desktop, current: { design: null, vision: zai } }
+    )
+    expect(plan.vision).toBe(zai)
+    expect(plan.connections).toEqual(['openai-compatible'])
+  })
+
+  test('keeps a configured vision model when nothing new covers visual review', () => {
+    const plan = planOnboarding(answers({ goals: ['design', 'vision'], access: ['acp:codex'] }), {
+      ...desktop,
+      current: { design: null, vision: { ...opus, profileId: 'model-opus' } }
+    })
+    expect(plan.design).toMatchObject({ providerID: 'acp:codex' })
+    expect(plan.vision).toMatchObject({ profileId: 'model-opus' })
+  })
+})

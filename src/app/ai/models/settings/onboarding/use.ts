@@ -5,19 +5,21 @@ import { IS_TAURI } from '@open-pencil/core/constants'
 import { refreshAIProviderStatus } from '@/app/ai/chat/storage'
 import {
   aiModelSettings,
+  modelConnection,
+  modelProfile,
   modelSettingsSnapshot,
   replaceAIModelSettings,
-  setModelConnectionAPIKey
+  setModelConnectionAPIKey,
+  type AIModelRoleAssignment
 } from '@/app/ai/models'
 import type { SettingsSaveResult } from '@/app/settings/save-result'
 
-import { applyOnboardingPlan } from './apply'
+import { applyOnboardingPlan, isUnconfiguredModelSettings } from './apply'
 import { existingOnboardingConnection, useOnboardingConnections } from './connections'
 import {
-  ONBOARDING_AGENTS,
-  ONBOARDING_API_PROVIDERS,
-  ONBOARDING_SERVER_PROVIDER,
+  isOnboardingAccess,
   planOnboarding,
+  type CurrentOnboardingModels,
   type OnboardingAccess,
   type OnboardingAnswers,
   type PlannedModel
@@ -26,14 +28,27 @@ import {
 export const AI_SETUP_STEPS = ['goals', 'access', 'spending', 'connect', 'review'] as const
 export type AISetupStep = (typeof AI_SETUP_STEPS)[number]
 
-const ONBOARDING_ACCESS = new Set<string>([
-  ...ONBOARDING_AGENTS,
-  ...ONBOARDING_API_PROVIDERS,
-  ONBOARDING_SERVER_PROVIDER
-])
+function configuredModel(assignment: AIModelRoleAssignment): PlannedModel | null {
+  const profile = assignment && assignment !== 'design' ? modelProfile(assignment) : null
+  const connection = profile ? modelConnection(profile.connectionId) : null
+  if (!profile || !connection) return null
+  return {
+    providerID: connection.providerID,
+    modelID: profile.customModelID || profile.modelID,
+    name: profile.name,
+    capabilities: [...profile.capabilities],
+    profileId: profile.id
+  }
+}
 
-function isOnboardingAccess(providerID: string): providerID is OnboardingAccess {
-  return ONBOARDING_ACCESS.has(providerID)
+/** What the design and vision roles use now, so setup keeps models configured by hand. */
+function currentModels(): CurrentOnboardingModels {
+  if (isUnconfiguredModelSettings(aiModelSettings.value)) return { design: null, vision: null }
+  const { design, vision } = aiModelSettings.value.assignments
+  return {
+    design: configuredModel(design),
+    vision: vision === 'design' ? 'design' : configuredModel(vision)
+  }
 }
 
 /** Starts from what is already configured, so running setup again adjusts instead of resets. */
@@ -56,11 +71,12 @@ interface AIOnboardingOptions {
 
 export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOptions = {}) {
   const answers = reactive<OnboardingAnswers>(initialAnswers())
+  const current = currentModels()
   const step = ref<AISetupStep>('goals')
   const busy = ref(false)
   const saveResult = ref<SettingsSaveResult | null>(null)
 
-  const plan = computed(() => planOnboarding(answers, { agentsAvailable }))
+  const plan = computed(() => planOnboarding(answers, { agentsAvailable, current }))
   const hasProposal = computed(() => plan.value.design !== null || plan.value.vision !== null)
 
   function plannedModel(providerID: OnboardingAccess): PlannedModel | null {
@@ -72,7 +88,7 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
   }
 
   const connections = useOnboardingConnections({ plannedModel })
-  const { connection, ready } = connections
+  const { connection, ready, markKeySaved } = connections
 
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0
@@ -101,6 +117,10 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
     saveResult.value = null
     let persisted = false
     try {
+      // Copied first: closing setup clears entered keys while the saves below are pending.
+      const keys = plan.value.connections.map(
+        (providerID) => [providerID, connection(providerID).apiKey.trim()] as const
+      )
       const details = Object.fromEntries(
         plan.value.connections.map((providerID) => {
           const { customBaseURL, customModelID } = connection(providerID)
@@ -117,13 +137,12 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
       replaceAIModelSettings(settings)
       // Applying again is idempotent, so a retry after a credential failure adds nothing.
       persisted = true
-      for (const providerID of plan.value.connections) {
-        const state = connection(providerID)
+      for (const [providerID, key] of keys) {
         const connectionId = connectionIds[providerID]
-        if (!state.apiKey.trim() || !connectionId) continue
-        await setModelConnectionAPIKey(connectionId, state.apiKey)
-        state.apiKey = ''
-        state.keyStatus = 'configured'
+        if (!key || !connectionId) continue
+        await setModelConnectionAPIKey(connectionId, key)
+        connection(providerID).apiKey = ''
+        markKeySaved(connectionId)
       }
       await refreshAIProviderStatus()
       saveResult.value = 'saved'

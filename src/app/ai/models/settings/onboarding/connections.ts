@@ -27,7 +27,6 @@ export interface OnboardingConnectionState {
   apiKey: string
   customBaseURL: string
   customModelID: string
-  keyStatus: CredentialStatus
   test: ConnectionTestStatus
   reason: ProviderConnectionTestFailureReason | null
 }
@@ -37,15 +36,23 @@ export type OnboardingConnectionPatch = Partial<
   Pick<OnboardingConnectionState, 'apiKey' | 'customBaseURL' | 'customModelID'>
 >
 
-/** The configured connection onboarding would reuse; a server is the one with an address. */
+/**
+ * The configured connection onboarding would reuse: the provider's connection without an
+ * address, or for a server the one at the given address (any server when none is given).
+ */
 export function existingOnboardingConnection(
-  providerID: OnboardingAccess
+  providerID: OnboardingAccess,
+  customBaseURL?: string
 ): AIModelConnection | null {
+  const server = providerID === ONBOARDING_SERVER_PROVIDER
   return (
     aiModelSettings.value.connections.find(
       (connection) =>
         connection.providerID === providerID &&
-        (providerID === ONBOARDING_SERVER_PROVIDER) === Boolean(connection.customBaseURL)
+        (server
+          ? Boolean(connection.customBaseURL) &&
+            (customBaseURL === undefined || connection.customBaseURL === customBaseURL.trim())
+          : !connection.customBaseURL)
     ) ?? null
   )
 }
@@ -57,6 +64,7 @@ interface OnboardingConnectionsOptions {
 /** Connection details, saved-key status, and connection tests for the providers being set up. */
 export function useOnboardingConnections({ plannedModel }: OnboardingConnectionsOptions) {
   const states = reactive<Partial<Record<OnboardingAccess, OnboardingConnectionState>>>({})
+  const keyStatuses = reactive<Record<string, CredentialStatus>>({})
   const testVersions = new Map<OnboardingAccess, number>()
   let disposed = false
 
@@ -69,15 +77,12 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
     for (const state of Object.values(states)) state.apiKey = ''
   }
 
-  async function refreshKeyStatus(
-    state: OnboardingConnectionState,
-    connectionId: string
-  ): Promise<void> {
+  async function loadKeyStatus(connectionId: string): Promise<void> {
     try {
       const status = await modelConnectionCredentialStatus(connectionId)
-      if (!disposed) state.keyStatus = status
+      if (!disposed) keyStatuses[connectionId] = status
     } catch {
-      if (!disposed) state.keyStatus = 'unavailable'
+      if (!disposed) keyStatuses[connectionId] = 'unavailable'
     }
   }
 
@@ -85,22 +90,34 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
     const current = states[providerID]
     if (current) return current
     const existing = existingOnboardingConnection(providerID)
-    const server = providerID === ONBOARDING_SERVER_PROVIDER
     const serverProfile =
-      server && existing
+      providerID === ONBOARDING_SERVER_PROVIDER && existing
         ? aiModelSettings.value.models.find((profile) => profile.connectionId === existing.id)
         : undefined
     states[providerID] = {
       apiKey: '',
       customBaseURL: existing?.customBaseURL ?? '',
       customModelID: serverProfile?.customModelID ?? '',
-      keyStatus: 'missing',
       test: 'idle',
       reason: null
     }
-    const state = states[providerID]
-    if (existing && !isOnboardingAgent(providerID)) void refreshKeyStatus(state, existing.id)
-    return state
+    return states[providerID]
+  }
+
+  /** The configured connection matching what is entered now, whose saved key may be used. */
+  function savedConnection(providerID: OnboardingAccess): AIModelConnection | null {
+    if (isOnboardingAgent(providerID)) return null
+    const saved = existingOnboardingConnection(providerID, connection(providerID).customBaseURL)
+    if (saved && !(saved.id in keyStatuses)) {
+      keyStatuses[saved.id] = 'missing'
+      void loadKeyStatus(saved.id)
+    }
+    return saved
+  }
+
+  function hasSavedKey(providerID: OnboardingAccess): boolean {
+    const saved = savedConnection(providerID)
+    return Boolean(saved && keyStatuses[saved.id] === 'configured')
   }
 
   function ready(providerID: OnboardingAccess): boolean {
@@ -108,9 +125,7 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
     const state = connection(providerID)
     if (state.test === 'success') return true
     return (
-      providerID !== ONBOARDING_SERVER_PROVIDER &&
-      state.keyStatus === 'configured' &&
-      !state.apiKey.trim()
+      providerID !== ONBOARDING_SERVER_PROVIDER && hasSavedKey(providerID) && !state.apiKey.trim()
     )
   }
 
@@ -130,9 +145,9 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
     state.test = 'testing'
     state.reason = null
     try {
-      const existing = existingOnboardingConnection(providerID)
+      const saved = savedConnection(providerID)
       const savedKey =
-        !state.apiKey.trim() && existing ? await resolveModelConnectionAPIKey(existing.id) : null
+        !state.apiKey.trim() && saved ? await resolveModelConnectionAPIKey(saved.id) : null
       if (!current()) return
       const result = await testProviderConnection({
         providerID,
@@ -140,7 +155,7 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
         modelID: plannedModel(providerID)?.modelID ?? '',
         customModelID: state.customModelID.trim(),
         customBaseURL: state.customBaseURL.trim(),
-        customAPIType: 'completions'
+        customAPIType: saved?.customAPIType ?? 'completions'
       })
       if (!current()) return
       state.test = result.ok ? 'success' : 'error'
@@ -152,5 +167,10 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
     }
   }
 
-  return { connection, ready, resetTest, testConnection, clearKeys }
+  /** Records a key that setup stored, so the connection shows as saved without a reload. */
+  function markKeySaved(connectionId: string): void {
+    keyStatuses[connectionId] = 'configured'
+  }
+
+  return { connection, hasSavedKey, ready, resetTest, testConnection, clearKeys, markKeySaved }
 }

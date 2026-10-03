@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "连接你已在使用的 AI，用来编辑画布和审查设计。之后可以在设置中更改。",
   "aiSetupStart": "设置 AI",
   "aiSetupSkip": "开始设计",
-  "aiSetupTitle": "AI 设置",
   "aiSetupProgress": "第 {current} 步，共 {total} 步",
   "aiSetupAdvanced": "高级设置",
   "aiSetupContinue": "继续",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "完成设置",
   "aiSetupSavedTitle": "AI 已就绪",
   "aiSetupSavedDescription": "你可以随时在设置中更改模型和角色。",
-  "aiSetupRun": "运行引导式设置"
+  "aiSetupRun": "运行引导式设置",
+  "aiSetupServerKeyHint": "如果你的服务器不校验密钥，可以输入任意值。",
+  "aiSetupAlreadyConnected": "你选择的服务都已连接。"
 }

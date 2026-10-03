@@ -165,11 +165,17 @@ async function finish(): Promise<void> {
           :heading="ai.aiSetupNothingTitle"
           :description="ai.aiSetupNothingDescription"
         />
+        <AppAlert
+          v-else-if="!plan.connections.length"
+          tone="success"
+          :heading="ai.aiSetupAlreadyConnected"
+        />
         <AISetupConnection
           v-for="providerID in plan.connections"
           :key="providerID"
           :provider-i-d="providerID"
           :state="onboarding.connection(providerID)"
+          :has-saved-key="onboarding.hasSavedKey(providerID)"
           :recommended="!answers.access.includes(providerID)"
           :disabled="busy"
           @update="updateConnection(providerID, $event)"

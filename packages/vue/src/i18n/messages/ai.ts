@@ -177,7 +177,6 @@ export const aiMessageDefaults = {
     'Connect the AI you already use to edit the canvas and review designs. You can change it later in Settings.',
   aiSetupStart: 'Set up AI',
   aiSetupSkip: 'Start designing',
-  aiSetupTitle: 'AI setup',
   aiSetupProgress: params('Step {current} of {total}'),
   aiSetupAdvanced: 'Advanced settings',
   aiSetupContinue: 'Continue',
@@ -218,7 +217,9 @@ export const aiMessageDefaults = {
   aiSetupFinish: 'Finish setup',
   aiSetupSavedTitle: 'AI is ready',
   aiSetupSavedDescription: 'You can change models and roles anytime in Settings.',
-  aiSetupRun: 'Run guided setup'
+  aiSetupRun: 'Run guided setup',
+  aiSetupServerKeyHint: 'If your server does not check keys, enter any value.',
+  aiSetupAlreadyConnected: 'Everything you selected is already connected.'
 } as const
 
 export const aiMessages = i18n('ai', aiMessageDefaults)

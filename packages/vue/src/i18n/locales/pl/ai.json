@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Połącz AI, z którego już korzystasz, aby edytować płótno i przeglądać projekty. Możesz to później zmienić w ustawieniach.",
   "aiSetupStart": "Skonfiguruj AI",
   "aiSetupSkip": "Zacznij projektować",
-  "aiSetupTitle": "Konfiguracja AI",
   "aiSetupProgress": "Krok {current} z {total}",
   "aiSetupAdvanced": "Ustawienia zaawansowane",
   "aiSetupContinue": "Dalej",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Zakończ konfigurację",
   "aiSetupSavedTitle": "AI jest gotowe",
   "aiSetupSavedDescription": "Modele i role możesz zmienić w dowolnej chwili w ustawieniach.",
-  "aiSetupRun": "Uruchom konfigurację z przewodnikiem"
+  "aiSetupRun": "Uruchom konfigurację z przewodnikiem",
+  "aiSetupServerKeyHint": "Jeśli serwer nie sprawdza kluczy, wpisz dowolną wartość.",
+  "aiSetupAlreadyConnected": "Wszystko, co wybrano, jest już połączone."
 }

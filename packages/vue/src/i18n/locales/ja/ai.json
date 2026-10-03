@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "普段使っている AI を接続して、キャンバスの編集やデザインのレビューに使えます。あとから設定で変更できます。",
   "aiSetupStart": "AI を設定",
   "aiSetupSkip": "デザインを始める",
-  "aiSetupTitle": "AI の設定",
   "aiSetupProgress": "ステップ {current}/{total}",
   "aiSetupAdvanced": "詳細設定",
   "aiSetupContinue": "続ける",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "設定を完了",
   "aiSetupSavedTitle": "AI の準備ができました",
   "aiSetupSavedDescription": "モデルと役割はいつでも設定で変更できます。",
-  "aiSetupRun": "ガイド付き設定を開始"
+  "aiSetupRun": "ガイド付き設定を開始",
+  "aiSetupServerKeyHint": "サーバーがキーを確認しない場合は、任意の値を入力してください。",
+  "aiSetupAlreadyConnected": "選んだものはすべて接続済みです。"
 }

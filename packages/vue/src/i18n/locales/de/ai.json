@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Verbinde die KI, die du bereits nutzt, um die Arbeitsfläche zu bearbeiten und Designs zu prüfen. Du kannst das später in den Einstellungen ändern.",
   "aiSetupStart": "KI einrichten",
   "aiSetupSkip": "Mit dem Gestalten beginnen",
-  "aiSetupTitle": "KI-Einrichtung",
   "aiSetupProgress": "Schritt {current} von {total}",
   "aiSetupAdvanced": "Erweiterte Einstellungen",
   "aiSetupContinue": "Weiter",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Einrichtung abschließen",
   "aiSetupSavedTitle": "Die KI ist bereit",
   "aiSetupSavedDescription": "Du kannst Modelle und Rollen jederzeit in den Einstellungen ändern.",
-  "aiSetupRun": "Geführte Einrichtung starten"
+  "aiSetupRun": "Geführte Einrichtung starten",
+  "aiSetupServerKeyHint": "Wenn dein Server keine Schlüssel prüft, gib einen beliebigen Wert ein.",
+  "aiSetupAlreadyConnected": "Alles, was du ausgewählt hast, ist bereits verbunden."
 }

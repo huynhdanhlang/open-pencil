@@ -1,7 +1,7 @@
 import { AI_PROVIDERS, type AIProviderID, type ModelOption } from '@open-pencil/core/constants'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
-import type { AIModelCapability } from '@/app/ai/models/types'
+import type { AIModelCapability, AIModelProfileId } from '@/app/ai/models/types'
 
 /** Roles onboarding asks about; review and fast stay in the advanced settings. */
 export const ONBOARDING_GOALS = ['design', 'vision'] as const
@@ -21,6 +21,16 @@ export type OnboardingAccess =
   | (typeof ONBOARDING_API_PROVIDERS)[number]
   | typeof ONBOARDING_SERVER_PROVIDER
 
+const ONBOARDING_ACCESS = new Set<string>([
+  ...ONBOARDING_AGENTS,
+  ...ONBOARDING_API_PROVIDERS,
+  ONBOARDING_SERVER_PROVIDER
+])
+
+export function isOnboardingAccess(providerID: string): providerID is OnboardingAccess {
+  return ONBOARDING_ACCESS.has(providerID)
+}
+
 export type OnboardingSpending = 'existing' | 'metered'
 
 export interface OnboardingAnswers {
@@ -30,11 +40,13 @@ export interface OnboardingAnswers {
 }
 
 export interface PlannedModel {
-  providerID: OnboardingAccess
+  providerID: AIProviderID
   /** Catalog model ID; empty when the connection supplies its own model (server, agent). */
   modelID: string
   name: string
   capabilities: AIModelCapability[]
+  /** Set when the plan keeps a model that is already configured. */
+  profileId?: AIModelProfileId
 }
 
 export type PlannedVision = PlannedModel | 'design' | null
@@ -46,9 +58,16 @@ export interface OnboardingPlan {
   connections: OnboardingAccess[]
 }
 
+/** The models currently assigned to the roles onboarding covers. */
+export interface CurrentOnboardingModels {
+  design: PlannedModel | null
+  vision: PlannedVision
+}
+
 export interface PlanOptions {
   /** Agents run as local processes, so only the desktop app can use them. */
   agentsAvailable: boolean
+  current?: CurrentOnboardingModels
 }
 
 export function isOnboardingAgent(providerID: string): boolean {
@@ -86,7 +105,18 @@ function availableAccess(answers: OnboardingAnswers, options: PlanOptions): Onbo
   return answers.access.filter((access) => options.agentsAvailable || !isOnboardingAgent(access))
 }
 
-function planDesign(access: OnboardingAccess[], spending: OnboardingSpending) {
+/** A configured model stays while its access is still selected or onboarding cannot offer it. */
+function keepable(model: PlannedModel | null, access: OnboardingAccess[]): model is PlannedModel {
+  if (!model) return false
+  return !isOnboardingAccess(model.providerID) || access.includes(model.providerID)
+}
+
+function planDesign(
+  access: OnboardingAccess[],
+  spending: OnboardingSpending,
+  current: PlannedModel | null
+) {
+  if (keepable(current, access)) return current
   const preferred: OnboardingAccess[] = [
     ...ONBOARDING_AGENTS,
     ...ONBOARDING_API_PROVIDERS,
@@ -97,32 +127,46 @@ function planDesign(access: OnboardingAccess[], spending: OnboardingSpending) {
   return spending === 'metered' ? plannedModel(ONBOARDING_METERED_PROVIDER) : null
 }
 
+function canInherit(design: PlannedModel | null): boolean {
+  return Boolean(design && !isOnboardingAgent(design.providerID) && hasVision(design))
+}
+
 function planVision(
   design: PlannedModel | null,
   access: OnboardingAccess[],
-  spending: OnboardingSpending
+  spending: OnboardingSpending,
+  current: PlannedVision
 ): PlannedVision {
-  if (design && !isOnboardingAgent(design.providerID) && hasVision(design)) return 'design'
-  const existing = ONBOARDING_API_PROVIDERS.map(plannedModel).find(
-    (model) => access.includes(model.providerID) && hasVision(model)
-  )
+  if (current !== null && current !== 'design' && keepable(current, access)) return current
+  if (canInherit(design)) return 'design'
+  const existing = ONBOARDING_API_PROVIDERS.filter((providerID) => access.includes(providerID))
+    .map(plannedModel)
+    .find(hasVision)
   if (existing) return existing
   const metered = plannedModel(ONBOARDING_METERED_PROVIDER)
-  return spending === 'metered' && hasVision(metered) ? metered : null
+  if (spending === 'metered' && hasVision(metered)) return metered
+  // Nothing new covers visual review, so a configured vision model stays as it is; inheriting
+  // from a design model that cannot accept images is not possible.
+  return current === 'design' ? null : current
 }
 
 /**
- * Proposes models for the roles onboarding covers, preferring access the person already has.
- * Agents choose their own model and cannot review images, so vision falls back to an API model.
+ * Proposes models for the roles onboarding covers, preferring what is already configured and
+ * then access the person already has. Agents choose their own model and cannot review images,
+ * so vision falls back to an API model.
  */
 export function planOnboarding(answers: OnboardingAnswers, options: PlanOptions): OnboardingPlan {
   const access = availableAccess(answers, options)
-  const design = answers.goals.includes('design') ? planDesign(access, answers.spending) : null
+  const current = options.current ?? { design: null, vision: null }
+  const design = answers.goals.includes('design')
+    ? planDesign(access, answers.spending, current.design)
+    : null
   const vision = answers.goals.includes('vision')
-    ? planVision(design, access, answers.spending)
+    ? planVision(design ?? current.design, access, answers.spending, current.vision)
     : null
   const connections = [design, vision === 'design' ? null : vision]
-    .filter((model) => model !== null)
-    .map((model) => model.providerID)
+    .filter((model) => model !== null && !model.profileId)
+    .map((model) => model?.providerID ?? '')
+    .filter(isOnboardingAccess)
   return { design, vision, connections: [...new Set(connections)] }
 }

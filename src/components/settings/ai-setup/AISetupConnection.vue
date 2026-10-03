@@ -26,11 +26,14 @@ import theme from '@/theme/settings/ai-setup/flow'
 const {
   providerID,
   state,
+  hasSavedKey = false,
   recommended = false,
   disabled = false
 } = defineProps<{
   providerID: OnboardingAccess
   state: OnboardingConnectionState
+  /** A key saved for the connection that matches what is entered now. */
+  hasSavedKey?: boolean
   /** Suggested for pay-as-you-go rather than chosen by the person. */
   recommended?: boolean
   disabled?: boolean
@@ -52,7 +55,10 @@ const agent = computed(() =>
 )
 const provider = computed(() => AI_PROVIDERS.find((candidate) => candidate.id === providerID))
 const server = computed(() => providerID === ONBOARDING_SERVER_PROVIDER)
-const hasSavedKey = computed(() => state.keyStatus === 'configured')
+const keyHint = computed(() => {
+  if (hasSavedKey) return settings.value.savedCredentialHint
+  return server.value ? ai.value.aiSetupServerKeyHint : undefined
+})
 </script>
 
 <template>
@@ -97,7 +103,7 @@ const hasSavedKey = computed(() => state.keyStatus === 'configured')
         :model-value="state.apiKey"
         :label="ai.apiKey"
         :saved="hasSavedKey"
-        :hint="hasSavedKey ? settings.savedCredentialHint : undefined"
+        :hint="keyHint"
         kind="api"
         :placeholder="hasSavedKey ? credentials.savedReplace : (provider?.keyPlaceholder ?? '')"
         :key-u-r-l="provider?.keyURL"

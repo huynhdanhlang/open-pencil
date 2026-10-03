@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Conecta la IA que ya usas para editar el lienzo y revisar diseños. Puedes cambiarlo más tarde en Ajustes.",
   "aiSetupStart": "Configurar IA",
   "aiSetupSkip": "Empezar a diseñar",
-  "aiSetupTitle": "Configuración de IA",
   "aiSetupProgress": "Paso {current} de {total}",
   "aiSetupAdvanced": "Ajustes avanzados",
   "aiSetupContinue": "Continuar",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Terminar la configuración",
   "aiSetupSavedTitle": "La IA está lista",
   "aiSetupSavedDescription": "Puedes cambiar los modelos y los roles en cualquier momento en Ajustes.",
-  "aiSetupRun": "Iniciar la configuración guiada"
+  "aiSetupRun": "Iniciar la configuración guiada",
+  "aiSetupServerKeyHint": "Si tu servidor no comprueba claves, escribe cualquier valor.",
+  "aiSetupAlreadyConnected": "Todo lo que seleccionaste ya está conectado."
 }

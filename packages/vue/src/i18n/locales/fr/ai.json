@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Connectez l’IA que vous utilisez déjà pour modifier le canevas et relire vos designs. Vous pourrez la changer plus tard dans les réglages.",
   "aiSetupStart": "Configurer l’IA",
   "aiSetupSkip": "Commencer à concevoir",
-  "aiSetupTitle": "Configuration de l’IA",
   "aiSetupProgress": "Étape {current} sur {total}",
   "aiSetupAdvanced": "Réglages avancés",
   "aiSetupContinue": "Continuer",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Terminer la configuration",
   "aiSetupSavedTitle": "L’IA est prête",
   "aiSetupSavedDescription": "Vous pouvez changer les modèles et les rôles à tout moment dans les réglages.",
-  "aiSetupRun": "Lancer la configuration guidée"
+  "aiSetupRun": "Lancer la configuration guidée",
+  "aiSetupServerKeyHint": "Si votre serveur ne vérifie pas les clés, saisissez n’importe quelle valeur.",
+  "aiSetupAlreadyConnected": "Tout ce que vous avez sélectionné est déjà connecté."
 }

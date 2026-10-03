@@ -8,6 +8,7 @@ import type {
 } from '@/app/ai/models/types'
 
 import {
+  isOnboardingAccess,
   isOnboardingAgent,
   ONBOARDING_SERVER_PROVIDER,
   type OnboardingAccess,
@@ -103,12 +104,22 @@ export function applyOnboardingPlan({
     return connection
   }
 
-  function profileFor(model: PlannedModel): AIModelProfileId {
+  function profileFor(model: PlannedModel): AIModelProfileId | null {
+    if (model.profileId) {
+      return settings.models.some((profile) => profile.id === model.profileId)
+        ? model.profileId
+        : null
+    }
+    if (!isOnboardingAccess(model.providerID)) return null
     const connection = connectionFor(model.providerID)
     const customModelID = details[model.providerID]?.customModelID.trim() ?? ''
     const wanted = customModelID || model.modelID
+    // Reuse only a profile that can do everything the plan relies on.
     const existing = settings.models.find(
-      (profile) => profile.connectionId === connection.id && effectiveModelID(profile) === wanted
+      (profile) =>
+        profile.connectionId === connection.id &&
+        effectiveModelID(profile) === wanted &&
+        model.capabilities.every((capability) => profile.capabilities.includes(capability))
     )
     if (existing) return existing.id
     const profile: AIModelProfile = {
@@ -126,7 +137,7 @@ export function applyOnboardingPlan({
   }
 
   if (goals.includes('design') && plan.design) {
-    settings.assignments.design = profileFor(plan.design)
+    settings.assignments.design = profileFor(plan.design) ?? settings.assignments.design
   }
   if (goals.includes('vision')) {
     const { vision } = plan
@@ -149,6 +160,8 @@ export function applyOnboardingPlan({
       settings.assignments[role] = null
     }
   }
+  const vision = settings.models.find((profile) => profile.id === settings.assignments.vision)
+  if (vision && !vision.capabilities.includes('vision')) settings.assignments.vision = null
 
   const placeholder = settings.models.find((profile) => isUnusedPlaceholder(settings, profile))
   if (placeholder) {

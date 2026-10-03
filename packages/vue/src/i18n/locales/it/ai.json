@@ -161,7 +161,6 @@
   "aiSetupWelcomeAIDescription": "Collega l’IA che usi già per modificare la tela e rivedere i design. Puoi cambiarla in seguito nelle Impostazioni.",
   "aiSetupStart": "Configura l’IA",
   "aiSetupSkip": "Inizia a progettare",
-  "aiSetupTitle": "Configurazione IA",
   "aiSetupProgress": "Passo {current} di {total}",
   "aiSetupAdvanced": "Impostazioni avanzate",
   "aiSetupContinue": "Continua",
@@ -194,5 +193,7 @@
   "aiSetupFinish": "Completa la configurazione",
   "aiSetupSavedTitle": "L’IA è pronta",
   "aiSetupSavedDescription": "Puoi cambiare modelli e ruoli in qualsiasi momento nelle Impostazioni.",
-  "aiSetupRun": "Avvia la configurazione guidata"
+  "aiSetupRun": "Avvia la configurazione guidata",
+  "aiSetupServerKeyHint": "Se il server non verifica le chiavi, inserisci un valore qualsiasi.",
+  "aiSetupAlreadyConnected": "Tutto ciò che hai selezionato è già collegato."
 }
