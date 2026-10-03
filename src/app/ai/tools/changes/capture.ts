@@ -1,3 +1,5 @@
+import { diffLines, type ChangeObject } from 'diff'
+
 import { graphFromPageSnapshot, type PageSnapshot } from '@open-pencil/core/editor'
 import { diffPageLayersJSX } from '@open-pencil/core/tools'
 
@@ -27,18 +29,12 @@ function lineStart(text: string, index: number): number {
  */
 export function clipChangedJSX(before: string, after: string): [string, string] {
   if (before.length <= MAX_JSX_LENGTH && after.length <= MAX_JSX_LENGTH) return [before, after]
-  let prefix = 0
-  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
-    prefix++
-  }
-  let suffix = 0
-  while (
-    suffix < before.length - prefix &&
-    suffix < after.length - prefix &&
-    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
-  ) {
-    suffix++
-  }
+  // The unchanged lines before the first change and after the last one.
+  const changes = diffLines(before, after)
+  const unchanged = (change: ChangeObject<string> | undefined) =>
+    change && !change.added && !change.removed ? change.value.length : 0
+  const prefix = unchanged(changes[0])
+  const suffix = changes.length > 1 ? unchanged(changes.at(-1)) : 0
   const clip = (text: string): string => {
     const from = lineStart(text, prefix - CLIP_CONTEXT)
     const to = Math.min(text.length, text.length - suffix + CLIP_CONTEXT)

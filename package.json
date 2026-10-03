@@ -155,6 +155,7 @@
     "copy-to-clipboard": "^4.0.2",
     "culori": "^4.0.2",
     "dedent": "^1.7.2",
+    "diff": "^8.0.4",
     "es-toolkit": "^1.51.0",
     "fflate": "^0.8.3",
     "fuse.js": "^7.5.0",
