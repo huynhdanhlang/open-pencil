@@ -78,6 +78,7 @@
 - Load the Bold, Medium, and other styles of macOS system fonts packaged as font collections, such as Menlo, Helvetica Neue, and Avenir Next, instead of reporting them as substituted or drawing a different style (#746).
 - Load the Medium, Semibold, Bold, and other styles of installed variable fonts such as SF Pro on macOS instead of reporting them as substituted (#752).
 - Ship the MIT license text in every published npm package, and add READMEs for `@open-pencil/core`, `@open-pencil/cli`, and `@open-pencil/mcp` on npm.
+- Draw unchecked checkboxes in the Publish library dialog as empty boxes instead of filled squares, which were nearly black in the light theme.
 
 ### Performance
 
