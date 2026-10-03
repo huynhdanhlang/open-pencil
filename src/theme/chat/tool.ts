@@ -32,8 +32,10 @@ export const chatToolTheme = tv({
       'pointer-events-none absolute top-1 rounded bg-black/55 px-1 py-px text-[9px] font-medium text-white',
     group: 'rounded-lg border border-dashed border-border',
     groupTrigger:
-      'flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-muted hover:bg-hover hover:text-surface',
+      'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-muted hover:bg-hover hover:text-surface',
     groupIcon: 'size-3.5 shrink-0 text-accent',
+    groupNames: 'min-w-0 flex-1 truncate',
+    groupFailed: 'bg-red-500/20 text-red-400',
     groupItems: 'space-y-1.5 px-1.5 pb-1.5'
   }
 })
