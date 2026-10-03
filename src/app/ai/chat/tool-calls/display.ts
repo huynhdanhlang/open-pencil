@@ -121,6 +121,11 @@ export function toolSource(
   return null
 }
 
+/** Whether a call has input worth showing: source, or at least one argument. */
+export function toolHasInput(part: ToolCallPart): boolean {
+  return toolSource(part) !== null || (isRecord(part.input) && Object.keys(part.input).length > 0)
+}
+
 export type MessagePartGroup =
   | { kind: 'part'; part: ChatMessagePart; index: number }
   | { kind: 'tools'; parts: { part: ToolCallPart; index: number }[] }

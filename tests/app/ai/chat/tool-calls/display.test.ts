@@ -6,6 +6,7 @@ import {
   displayedToolOutput,
   groupMessageParts,
   toolErrorText,
+  toolHasInput,
   toolImage,
   toolNodeIds,
   toolSource,
@@ -143,5 +144,14 @@ describe('tool call display', () => {
         group.kind === 'tools' ? group.parts.map(({ index }) => index) : group.index
       )
     ).toEqual([[0, 2], 4])
+  })
+})
+
+describe('toolHasInput', () => {
+  test('counts source or any argument as input', () => {
+    expect(toolHasInput(call({ type: 'tool-render', input: { jsx: '<Frame />' } }))).toBe(true)
+    expect(toolHasInput(call({ type: 'tool-get_node', input: { id: '1:2' } }))).toBe(true)
+    expect(toolHasInput(call({ type: 'tool-get_selection', input: {} }))).toBe(false)
+    expect(toolHasInput(call({ type: 'tool-get_selection', input: undefined }))).toBe(false)
   })
 })

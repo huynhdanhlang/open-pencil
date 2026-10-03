@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { getToolName } from 'ai'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
 import { computed, defineAsyncComponent, ref } from 'vue'
 
@@ -9,6 +8,7 @@ import {
   displayedToolOutput,
   toolDisplayName,
   toolErrorText,
+  toolHasInput,
   toolImage,
   toolNodeIds,
   toolSource,
@@ -16,7 +16,7 @@ import {
   type ToolCallPart
 } from '@/app/ai/chat/tool-calls/display'
 import { readToolChange } from '@/app/ai/tools/changes/store'
-import { classifyToolState } from '@/components/chat/tool/state'
+import { toolCallState } from '@/components/chat/tool/state'
 import ToolChangeView from '@/components/chat/tool/ToolChangeView.vue'
 import ToolNodeChips from '@/components/chat/tool/ToolNodeChips.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
@@ -31,20 +31,14 @@ const { part } = defineProps<{ part: ToolCallPart }>()
 const { ai } = useI18n()
 const ui = chatToolTheme()
 
-const state = computed(() =>
-  classifyToolState({ toolName: getToolName(part), state: part.state, output: part.output })
-)
+const state = computed(() => toolCallState(part))
 const name = computed(() => toolDisplayName(part))
 const summary = computed(() => toolSummary(part))
 const source = computed(() => toolSource(part))
 const error = computed(() => toolErrorText(part))
 const image = computed(() => toolImage(part))
 const nodeIds = computed(() => (state.value === 'pending' ? [] : toolNodeIds(part)))
-const hasInput = computed(
-  () =>
-    source.value !== null ||
-    (typeof part.input === 'object' && part.input !== null && Object.keys(part.input).length > 0)
-)
+const hasInput = computed(() => toolHasInput(part))
 const output = computed(() => displayedToolOutput(part))
 // Error results such as `diff_apply`'s mismatch report stay inspectable next to the alert.
 const hasOutput = computed(() => output.value !== undefined)

@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { getToolName } from 'ai'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
 import { computed } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
 import type { ToolCallPart } from '@/app/ai/chat/tool-calls/display'
-import { classifyToolState } from '@/components/chat/tool/state'
+import { toolCallState } from '@/components/chat/tool/state'
 import ToolCallCard from '@/components/chat/tool/ToolCallCard.vue'
 import { chatToolTheme } from '@/theme/chat/tool'
 import { collapsibleContentMotion } from '@/theme/collapsible/collapsible'
@@ -21,15 +20,7 @@ const ui = chatToolTheme()
 const earlier = computed(() => parts.slice(0, -1))
 const latest = computed(() => parts.at(-1))
 const failed = computed(
-  () =>
-    earlier.value.filter(
-      (part) =>
-        classifyToolState({
-          toolName: getToolName(part),
-          state: part.state,
-          output: part.output
-        }) === 'error'
-    ).length
+  () => earlier.value.filter((part) => toolCallState(part) === 'error').length
 )
 const label = computed(() => {
   const steps = ai.value.toolSteps({ count: earlier.value.length })
