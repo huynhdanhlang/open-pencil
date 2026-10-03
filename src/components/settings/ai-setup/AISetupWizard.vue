@@ -27,7 +27,7 @@ const {
 }>()
 const emit = defineEmits<{
   connect: [provider: string]
-  manual: []
+  advanced: []
   cancel: []
   applied: [assignments: Record<string, string>, answers: SetupAnswers]
 }>()
@@ -84,7 +84,7 @@ function confirm(assignments: Record<string, string>) {
     <header :class="styles.header()">
       <span :class="styles.help()"
         >{{ mode === 'adjust' ? 'Adjust your AI setup' : 'AI setup' }} · {{ step + 1 }} of 5</span
-      ><AppButton @click="emit('manual')">Manual configuration</AppButton>
+      ><AppButton @click="emit('advanced')">Advanced settings</AppButton>
     </header>
     <h1 :id="headingId" :class="styles.heading()">
       {{ applied ? 'Your setup is saved' : titles[step] }}
@@ -168,7 +168,8 @@ function confirm(assignments: Record<string, string>) {
           description="Task assignments will be confirmed separately."
         />
         <p v-if="!required.length" :class="styles.help()">
-          No suitable access selected. Go back to choose an account or set up a connection manually.
+          No suitable access selected. Go back to choose an account or configure AI in advanced
+          settings.
         </p>
       </template>
       <TaskAssignmentReview

@@ -5,6 +5,6 @@ export default {
     title: 'text-xl font-semibold',
     description: 'text-sm leading-relaxed text-muted',
     body: 'flex flex-col gap-4',
-    footer: 'mt-6 flex items-center justify-between gap-3 border-t border-border pt-4'
+    footer: 'mt-6 flex items-center justify-end gap-3 border-t border-border pt-4'
   }
 }

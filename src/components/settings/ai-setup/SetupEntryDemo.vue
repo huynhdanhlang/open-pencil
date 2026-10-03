@@ -2,16 +2,16 @@
 import { useTimeoutFn } from '@vueuse/core'
 import { ref } from 'vue'
 
+import SettingsGroup from '@/components/settings/layout/SettingsGroup.vue'
+import SettingsRow from '@/components/settings/layout/SettingsRow.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
-import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import AgentConnect from './AgentConnect.vue'
-import AIConnectionsPanel from './AIConnectionsPanel.vue'
 import AISetupWizard from './AISetupWizard.vue'
 import GatewayConnect from './GatewayConnect.vue'
 import LocalServerConnect from './LocalServerConnect.vue'
 import OpenRouterConnect from './OpenRouterConnect.vue'
-import type { SetupAnswers } from './recommendations'
+import { goals, routes, type SetupAnswers } from './recommendations'
 import SetupScreen from './SetupScreen.vue'
 import WelcomeScreen from './WelcomeScreen.vue'
 
@@ -36,12 +36,14 @@ const routerState = ref<'disconnected' | 'waiting' | 'connected' | 'cancelled' |
   'disconnected'
 )
 const agentState = ref<'missing' | 'sign-in' | 'starting' | 'ready'>('missing')
-const localState = ref<'idle' | 'discovered' | 'manual'>('idle')
+const localState = ref<'idle' | 'discovered'>('idle')
 const revision = ref(0)
-const manual = ref(false)
+
+function routeLabel(task: string) {
+  return routes.find((route) => route.id === assignments.value[task])?.label ?? 'Not configured'
+}
 
 function openWizard() {
-  manual.value = false
   wizardOpen.value = true
   screen.value = 'wizard'
 }
@@ -70,7 +72,7 @@ function startConnection(name: string) {
 }
 function finishConnection() {
   if (!connected.value.includes(provider.value)) connected.value.push(provider.value)
-  screen.value = manual.value ? 'settings' : 'wizard'
+  screen.value = 'wizard'
 }
 const { start: startAuthorization, stop: stopAuthorization } = useTimeoutFn(
   () => {
@@ -95,7 +97,7 @@ function cancelAuthorization() {
 
 function backToSetup() {
   cancelAuthorization()
-  screen.value = manual.value ? 'manual' : 'wizard'
+  screen.value = 'wizard'
 }
 function nextAgent() {
   const next = {
@@ -108,21 +110,14 @@ function nextAgent() {
   revision.value++
 }
 function discover() {
-  localState.value = manual.value ? 'manual' : 'discovered'
+  localState.value = 'discovered'
   revision.value++
 }
-function leaveManual() {
-  manual.value = false
-  screen.value = 'wizard'
-}
-function manageConnection(name: string) {
-  manual.value = true
-  startConnection(name)
-}
 
-function openManual() {
-  manual.value = true
-  screen.value = 'manual'
+function openAdvanced() {
+  stopAuthorization()
+  wizardOpen.value = false
+  screen.value = 'settings'
 }
 </script>
 <template>
@@ -133,7 +128,7 @@ function openManual() {
       :initial-answers="savedAnswers"
       :existing-assignments="assignments"
       :verified-connections="connected"
-      @manual="openManual"
+      @advanced="openAdvanced"
       @connect="startConnection"
       @cancel="cancelWizard"
       @applied="apply"
@@ -149,16 +144,11 @@ function openManual() {
       @connect-key="authorize"
       @done="finishConnection"
     />
-    <GatewayConnect
-      v-else-if="provider === 'Vercel AI Gateway'"
-      @connected="finishConnection"
-      @back="screen = 'wizard'"
-    />
+    <GatewayConnect v-else-if="provider === 'Vercel AI Gateway'" @connected="finishConnection" />
     <LocalServerConnect
       v-else-if="provider === 'Your server'"
       :key="revision"
       :initial-state="localState"
-      :proxy="manual"
       @check="discover"
       @connect="finishConnection"
     />
@@ -177,36 +167,22 @@ function openManual() {
     </div>
   </div>
   <SetupScreen
-    v-if="screen === 'manual'"
-    heading="Manual configuration"
-    description="Connect access first, then assign models to tasks."
+    v-if="screen === 'settings'"
+    heading="AI models"
+    description="Stand-in for the advanced settings (ModelsPanel): connections, model profiles, and role assignments. Guided setup writes the same settings."
   >
-    <AppSelect
-      v-model="provider"
-      label="Connection type"
-      :options="
-        ['OpenRouter', 'Vercel AI Gateway', 'Your server', 'Codex', 'Claude Code'].map((value) => ({
-          value,
-          label: value
-        }))
-      "
-    />
+    <SettingsGroup>
+      <SettingsRow
+        v-for="goal in goals"
+        :key="goal.id"
+        :label="goal.label"
+        :description="routeLabel(goal.label)"
+      />
+    </SettingsGroup>
     <template #footer
-      ><AppButton @click="leaveManual">Back</AppButton
-      ><AppButton color="primary" variant="solid" @click="startConnection(provider)"
-        >Configure connection</AppButton
-      ></template
+      ><AppButton variant="outline" @click="openWizard">Run guided setup</AppButton></template
     >
   </SetupScreen>
-  <AIConnectionsPanel
-    v-if="screen === 'settings'"
-    :connected="connected"
-    :assignments="assignments"
-    @review="openWizard"
-    @add="openManual"
-    @manage="manageConnection"
-    @save="assignments = $event"
-  />
   <SetupScreen
     v-if="screen === 'editor'"
     heading="Start designing"

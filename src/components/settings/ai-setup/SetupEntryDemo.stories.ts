@@ -20,7 +20,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'UI-only adapter fixtures. OAuth callbacks arrive after a short simulated wait. Agent checks and model inventories are fixture outcomes, not live device/account inspection. Use dummy values in credential fields.'
+          'Skippable guided onboarding over the same settings that power users edit directly; Advanced settings and the AI models screen stand in for the real ModelsPanel. UI-only adapter fixtures. OAuth callbacks arrive after a short simulated wait. Agent checks and model inventories are fixture outcomes, not live device/account inspection. Use dummy values in credential fields.'
       }
     }
   }
@@ -45,7 +45,7 @@ async function finish(canvasElement: HTMLElement) {
   const canvas = within(canvasElement)
   await userEvent.click(canvas.getByRole('button', { name: 'Review assignments' }))
   await userEvent.click(canvas.getByRole('button', { name: 'Finish setup' }))
-  await expect(canvas.getByRole('button', { name: 'Review setup' })).toBeVisible()
+  await expect(canvas.getByRole('button', { name: 'Run guided setup' })).toBeVisible()
 }
 export const OpenRouterJourney: Story = {
   play: async ({ canvasElement }) => {
@@ -106,11 +106,11 @@ export const CancelChanges: Story = {
   args: { returning: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(canvas.getByRole('button', { name: 'Review setup' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Run guided setup' }))
     await userEvent.click(canvas.getByRole('checkbox', { name: /Generate vector artwork/ }))
     await userEvent.click(canvas.getByRole('button', { name: 'Back' }))
     await expect(canvas.getByText('Codex — agent-managed model', { exact: true })).toBeVisible()
-    await userEvent.click(canvas.getByRole('button', { name: 'Review setup' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Run guided setup' }))
     await expect(
       canvas.getByRole('checkbox', { name: /Generate vector artwork/ })
     ).not.toBeChecked()
@@ -120,14 +120,14 @@ export const ApplyAndReopen: Story = {
   args: { returning: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(canvas.getByRole('button', { name: 'Review setup' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Run guided setup' }))
     for (let i = 0; i < 3; i++)
       await userEvent.click(canvas.getByRole('button', { name: 'Continue' }))
     await userEvent.click(canvas.getByRole('button', { name: 'Review assignments' }))
     await userEvent.click(canvas.getByRole('button', { name: 'Apply changes' }))
     await expect(canvas.getByText('Codex — agent-managed model', { exact: true })).toBeVisible()
     await expect(canvas.getByText('Claude Sonnet 5 — OpenRouter', { exact: true })).toBeVisible()
-    await userEvent.click(canvas.getByRole('button', { name: 'Review setup' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Run guided setup' }))
     await expect(canvas.getByRole('checkbox', { name: /Get design feedback/ })).toBeChecked()
   }
 }
@@ -149,19 +149,14 @@ export const CancelAuthorization: Story = {
   }
 }
 
-export const ManualProxy: Story = {
+export const AdvancedSettingsExit: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await userEvent.click(canvas.getByRole('button', { name: 'Set up AI' }))
-    await userEvent.click(canvas.getByRole('button', { name: 'Manual configuration' }))
-    await userEvent.click(canvas.getByRole('combobox', { name: 'Connection type' }))
-    await userEvent.click(within(document.body).getByRole('option', { name: 'Your server' }))
-    await userEvent.click(canvas.getByRole('button', { name: 'Configure connection' }))
-    await userEvent.click(canvas.getByRole('button', { name: 'Check server' }))
-    await expect(canvas.getByRole('textbox', { name: 'Model ID' })).toBeVisible()
-    await userEvent.click(canvas.getByRole('button', { name: 'Test model and continue' }))
-    await expect(
-      canvas.getByRole('combobox', { name: 'Create and edit designs' })
-    ).toHaveTextContent('Not configured')
+    await userEvent.click(canvas.getByRole('button', { name: 'Advanced settings' }))
+    await expect(canvas.getByRole('heading', { name: 'AI models' })).toBeVisible()
+    await expect(canvas.getAllByText('Not configured')).toHaveLength(3)
+    await userEvent.click(canvas.getByRole('button', { name: 'Run guided setup' }))
+    await expect(canvas.getByText('What would you like AI to do?')).toBeVisible()
   }
 }

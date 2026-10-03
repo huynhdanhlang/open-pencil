@@ -5,7 +5,7 @@ import AppButton from '@/components/ui/button/AppButton.vue'
 import AppInput from '@/components/ui/input/AppInput.vue'
 
 import SetupScreen from './SetupScreen.vue'
-const emit = defineEmits<{ connected: []; back: [] }>()
+const emit = defineEmits<{ connected: [] }>()
 const key = ref('')
 </script>
 <template>
@@ -21,7 +21,6 @@ const key = ref('')
       connecting.
     </p>
     <template #footer
-      ><AppButton @click="emit('back')">Back</AppButton
       ><AppButton color="primary" variant="solid" :disabled="!key.trim()" @click="emit('connected')"
         >Connect gateway</AppButton
       ></template
