@@ -4,6 +4,7 @@ import { nextTick, ref, onUnmounted } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { openAISetup } from '@/app/ai/models/settings/onboarding/dialog'
 import { useModelSettings } from '@/app/ai/models/settings/use'
 import SettingsPage from '@/components/settings/layout/SettingsPage.vue'
 import SettingsSection from '@/components/settings/layout/SettingsSection.vue'
@@ -158,6 +159,17 @@ const { profiles, statusByConnection, refreshStatuses } = useModelSettings()
               </template>
             </AppActionRow>
           </div>
+          <AppButton
+            color="primary"
+            variant="link"
+            size="xs"
+            class="self-start"
+            data-test-id="settings-run-ai-setup"
+            @click="openAISetup()"
+          >
+            <template #leading><icon-lucide-sparkles class="size-3" /></template>
+            {{ ai.aiSetupRun }}
+          </AppButton>
         </SettingsSection>
 
         <SettingsSection>

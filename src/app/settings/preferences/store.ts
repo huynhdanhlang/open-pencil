@@ -10,6 +10,9 @@ export type ReasoningDisplay = 'collapsed' | 'while-thinking' | 'expanded'
 
 export type CanvasRenderingMode = 'retained' | 'tiled'
 
+/** Whether guided AI setup was offered and finished or skipped. */
+export type AISetupState = 'pending' | 'done'
+
 export interface AppPreferences {
   appearance: { animations: AnimationPreference }
   chat: { reasoningDisplay: ReasoningDisplay; maxAgentSteps: number }
@@ -23,6 +26,9 @@ export interface AppPreferences {
   rendering: {
     canvasMode: CanvasRenderingMode
   }
+  onboarding: {
+    aiSetup: AISetupState
+  }
 }
 
 export const DEFAULT_APP_PREFERENCES: Readonly<AppPreferences> = {
@@ -33,7 +39,8 @@ export const DEFAULT_APP_PREFERENCES: Readonly<AppPreferences> = {
   editing: {
     snapping: { ...DEFAULT_SNAPPING_PREFERENCES }
   },
-  rendering: { canvasMode: 'retained' }
+  rendering: { canvasMode: 'retained' },
+  onboarding: { aiSetup: 'pending' }
 }
 
 const STORAGE_KEY = 'open-pencil:preferences:v1'
@@ -54,6 +61,7 @@ interface StoredAppPreferences {
   recovery?: { enabled?: unknown }
   editing?: { snapping?: StoredSnappingPreferences }
   rendering?: { canvasMode?: unknown }
+  onboarding?: { aiSetup?: unknown }
 }
 
 function isStoredAppPreferences(value: unknown): value is StoredAppPreferences {
@@ -103,6 +111,9 @@ function normalizePreferences(value: unknown): AppPreferences {
     },
     rendering: {
       canvasMode: stored?.rendering?.canvasMode === 'tiled' ? 'tiled' : 'retained'
+    },
+    onboarding: {
+      aiSetup: stored?.onboarding?.aiSetup === 'done' ? 'done' : 'pending'
     }
   }
 }
@@ -121,6 +132,10 @@ export function updateRecoveryEnabled(enabled: boolean): void {
   const preferences = structuredClone(appPreferences.value)
   preferences.recovery.enabled = enabled
   appPreferences.value = preferences
+}
+
+export function updateAISetupState(aiSetup: AISetupState): void {
+  appPreferences.value = { ...appPreferences.value, onboarding: { aiSetup } }
 }
 
 export function updateCanvasRenderingMode(canvasMode: CanvasRenderingMode): void {

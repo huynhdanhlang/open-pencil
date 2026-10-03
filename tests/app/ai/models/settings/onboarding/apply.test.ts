@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import { parseAIModelSettings, type AIModelSettings } from '@/app/ai/models'
-import { applyOnboardingPlan } from '@/app/ai/models/settings/onboarding/apply'
+import {
+  applyOnboardingPlan,
+  isUnconfiguredModelSettings
+} from '@/app/ai/models/settings/onboarding/apply'
 import { planOnboarding, type OnboardingAnswers } from '@/app/ai/models/settings/onboarding/plan'
 
 function freshInstall(): AIModelSettings {
@@ -138,7 +141,11 @@ describe('applyOnboardingPlan', () => {
     expect(settings.assignments.review).toBe('model-opus')
     expect(connectionIds).toEqual({ anthropic: 'connection-anthropic' })
 
-    const again = apply(settings, { goals: ['design'], access: ['anthropic'], spending: 'existing' })
+    const again = apply(settings, {
+      goals: ['design'],
+      access: ['anthropic'],
+      spending: 'existing'
+    })
     expect(again.settings).toEqual(settings)
   })
 
@@ -173,5 +180,15 @@ describe('applyOnboardingPlan', () => {
     expect(settings.models).toEqual([
       expect.objectContaining({ name: 'qwen3-coder:30b', customModelID: 'qwen3-coder:30b' })
     ])
+  })
+})
+
+describe('isUnconfiguredModelSettings', () => {
+  test('recognizes only the empty fresh-install settings', () => {
+    expect(isUnconfiguredModelSettings(freshInstall())).toBe(true)
+    expect(isUnconfiguredModelSettings(configured())).toBe(false)
+    const server = freshInstall()
+    server.connections[0].customBaseURL = 'http://localhost:11434/v1'
+    expect(isUnconfiguredModelSettings(server)).toBe(false)
   })
 })

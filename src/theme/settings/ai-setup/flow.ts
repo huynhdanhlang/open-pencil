@@ -1,0 +1,17 @@
+export default {
+  slots: {
+    body: 'flex flex-col gap-3 text-xs text-surface',
+    help: 'text-xs leading-relaxed text-muted',
+    intro: 'rounded-lg border border-accent/25 bg-accent/5 p-4',
+    introHeading: 'text-sm font-semibold text-surface',
+    introText: 'mt-2 text-xs leading-relaxed text-muted',
+    group: 'flex flex-col gap-2',
+    groupHeading: 'text-[11px] font-semibold text-muted',
+    choice:
+      'flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-3 transition-colors hover:bg-hover has-[[data-state=checked]]:border-accent has-[[data-state=checked]]:bg-accent/5 focus-within:ring-2 focus-within:ring-accent/50',
+    connection: 'flex flex-col gap-3 rounded-md border border-border p-3',
+    connectionHeading: 'text-xs font-semibold text-surface',
+    command:
+      'flex items-center justify-between gap-2 rounded bg-input px-2.5 py-1.5 font-mono text-[11px] text-surface'
+  }
+}

@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  planOnboarding,
-  type OnboardingAnswers
-} from '@/app/ai/models/settings/onboarding/plan'
+import { planOnboarding, type OnboardingAnswers } from '@/app/ai/models/settings/onboarding/plan'
 
 const desktop = { agentsAvailable: true }
 const browser = { agentsAvailable: false }

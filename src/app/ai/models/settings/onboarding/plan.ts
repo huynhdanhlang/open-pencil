@@ -1,10 +1,6 @@
-import {
-  ACP_AGENTS,
-  AI_PROVIDERS,
-  type AIProviderID,
-  type ModelOption
-} from '@open-pencil/core/constants'
+import { AI_PROVIDERS, type AIProviderID, type ModelOption } from '@open-pencil/core/constants'
 
+import { modelProviderName } from '@/app/ai/models/provider-name'
 import type { AIModelCapability } from '@/app/ai/models/types'
 
 /** Roles onboarding asks about; review and fast stay in the advanced settings. */
@@ -59,14 +55,6 @@ export function isOnboardingAgent(providerID: string): boolean {
   return providerID.startsWith('acp:')
 }
 
-export function onboardingProviderName(providerID: OnboardingAccess): string {
-  if (isOnboardingAgent(providerID)) {
-    const agentID = providerID.slice('acp:'.length)
-    return ACP_AGENTS.find((agent) => agent.id === agentID)?.name ?? providerID
-  }
-  return AI_PROVIDERS.find((provider) => provider.id === providerID)?.name ?? providerID
-}
-
 function defaultModel(providerID: AIProviderID): ModelOption | null {
   const provider = AI_PROVIDERS.find((definition) => definition.id === providerID)
   return provider?.models.find((model) => model.id === provider.defaultModel) ?? null
@@ -77,7 +65,7 @@ function plannedModel(providerID: OnboardingAccess): PlannedModel {
     return {
       providerID,
       modelID: '',
-      name: onboardingProviderName(providerID),
+      name: modelProviderName(providerID),
       capabilities: ['tools']
     }
   }
@@ -85,7 +73,7 @@ function plannedModel(providerID: OnboardingAccess): PlannedModel {
   return {
     providerID,
     modelID: model?.id ?? '',
-    name: model?.name ?? onboardingProviderName(providerID),
+    name: model?.name ?? modelProviderName(providerID),
     capabilities: model?.capabilities ? [...model.capabilities] : ['tools']
   }
 }

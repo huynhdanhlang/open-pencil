@@ -168,7 +168,57 @@ export const aiMessageDefaults = {
   openProviderSettingsAction: 'Open settings',
   visionModelUnavailable: 'Choose a Vision model in Settings before attaching images.',
   completions: 'Completions',
-  responses: 'Responses'
+  responses: 'Responses',
+  aiSetupWelcomeTitle: 'Welcome to OpenPencil',
+  aiSetupWelcomeDescription:
+    'Create and edit designs on an open canvas. Import Figma files and make them your own.',
+  aiSetupWelcomeAITitle: 'Design with AI',
+  aiSetupWelcomeAIDescription:
+    'Connect the AI you already use to edit the canvas and review designs. You can change it later in Settings.',
+  aiSetupStart: 'Set up AI',
+  aiSetupSkip: 'Start designing',
+  aiSetupTitle: 'AI setup',
+  aiSetupProgress: params('Step {current} of {total}'),
+  aiSetupAdvanced: 'Advanced settings',
+  aiSetupContinue: 'Continue',
+  aiSetupGoalsTitle: 'What should AI help with?',
+  aiSetupGoalDesign: 'Create and edit designs',
+  aiSetupGoalDesignDescription: 'Describe a change and let AI edit the canvas.',
+  aiSetupGoalVision: 'Review designs visually',
+  aiSetupGoalVisionDescription:
+    'Let AI look at your designs to check spacing, alignment, and hierarchy.',
+  aiSetupAccessTitle: 'What do you already use?',
+  aiSetupAccessDescription: 'Select everything you have. If you have nothing yet, continue.',
+  aiSetupAccessAgents: 'Coding agents on this computer',
+  aiSetupAccessAgentsDescription:
+    'Use your existing subscription. The agent chooses its own model.',
+  aiSetupAccessAgentsDesktop: 'Coding agents are available in the OpenPencil desktop app.',
+  aiSetupAccessAPI: 'API accounts',
+  aiSetupAccessServer: 'Local model or company server',
+  aiSetupAccessServerDescription:
+    'Any server that speaks the OpenAI API, such as Ollama or LM Studio.',
+  aiSetupSpendingTitle: 'Allow pay-as-you-go models?',
+  aiSetupSpendingDescription:
+    'Pay-as-you-go models bill an API account for each request, separately from any subscription.',
+  aiSetupSpendingExisting: 'Only use what I already have',
+  aiSetupSpendingMetered: 'Recommend a pay-as-you-go model when needed',
+  aiSetupConnectTitle: 'Connect your AI',
+  aiSetupNothingTitle: 'Nothing you selected covers these tasks',
+  aiSetupNothingDescription: 'Go back to choose other access, or set up AI in advanced settings.',
+  aiSetupAgentDescription: params(
+    'OpenPencil starts {agent} when you send a message. Sign in with its own command-line tool first.'
+  ),
+  aiSetupAgentInstall: 'If it is not installed yet, run:',
+  aiSetupMeteredNote:
+    'OpenRouter gives you models from several vendors with one account and one key.',
+  aiSetupReviewTitle: 'Review your setup',
+  aiSetupReviewDescription:
+    'These models are saved to your AI settings. Anything else you configured stays as it is.',
+  aiSetupAgentModel: 'Model chosen by the agent',
+  aiSetupFinish: 'Finish setup',
+  aiSetupSavedTitle: 'AI is ready',
+  aiSetupSavedDescription: 'You can change models and roles anytime in Settings.',
+  aiSetupRun: 'Run guided setup'
 } as const
 
 export const aiMessages = i18n('ai', aiMessageDefaults)

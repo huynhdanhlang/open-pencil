@@ -51,13 +51,21 @@ function recommendedMaxOutputTokens(providerID: string, modelID: string): number
   return model?.recommendedMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS
 }
 
-function isUnusedPlaceholder(settings: AIModelSettings, profile: AIModelProfile): boolean {
+function isPlaceholder(settings: AIModelSettings, profile: AIModelProfile): boolean {
   if (profile.id !== PLACEHOLDER_PROFILE_ID || effectiveModelID(profile)) return false
   const connection = settings.connections.find((candidate) => candidate.id === profile.connectionId)
-  if (connection?.providerID !== ONBOARDING_SERVER_PROVIDER || connection.customBaseURL) {
-    return false
-  }
-  return !Object.values(settings.assignments).includes(profile.id)
+  return connection?.providerID === ONBOARDING_SERVER_PROVIDER && !connection.customBaseURL
+}
+
+function isUnusedPlaceholder(settings: AIModelSettings, profile: AIModelProfile): boolean {
+  return (
+    isPlaceholder(settings, profile) && !Object.values(settings.assignments).includes(profile.id)
+  )
+}
+
+/** True while the settings hold only the empty profile a fresh install starts with. */
+export function isUnconfiguredModelSettings(settings: AIModelSettings): boolean {
+  return settings.models.length === 1 && isPlaceholder(settings, settings.models[0])
 }
 
 /**

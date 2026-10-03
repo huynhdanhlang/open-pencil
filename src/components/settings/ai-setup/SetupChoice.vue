@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
 
-import theme from '@/theme/settings/ai-setup/wizard'
+import theme from '@/theme/settings/ai-setup/flow'
 
 const { label, description } = defineProps<{ label: string; description?: string }>()
 const styles = tv(theme)()

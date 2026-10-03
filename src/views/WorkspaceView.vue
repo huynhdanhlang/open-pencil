@@ -4,6 +4,7 @@ import { useEventListener } from '@vueuse/core'
 import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { offerAISetupOnFirstRun } from '@/app/ai/models/settings/onboarding/dialog'
 import { startMCPRuntime, stopMCPRuntime } from '@/app/automation/mcp/runtime'
 import { startWebMCP } from '@/app/automation/webmcp/runtime'
 import { exposeCollaborationActions } from '@/app/browser-bridge'
@@ -48,6 +49,10 @@ const shouldCreateHome =
   (isTauri() || appRuntimeConfig.recentFiles)
 let firstTab = activeTab.value
 if (!firstTab) firstTab = shouldCreateHome ? createHomeTab() : createTab()
+
+if (createdInitialTab && route.path === '/' && !appRuntimeConfig.test && !route.meta.demo) {
+  offerAISetupOnFirstRun()
+}
 
 if (createdInitialTab && route.meta.demo && !appRuntimeConfig.test) {
   void createDemoShapes(firstTab.store)
