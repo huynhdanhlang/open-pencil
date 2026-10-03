@@ -6,16 +6,44 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import { findPageId } from '#core/io/subgraph'
 import { defineTool } from '#core/tools/schema'
 
-import { diffPageLayersJSX, jsxPatch } from './jsx'
+import { formatOperations } from './format'
+import { deltaOperations, type DiffOperation } from './operations'
+import { diffProjections, projectTree } from './projection'
 
-function layerJSX(graph: SceneGraph, id: string): string {
-  return graph.getNode(id) ? sceneNodeToJSX(id, graph) : ''
+/** Edits between two states of one tree, matching nodes by ID. */
+function treeChanges(baseline: SceneGraph, graph: SceneGraph, rootId: string): DiffOperation[] {
+  const before = projectTree(baseline, rootId, { match: 'id' })
+  const after = projectTree(graph, rootId, { match: 'id' })
+  if (!before || !after) return []
+  return deltaOperations(diffProjections(before, after), before, after, (id) =>
+    sceneNodeToJSX(id, graph)
+  )
+}
+
+/**
+ * Edits to one node. A node the run added or removed exists on one side only, so its
+ * parent is compared instead, keeping the edits that add or remove it.
+ */
+function nodeChanges(
+  baseline: SceneGraph,
+  graph: SceneGraph,
+  id: string,
+  pageId: string
+): DiffOperation[] {
+  if (baseline.getNode(id) && graph.getNode(id)) return treeChanges(baseline, graph, id)
+  const parentId = (graph.getNode(id) ?? baseline.getNode(id))?.parentId
+  const rootId =
+    parentId && baseline.getNode(parentId) && graph.getNode(parentId) ? parentId : pageId
+  const added = graph.getNode(id) ? sceneNodeToJSX(id, graph) : null
+  return treeChanges(baseline, graph, rootId).filter((operation) =>
+    operation.kind === 'add' ? added !== null && operation.jsx.includes(added) : operation.id === id
+  )
 }
 
 export const diffChanges = defineTool({
   name: 'diff_changes',
   description:
-    'JSX diff of what this run changed: a node, or the whole current page, compared with its page before the run first edited it. Same unified format as diff_jsx. Use it before reporting to confirm that only the intended layers changed.',
+    'Patch of what this run changed: a node, or the whole current page, compared with its page before the run first edited it. Same format as diff_create, matching nodes by ID, so diff_apply can replay it on the starting state. Use it before reporting to confirm that only the intended layers changed.',
   execution: { kind: 'sync', mutation: 'none' },
   // Only an AI chat run records the state it started from.
   exposure: { mcp: false, webmcp: false },
@@ -34,17 +62,12 @@ export const diffChanges = defineTool({
     if (!baseline.getNode(targetId) && !figma.graph.getNode(targetId)) {
       return { error: `Node "${targetId}" not found` }
     }
-    const diff =
+    const operations =
       targetId === pageId
-        ? diffPageLayersJSX(baseline, figma.graph, pageId)
-            .map((layer) => layer.patch)
-            .join('\n') || null
-        : jsxPatch(
-            targetId,
-            targetId,
-            layerJSX(baseline, targetId),
-            layerJSX(figma.graph, targetId)
-          )
-    return diff === null ? { diff: null, message: 'No differences found' } : { diff }
+        ? treeChanges(baseline, figma.graph, pageId)
+        : nodeChanges(baseline, figma.graph, targetId, pageId)
+    return operations.length === 0
+      ? { diff: null, message: 'No differences found' }
+      : { diff: formatOperations(operations) }
   }
 })

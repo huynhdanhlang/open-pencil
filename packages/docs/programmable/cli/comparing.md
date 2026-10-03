@@ -1,37 +1,42 @@
 ---
 title: Comparing Designs
-description: Diff nodes and documents structurally and visually, and apply property patches.
+description: Diff nodes and documents structurally and visually, and apply patches.
 ---
 
 # Comparing Designs
 
-The `diff` commands compare two nodes, preview or apply property changes as patches, render pixel diffs, and compare whole documents. Each node command works on a file or, without one, on the document open in the running app.
+The `diff` commands compare two nodes, preview or apply changes as patches, render pixel diffs, and compare whole documents. Each node command works on a file or, without one, on the document open in the running app.
 
-## Property patches
+## Patches
 
 ```sh
 openpencil diff create design.fig --from 1:23 --to 1:87
 ```
 
-Prints a unified diff of the properties that differ — size, position, fills, strokes, effects, radius, and text — with children matched by name path:
+Prints a patch that turns the first tree into the second. Its properties are the JSX attributes the [JSX export](../jsx-renderer#exporting-to-jsx) writes, so it covers everything the export does. Children match by name, and a reordered child reads as one move:
 
 ```diff
---- /Card/Header #1:24
-+++ /Card/Header #1:88
-@@ -1,4 +1,4 @@
- type: FRAME
- size: 320 48
--fill: #FFFFFF
-+fill: #F4F4F5
+@@ /Card #1:23
+-rounded={8}
++rounded={12}
+@@ /Card/Header #1:24
+-bg="#FFFFFF"
++bg="#F4F4F5"
+@@ /Card/Badge #1:26 moved to 0
+@@ /Card/Note #1:27 removed
+@@ /Card/Price added to #1:23 at 3
++<Text name="Price" size={24}>$9</Text>
 ```
 
-`diff show` previews the patch a change would produce without making it:
+Each hunk names a node by path, for reading, and by ID, which locates it. `-` lines hold the old attribute values and `+` lines the new ones; an added node is its JSX.
+
+`diff show` previews setting attributes on a node without changing it, and prints the patch:
 
 ```sh
-openpencil diff show 1:24 design.fig --props '{"fill": "#F4F4F5", "radius": 8}' > header.diff
+openpencil diff show 1:24 design.fig --attributes 'bg="#F4F4F5" rounded={8}' > header.diff
 ```
 
-`diff apply` applies a patch. Every node must still have the patch's old values, so a patch made against an older state changes nothing instead of half-applying:
+`diff apply` applies a patch to the document whose IDs it names. Every node must still have the patch's old values, and nothing changes unless every hunk applies, so a patch made against an older state never half-applies:
 
 ```sh
 openpencil diff apply header.diff design.fig --dry-run   # validate first
@@ -39,7 +44,7 @@ openpencil diff apply header.diff design.fig --write     # save in place
 openpencil diff apply header.diff design.fig -o out.fig  # save elsewhere
 ```
 
-Nodes a patch removes are deleted. Patches cannot create nodes; use `render` or `eval` for new content.
+Updates change only the fields their attributes set, so node IDs, instance links, and state JSX does not describe stay intact. Removed nodes are deleted and added nodes are rendered from their JSX.
 
 ## JSX diff
 
@@ -47,7 +52,7 @@ Nodes a patch removes are deleted. Patches cannot create nodes; use `render` or 
 openpencil diff jsx design.fig --from 1:23 --to 1:87
 ```
 
-Compares two subtrees as design JSX, which shows added, removed, and reordered children more clearly than property patches.
+Compares two subtrees as a line diff of their design JSX, for reading rather than applying.
 
 ## Visual diff
 
@@ -64,7 +69,7 @@ openpencil diff files before.fig after.fig
 openpencil diff files before.fig after.fig --page "Mobile" --json
 ```
 
-Compares two documents page by page. Pages match by name and nodes by name path, so two versions of a file compare even though node IDs differ. Like `diff(1)`, the command exits with status 1 when the documents differ.
+Compares two documents page by page. Pages match by name and nodes by name path, so two versions of a file compare even though node IDs differ; the patch applies to the first document. Like `diff(1)`, the command exits with status 1 when the documents differ.
 
 ## Agents
 

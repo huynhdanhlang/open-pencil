@@ -155,12 +155,12 @@ echo 'figma.currentPage.children.map(n => n.name)' | openpencil eval design.fig 
 
 ### Diff
 
-Compare nodes and documents, and apply property patches:
+Compare nodes and documents, and apply patches:
 
 ```bash
-openpencil diff create design.fig --from 1:23 --to 1:87       # property patch
+openpencil diff create design.fig --from 1:23 --to 1:87       # JSX attribute patch
 openpencil diff jsx design.fig --from 1:23 --to 1:87          # JSX structure
-openpencil diff show 1:24 design.fig --props '{"radius": 8}' > fix.diff
+openpencil diff show 1:24 design.fig --attributes 'rounded={8}' > fix.diff
 openpencil diff apply fix.diff design.fig --dry-run           # fails on stale values
 openpencil diff apply fix.diff design.fig --write
 openpencil diff visual design.fig --from 1:23 --to 1:87 -o diff.png
@@ -240,7 +240,7 @@ Discover available tools and their arguments from the connected server or browse
 
 - **`query_nodes`** — XPath selectors to find specific nodes without fetching the full tree.
 - **`get_jsx`** — inspect any node as JSX in the same format accepted by `render`.
-- **`diff_jsx` / `diff_create`** — compare two nodes as JSX or as a property patch; `diff_show` previews a property change and `diff_apply` applies a patch only if the nodes still match it.
+- **`diff_jsx` / `diff_create`** — compare two nodes as a JSX line diff or as an appliable patch of JSX attributes; `diff_show` previews setting attributes and `diff_apply` applies a patch only if the nodes still match it.
 - **`diff_visual`** — pixel diff between two rendered nodes; use it to confirm an edit changed only the intended region.
 - **`describe`** — semantic analysis of role, visual style, layout, and design issues.
 - **`batch_update`** — apply multiple node updates efficiently.

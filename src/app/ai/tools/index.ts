@@ -21,6 +21,7 @@ import { aiToolDefinitions } from './catalog'
 import { recordToolChange } from './changes/capture'
 import { createMutex } from './mutex'
 import {
+  markRunWork,
   moveRunToPage,
   recordRunBaseline,
   recordRunUndoEntry,
@@ -29,7 +30,14 @@ import {
   stepBudget
 } from './run'
 
-export { didHitStepLimit, recordStep, runPageId, runUndoEntries, startRun } from './run'
+export {
+  didHitStepLimit,
+  endRun,
+  recordStep,
+  runPageId,
+  runUndoEntries,
+  startRun
+} from './run'
 
 export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnosticContext) {
   const acquireMutation = createMutex()
@@ -109,6 +117,7 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
         if (def.mutates && !isAtomicTool(def)) store.requestRender()
       },
       onFlashNodes: (nodeIds) => {
+        markRunWork(store, nodeIds)
         store.renderer?.aiClearActive()
         if (nodeIds.length > 0) {
           store.aiFlashDone(nodeIds)

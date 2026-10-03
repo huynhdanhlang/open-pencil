@@ -311,9 +311,9 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 
 | Tool | Description |
 |------|-------------|
-| `diff_create` | Property diff between two node trees as a unified patch |
+| `diff_create` | Patch that turns one node tree into another, as JSX attribute changes |
 | `diff_jsx` | Structural diff between two nodes as design JSX |
-| `diff_show` | Preview the patch that setting properties on a node would produce |
+| `diff_show` | Preview the patch that setting JSX attributes on a node would produce |
 | `diff_apply` | Apply a patch after checking the nodes still match its old values |
 | `diff_visual` | Pixel diff between two rendered nodes, returned as an image |
 

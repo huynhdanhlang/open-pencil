@@ -6,7 +6,7 @@ import { runToolData } from '#cli/tool-data'
 import { printDiffResult, type DiffResult } from './output'
 
 export default defineCommand({
-  meta: { description: 'Preview the patch that setting properties on a node would produce' },
+  meta: { description: 'Preview the patch that setting JSX attributes on a node would produce' },
   args: {
     id: { type: 'positional', description: 'Node ID', required: true },
     file: {
@@ -14,9 +14,9 @@ export default defineCommand({
       description: 'Document file path (omit to connect to running app)',
       required: false
     },
-    props: {
+    attributes: {
       type: 'string',
-      description: 'JSON object of properties, e.g. \'{"fill": "#FF0000", "width": 200}\'',
+      description: 'JSX attributes to set, e.g. \'w={200} bg="#FF0000"\'',
       required: true
     },
     ...appTargetOptions,
@@ -26,7 +26,7 @@ export default defineCommand({
     const { result } = await runToolData(
       args.file,
       'diff_show',
-      { id: args.id, props: args.props },
+      { id: args.id, attributes: args.attributes },
       args
     )
     printDiffResult(result as DiffResult, !!args.json)

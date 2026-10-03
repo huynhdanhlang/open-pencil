@@ -98,8 +98,7 @@ test('diff_changes compares the run page with its state before the run first edi
   const result = (await execute('diff_changes', {}, 'check')) as { diff: string | null }
 
   // Both calls show up against the state before the first one.
-  expect(result.diff).toContain('-<Frame name="Card" w={100} h={60} />')
-  expect(result.diff).toContain('+<Frame name="Card" w={240} h={60} bg="#FF0000" />')
+  expect(result.diff).toBe(`@@ /Page 1/Card #${card.id}\n-w={100}\n+w={240}\n+bg="#FF0000"`)
 })
 
 test('saves recorded changes with the conversation and restores them', async () => {

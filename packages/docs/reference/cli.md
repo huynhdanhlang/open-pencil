@@ -219,7 +219,7 @@ openpencil analyze clusters [file] [options]
 
 ## diff create
 
-Property diff between two node trees as a unified patch. Children match by name path.
+Patch that turns one node tree into another, as JSX attribute changes plus moved, added, and removed children. Children match by name; see [Comparing designs](/programmable/cli/comparing) for the format.
 
 ```sh
 openpencil diff create [file] --from <id> --to <id> [options]
@@ -242,17 +242,17 @@ openpencil diff jsx [file] --from <id> --to <id> [--json]
 
 ## diff show
 
-Preview the patch that setting properties on a node would produce, without changing it.
+Preview the patch that setting JSX attributes on a node would produce, without changing it.
 
 ```sh
-openpencil diff show <id> [file] --props '<json>' [--json]
+openpencil diff show <id> [file] --attributes '<jsx attributes>' [--json]
 ```
 
-`--props` accepts `x`, `y`, `width`, `height`, `fill`, `stroke`, `strokeWeight`, `opacity`, `radius`, `rotation`, `blendMode`, `clipsContent`, `visible`, `locked`, `text`, `fontSize`, `fontFamily`, and `fontWeight`.
+`--attributes` takes attributes as the JSX export writes them, such as `'w={200} bg="#FF0000"'`.
 
 ## diff apply
 
-Apply a patch from `diff create` or `diff show`. Every node must still match the patch's old values; a stale patch changes nothing.
+Apply a patch from `diff create`, `diff show`, or `diff files`. Every node must still match the patch's old values, and nothing changes unless every hunk applies.
 
 ```sh
 openpencil diff apply <patch> [file] [options]

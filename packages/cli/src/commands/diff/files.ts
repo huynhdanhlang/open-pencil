@@ -17,7 +17,10 @@ export default defineCommand({
     json: { type: 'boolean', description: 'Output as JSON' }
   },
   async run({ args }) {
-    const [before, after] = await Promise.all([loadDocument(args.before), loadDocument(args.after)])
+    // Load in order: node IDs count up per process, so the first document gets the IDs a
+    // single load gives it, and the patch applies to it with `diff apply`.
+    const before = await loadDocument(args.before)
+    const after = await loadDocument(args.after)
     populateWholeDocument(before)
     populateWholeDocument(after)
     const result = diffDocuments(before, after, {
