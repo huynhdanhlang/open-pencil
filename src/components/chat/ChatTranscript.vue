@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { ChatStatus, UIMessage } from 'ai'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
-import { computed, ref } from 'vue'
+import { computed, provide, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
 import type { AttachmentPresentation } from '@/app/ai/attachment/presentation/types'
+import { CHAT_NODES_LIVE } from '@/components/chat/tool/context'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import AppPlaceholder from '@/components/ui/feedback/AppPlaceholder.vue'
@@ -16,15 +17,22 @@ import { useScrollFollowing } from './transcript/useScrollFollowing'
 const {
   messages,
   status,
-  showContinue = false
+  showContinue = false,
+  nodesLive = true
 } = defineProps<{
   messages: UIMessage[]
   status: ChatStatus
   showContinue?: boolean
   presentations?: Record<string, { text?: string; attachments?: AttachmentPresentation[] }>
+  /** False for a conversation from another document: its layer IDs are not this document's. */
+  nodesLive?: boolean
 }>()
 const emit = defineEmits<{ continue: [] }>()
 const { ai } = useI18n()
+provide(
+  CHAT_NODES_LIVE,
+  computed(() => nodesLive)
+)
 const running = computed(() => status === 'submitted' || status === 'streaming')
 const isThinking = computed(() => {
   if (!running.value) return false
@@ -78,13 +86,15 @@ const { arrivedState, resumeFollowing } = useScrollFollowing(
             AI
           </div>
           <div class="flex items-center gap-1 py-2">
-            <span class="size-1.5 animate-bounce rounded-full bg-muted" />
             <span
-              class="size-1.5 animate-bounce rounded-full bg-muted"
+              class="size-1.5 animate-bounce motion-reduce:animate-none rounded-full bg-muted"
+            />
+            <span
+              class="size-1.5 animate-bounce motion-reduce:animate-none rounded-full bg-muted"
               :style="{ animationDelay: '150ms' }"
             />
             <span
-              class="size-1.5 animate-bounce rounded-full bg-muted"
+              class="size-1.5 animate-bounce motion-reduce:animate-none rounded-full bg-muted"
               :style="{ animationDelay: '300ms' }"
             />
           </div>

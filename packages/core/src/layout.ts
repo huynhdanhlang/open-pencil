@@ -11,11 +11,12 @@ import {
   type Node as YogaNode
 } from 'yoga-layout'
 
+import { resolveNodeLayoutDirection } from '@open-pencil/scene-graph/text-direction'
+
 import { applyYogaLayout } from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
-import { resolveNodeLayoutDirection } from './text/direction'
 export {
   estimateTextSize,
   getTextMeasurer,
@@ -28,6 +29,7 @@ import { estimateTextSize, getTextMeasurer } from './layout/text-measurement'
 import {
   applyMinMaxConstraints,
   configureAbsoluteChild,
+  configureNonTextLeaf,
   createYogaNode,
   freeYogaTree,
   mapAlign,
@@ -448,6 +450,12 @@ function configureChildAsLeaf(
     configureTextLeafWithoutMeasurer(yogaChild, child, parent, fixedDerivedMainAxis)
   } else {
     configureNonTextLeaf(yogaChild, child, isRow, stretchCross)
+    // Fixed text still contributes its box to a HUG cross axis. Without
+    // an intrinsic minimum, stretch collapses the text to its siblings.
+    if (isText && stretchCross && parent.counterAxisSizing === 'HUG') {
+      if (isRow) yogaChild.setMinHeight(child.height)
+      else yogaChild.setMinWidth(child.width)
+    }
   }
 
   const selfAlign = mapAlignSelf(child.layoutAlignSelf)
@@ -514,6 +522,9 @@ function configureTextLeaf(
       const cached = cache.get(cacheKey)
       if (cached) return cached
 
+      if (constraintW === child.width && (child.derivedTextGlyphs?.length ?? 0) > 0) {
+        return { width: constraintW, height: child.height }
+      }
       const measured = getTextMeasurer()?.(child, constraintW)
       const result = {
         width: constraintW,
@@ -522,32 +533,6 @@ function configureTextLeaf(
       cache.set(cacheKey, result)
       return result
     })
-  }
-}
-
-function configureNonTextLeaf(
-  yogaChild: YogaNode,
-  child: SceneNode,
-  isRow: boolean,
-  stretchCross: boolean
-): void {
-  const w = child.width
-  const h = child.height
-
-  if (child.layoutGrow > 0) {
-    yogaChild.setFlexGrow(child.layoutGrow)
-    if (!stretchCross) {
-      if (isRow) yogaChild.setHeight(h)
-      else yogaChild.setWidth(w)
-    }
-  } else {
-    if (isRow) {
-      yogaChild.setWidth(w)
-      if (!stretchCross) yogaChild.setHeight(h)
-    } else {
-      yogaChild.setHeight(h)
-      if (!stretchCross) yogaChild.setWidth(w)
-    }
   }
 }
 

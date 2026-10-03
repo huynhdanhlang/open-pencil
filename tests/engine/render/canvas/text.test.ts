@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- text rendering scenarios share CanvasKit setup and fixtures */
 
-import { describe, test, expect, mock } from 'bun:test'
+import { describe, test, expect, mock, spyOn } from 'bun:test'
 
 import {
   detectTextDirection,
@@ -14,7 +14,7 @@ import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defau
 import { initCanvasKit } from '#cli/headless'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderText, textVerticalOffset } from '#core/canvas/scene'
-import { buildParagraph, isNodeFontLoaded } from '#core/canvas/text'
+import { buildParagraph, isNodeFontLoaded, nodeFontReadiness } from '#core/canvas/text'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { fontFaceDemand, fontResolver, missingGlyphCharacters } from '#core/text/resolver'
@@ -159,7 +159,7 @@ describe('renderText', () => {
     expect(canvas.drawText).not.toHaveBeenCalled()
   })
 
-  test('renders gradient text through a paragraph mask without outline font data', () => {
+  test('paints gradients through native paragraphs without outline font data', () => {
     const r = createMockRenderer()
     const canvas = createMockCanvas()
 
@@ -172,16 +172,16 @@ describe('renderText', () => {
     })
 
     expect(r.buildParagraph).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
-      halfLeading: true
+      halfLeading: true,
+      foregroundPaint: r.fillPaint
     })
-    expect(canvas.saveLayer).toHaveBeenCalledTimes(2)
+    expect(canvas.saveLayer).not.toHaveBeenCalled()
     expect(canvas.drawParagraph).toHaveBeenCalledTimes(1)
-    expect(canvas.drawRect).toHaveBeenCalledTimes(1)
-    expect(r.effectLayerPaint.setBlendMode).toHaveBeenCalledWith(r.ck.BlendMode.SrcIn)
+    expect(canvas.drawRect).not.toHaveBeenCalled()
     expect(r._paragraph.delete).toHaveBeenCalledTimes(1)
   })
 
-  test('renders non-solid text fills as vector outlines when outline font data is available', async () => {
+  test('keeps native paragraph layout even when outline font data is available', async () => {
     const interData = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
     fontManager.markLoaded('Inter', 'Regular', interData)
     const r = createMockRenderer()
@@ -200,8 +200,8 @@ describe('renderText', () => {
       }
     )
 
-    expect(canvas.drawPath).toHaveBeenCalledTimes(1)
-    expect(r.buildParagraph).not.toHaveBeenCalled()
+    expect(canvas.drawPath).not.toHaveBeenCalled()
+    expect(r.buildParagraph).toHaveBeenCalledTimes(1)
     expect(canvas.saveLayer).not.toHaveBeenCalled()
   })
 
@@ -232,36 +232,39 @@ describe('renderText', () => {
     expect(canvas.drawParagraph).toHaveBeenCalledTimes(1)
   })
 
-  test('keeps derived path-text glyphs when its face is finalized as substituted', () => {
-    const base = createMockRenderer()
-    const r = createMockRenderer({
-      nodeFontReadiness: mock(() => 'substituted'),
-      ck: { ...base.ck, FillType: { EvenOdd: 0, Winding: 1 } }
-    })
-    const canvas = createMockCanvas()
-    const node = textNode({
-      fontFamily: 'Missing Path Font',
-      textPathData: {
-        network: { vertices: [], segments: [], regions: [] },
-        normalizedSize: { x: 100, y: 20 },
-        tValue: 0,
-        forward: true
-      },
-      derivedTextGlyphs: [
-        {
-          commandsBlob: new Uint8Array(),
-          x: 0,
-          y: 0,
-          rotation: 0,
-          fontSize: 12
-        }
-      ]
-    })
+  test.each(['ready', 'substituted'] as const)(
+    'keeps derived path-text glyphs when its face is %s',
+    (readiness) => {
+      const base = createMockRenderer()
+      const r = createMockRenderer({
+        nodeFontReadiness: mock(() => readiness),
+        ck: { ...base.ck, FillType: { EvenOdd: 0, Winding: 1 } }
+      })
+      const canvas = createMockCanvas()
+      const node = textNode({
+        fontFamily: 'Missing Path Font',
+        textPathData: {
+          network: { vertices: [], segments: [], regions: [] },
+          normalizedSize: { x: 100, y: 20 },
+          tValue: 0,
+          forward: true
+        },
+        derivedTextGlyphs: [
+          {
+            commandsBlob: new Uint8Array(),
+            x: 0,
+            y: 0,
+            rotation: 0,
+            fontSize: 12
+          }
+        ]
+      })
 
-    renderText(r, canvas as never, node)
+      renderText(r, canvas as never, node)
 
-    expect(r.buildParagraph).not.toHaveBeenCalled()
-  })
+      expect(r.buildParagraph).not.toHaveBeenCalled()
+    }
+  )
   test('uses baked text pictures after font resolution is exhausted', () => {
     const r = createMockRenderer({ nodeFontReadiness: mock(() => 'exhausted') })
     const canvas = createMockCanvas()
@@ -382,6 +385,38 @@ describe('renderText headless visual', () => {
       expect(missingGlyphCharacters('A𠀀B', paragraph.getShapedLines())).toEqual(['𠀀'])
       paragraph.delete()
     } finally {
+      manager.cjkFallbackFamilies = originalFallbacks
+      surface.delete()
+    }
+  })
+
+  test('requests a CJK fallback for text whose face is substituted', async () => {
+    const ck = await initCanvasKit()
+    const fontProvider = ck.TypefaceFontProvider.Make()
+    fontManager.attachProvider(ck, fontProvider)
+    const interData = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    fontManager.markLoaded('Inter', 'Regular', interData)
+    const manager = fontManager as typeof fontManager & { cjkFallbackFamilies: string[] }
+    const originalFallbacks = [...manager.cjkFallbackFamilies]
+    manager.cjkFallbackFamilies = []
+    const fallbackPack = spyOn(fontManager, 'ensureFallbackPack').mockResolvedValue({})
+    const face = fontFaceDemand('Undrawable Sans', 'Regular')
+    fontResolver.exhaust(face)
+    const surface = expectDefined(ck.MakeSurface(200, 50), 'CanvasKit surface')
+
+    try {
+      const renderer = new SkiaRendererClass(ck, surface)
+      renderer.fontsLoaded = true
+      renderer.fontProvider = fontProvider
+      const node = textNode({ text: '按钮', fontFamily: 'Undrawable Sans', fontWeight: 400 })
+
+      expect(nodeFontReadiness(renderer, node)).toBe('pending')
+      await Promise.resolve()
+      expect(fallbackPack).toHaveBeenCalled()
+      expect(fallbackPack.mock.calls[0]?.[0]?.some((script) => script.startsWith('cjk'))).toBe(true)
+    } finally {
+      fallbackPack.mockRestore()
+      fontResolver.reset(face)
       manager.cjkFallbackFamilies = originalFallbacks
       surface.delete()
     }

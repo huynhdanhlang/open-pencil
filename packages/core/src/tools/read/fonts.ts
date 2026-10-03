@@ -1,4 +1,5 @@
 import { uniq } from 'es-toolkit/array'
+import * as v from 'valibot'
 
 import { defineTool } from '#core/tools/schema'
 
@@ -6,17 +7,22 @@ export const getFontStatus = defineTool({
   name: 'get_font_status',
   description:
     'Report whether fonts used on the current page are faithfully available. Returns requested ' +
-    'faces, their loaded source, active substitutions, and affected nodes.',
-  params: {},
+    'faces, their loaded source, active substitutions, why an installed face could not be ' +
+    'loaded, and affected nodes.',
+  execution: { kind: 'sync', mutation: 'none' },
+  exposure: { webmcp: false },
+  input: v.object({}),
   execute: (figma) => figma.getFontStatus()
 })
 
 export const listFonts = defineTool({
   name: 'list_fonts',
   description: 'List fonts used in the current page.',
-  params: {
-    family: { type: 'string', description: 'Filter by family name (substring)' }
-  },
+  execution: { kind: 'sync', mutation: 'none' },
+  exposure: { webmcp: false },
+  input: v.object({
+    family: v.optional(v.pipe(v.string(), v.description('Filter by family name (substring)')))
+  }),
   execute: (figma, args) => {
     const fonts = new Map<string, Set<number>>()
     const page = figma.currentPage
@@ -49,9 +55,13 @@ export const listAvailableFonts = defineTool({
     'List font families the host can render (system fonts on desktop plus any bundled fonts). ' +
     'Use this to discover what fonts are available to set on a text node — distinct from list_fonts ' +
     'which only reports families currently used in the page.',
-  params: {
-    family: { type: 'string', description: 'Filter by family name (substring, case-insensitive)' }
-  },
+  execution: { kind: 'async', mutation: 'none' },
+  exposure: { webmcp: false },
+  input: v.object({
+    family: v.optional(
+      v.pipe(v.string(), v.description('Filter by family name (substring, case-insensitive)'))
+    )
+  }),
   execute: async (figma, args) => {
     const fonts = await figma.listAvailableFontsAsync()
     let families = uniq(fonts.map((font) => font.fontName.family))

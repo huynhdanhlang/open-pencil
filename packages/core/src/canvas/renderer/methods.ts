@@ -13,7 +13,7 @@ import * as Overlays from '#core/canvas/overlays'
 import * as AIOverlays from '#core/canvas/overlays/ai'
 import * as PenOverlay from '#core/canvas/pen-overlay'
 import type { SkiaRenderer } from '#core/canvas/renderer'
-import type { RenderOverlays } from '#core/canvas/renderer/types'
+import type { PresenceCursor, RenderOverlays } from '#core/canvas/renderer/types'
 import * as Rulers from '#core/canvas/rulers'
 import * as SceneRender from '#core/canvas/scene'
 import { renderEffects as renderShadowEffects } from '#core/canvas/shadows'
@@ -22,8 +22,13 @@ import * as Strokes from '#core/canvas/strokes'
 import type { TextEditor } from '#core/text/editor'
 
 const rendererMethods: ThisType<SkiaRenderer> = {
-  drawHoverHighlight(canvas: Canvas, graph: SceneGraph, hoveredNodeId?: string | null): void {
-    Overlays.drawHoverHighlight(this, canvas, graph, hoveredNodeId)
+  drawHoverHighlight(
+    canvas: Canvas,
+    graph: SceneGraph,
+    hoveredNodeId?: string | null,
+    preview?: RenderOverlays['rotationPreview']
+  ): void {
+    Overlays.drawHoverHighlight(this, canvas, graph, hoveredNodeId, preview)
   },
 
   drawMeasurements(
@@ -38,9 +43,10 @@ const rendererMethods: ThisType<SkiaRenderer> = {
   drawEnteredContainer(
     canvas: Canvas,
     graph: SceneGraph,
-    enteredContainerId?: string | null
+    enteredContainerId?: string | null,
+    preview?: RenderOverlays['rotationPreview']
   ): void {
-    Overlays.drawEnteredContainer(this, canvas, graph, enteredContainerId)
+    Overlays.drawEnteredContainer(this, canvas, graph, enteredContainerId, preview)
   },
 
   drawSelection(
@@ -52,8 +58,14 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     Overlays.drawSelection(this, canvas, graph, selectedIds, overlays)
   },
 
-  drawNodeSelection(canvas: Canvas, node: SceneNode, rotation: number, graph: SceneGraph): void {
-    Overlays.drawNodeSelection(this, canvas, node, rotation, graph)
+  drawNodeSelection(
+    canvas: Canvas,
+    node: SceneNode,
+    rotation: number,
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
+  ): void {
+    Overlays.drawNodeSelection(this, canvas, node, rotation, graph, preview)
   },
 
   drawSelectionLabels(
@@ -65,16 +77,32 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     Overlays.drawSelectionLabels(this, canvas, graph, selectedIds, overlays)
   },
 
-  drawParentFrameOutlines(canvas: Canvas, graph: SceneGraph, selectedIds: Set<string>): void {
-    Overlays.drawParentFrameOutlines(this, canvas, graph, selectedIds)
+  drawParentFrameOutlines(
+    canvas: Canvas,
+    graph: SceneGraph,
+    selectedIds: Set<string>,
+    preview?: RenderOverlays['rotationPreview']
+  ): void {
+    Overlays.drawParentFrameOutlines(this, canvas, graph, selectedIds, preview)
   },
 
-  drawNodeOutline(canvas: Canvas, node: SceneNode, rotation: number, graph: SceneGraph): void {
-    Overlays.drawNodeOutline(this, canvas, node, rotation, graph)
+  drawNodeOutline(
+    canvas: Canvas,
+    node: SceneNode,
+    rotation: number,
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
+  ): void {
+    Overlays.drawNodeOutline(this, canvas, node, rotation, graph, preview)
   },
 
-  drawGroupBounds(canvas: Canvas, nodes: SceneNode[], graph: SceneGraph): void {
-    Overlays.drawGroupBounds(this, canvas, nodes, graph)
+  drawGroupBounds(
+    canvas: Canvas,
+    nodes: SceneNode[],
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
+  ): void {
+    Overlays.drawGroupBounds(this, canvas, nodes, graph, preview)
   },
 
   getRotatedCorners(n: SceneNode, abs: Vector): Vector[] {
@@ -134,12 +162,8 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     PenOverlay.drawPenOverlay(this, canvas, penState)
   },
 
-  drawRemoteCursors(
-    canvas: Canvas,
-    graph: SceneGraph,
-    cursors?: RenderOverlays['remoteCursors']
-  ): void {
-    PenOverlay.drawRemoteCursors(this, canvas, graph, cursors)
+  drawPresenceCursors(canvas: Canvas, graph: SceneGraph, cursors?: PresenceCursor[]): void {
+    Overlays.drawPresenceCursors(this, canvas, graph, cursors)
   },
 
   drawRulers(
@@ -151,12 +175,12 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     Rulers.drawRulers(this, canvas, graph, selectedIds, guides)
   },
 
-  drawSectionTitles(canvas: Canvas, graph: SceneGraph): void {
-    Labels.drawSectionTitles(this, canvas, graph)
+  drawSectionTitles(canvas: Canvas, graph: SceneGraph, overlays?: RenderOverlays): void {
+    Labels.drawSectionTitles(this, canvas, graph, overlays)
   },
 
-  drawComponentLabels(canvas: Canvas, graph: SceneGraph): void {
-    Labels.drawComponentLabels(this, canvas, graph)
+  drawComponentLabels(canvas: Canvas, graph: SceneGraph, overlays?: RenderOverlays): void {
+    Labels.drawComponentLabels(this, canvas, graph, overlays)
   },
 
   renderNodeSelf(

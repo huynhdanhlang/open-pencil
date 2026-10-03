@@ -17,7 +17,7 @@ async function run(
   args: string[],
   stdin?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(['bun', CLI, ...args], {
+  const proc = Bun.spawn([process.execPath, CLI, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
     stdin: stdin ? Buffer.from(stdin) : undefined
@@ -40,6 +40,31 @@ heavy('eval CLI', () => {
     ])
     expect(exitCode).toBe(0)
     expect(stdout.length).toBeGreaterThan(0)
+  })
+
+  test('variable API edits reflow layout before returning eval results', async () => {
+    const { stdout, exitCode } = await run([
+      'eval',
+      FIXTURE,
+      '--json',
+      '--code',
+      `
+        const collection = figma.createVariableCollection('Eval spacing');
+        const variable = figma.createVariable('Padding', 'FLOAT', collection.id, 10);
+        const frame = figma.createFrame();
+        frame.layoutMode = 'HORIZONTAL';
+        frame.primaryAxisSizingMode = 'AUTO';
+        frame.counterAxisSizingMode = 'AUTO';
+        const child = figma.createRectangle();
+        child.resize(5, 5);
+        frame.appendChild(child);
+        figma.bindVariable(frame.id, 'paddingLeft', variable.id);
+        figma.setVariableValue(variable.id, collection.defaultModeId, 20);
+        return { padding: frame.paddingLeft, width: frame.width, childX: child.x };
+      `
+    ])
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(stdout)).toEqual({ padding: 20, width: 25, childX: 20 })
   })
 
   test('returns primitive number', async () => {
@@ -139,7 +164,7 @@ heavy('eval CLI', () => {
   })
 
   test('stdin reads code from pipe', async () => {
-    const proc = Bun.spawn(['bun', CLI, 'eval', FIXTURE, '--stdin'], {
+    const proc = Bun.spawn([process.execPath, CLI, 'eval', FIXTURE, '--stdin'], {
       stdout: 'pipe',
       stderr: 'pipe',
       stdin: 'pipe'

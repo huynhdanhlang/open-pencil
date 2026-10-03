@@ -1,132 +1,87 @@
-import { valibotSchema } from '@ai-sdk/valibot'
 import { tool } from 'ai'
-import * as v from 'valibot'
 
-import {
-  CORE_TOOLS,
-  EXTENDED_TOOLS,
-  registerComponentCatalog,
-  toolsToAI
-} from '@open-pencil/core/tools'
-import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import { registerComponentCatalog, isAtomicTool, toolsToAI } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
-import { getActiveEditorStore } from '@/app/editor/active-store'
+import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
+import { recordToolCompleted, type AIDiagnosticContext } from '@/app/diagnostics/events/ai'
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { useLibraryService } from '@/app/libraries'
 
-export const MAX_AGENT_STEPS = 50
+import { aiToolDefinitions } from './catalog'
+import { markRunWork, moveRunToPage, runPageId, stepBudget } from './run'
 
-class RunState {
-  toolLog: ToolLogEntry[] = []
-  currentSteps = 0
+export { didHitStepLimit, endRun, recordStep, runPageId, startRun } from './run'
 
-  resetSteps(): void {
-    this.currentSteps = 0
-  }
-
-  hitLimit(): boolean {
-    return this.currentSteps >= MAX_AGENT_STEPS
-  }
-
-  clear(): void {
-    this.toolLog = []
-    this.currentSteps = 0
-  }
-}
-
-const runStates = new WeakMap<EditorStore, RunState>()
-
-function getRunState(store?: EditorStore): RunState {
-  const target = store ?? getActiveEditorStore()
-  const existing = runStates.get(target)
-  if (existing) return existing
-  const created = new RunState()
-  runStates.set(target, created)
-  return created
-}
-
-export function getToolLogEntries(store?: EditorStore): ToolLogEntry[] {
-  return getRunState(store).toolLog
-}
-
-export function recordStep(store?: EditorStore): void {
-  getRunState(store).currentSteps++
-}
-
-export function resetRunSteps(store?: EditorStore): void {
-  getRunState(store).resetSteps()
-}
-
-export function didHitStepLimit(store?: EditorStore): boolean {
-  return getRunState(store).hitLimit()
-}
-
-export function clearToolLogEntries(store?: EditorStore): void {
-  getRunState(store).clear()
-}
-
-export function createAITools(store: EditorStore) {
-  let beforeSnapshot: Map<string, SceneNode> | null = null
-  const runState = getRunState(store)
+export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnosticContext) {
+  let before: { pageId: string; snapshot: ReturnType<EditorStore['snapshotPage']> } | null = null
   const libraryService = useLibraryService()
   libraryService.bindEditor(store)
   registerComponentCatalog(store.graph, libraryService)
 
   return toolsToAI(
-    [
-      ...CORE_TOOLS,
-      ...EXTENDED_TOOLS.filter((def) =>
-        ['get_components', 'list_libraries', 'insert_library_component'].includes(def.name)
-      )
-    ],
+    aiToolDefinitions,
     {
-      getFigma: () => makeFigmaFromStore(store),
+      getFigma: () => makeFigmaFromStore(store, runPageId(store)),
       executeTool: async (def, figma, args) => {
-        if (def.mutates) beforeSnapshot = store.snapshotPage()
-        return def.mutates
-          ? store.runMutationWithLayout(
-              () => def.execute(figma, args),
-              figma.currentPageId,
-              async () => {
-                const pageNode = store.graph.getNode(figma.currentPageId)
-                if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
-              }
-            )
-          : def.execute(figma, args)
+        const pageId = figma.currentPageId
+        try {
+          if (isAtomicTool(def)) {
+            return await executeAtomicEditorTool(store, figma, def, args, { label: 'AI' })
+          }
+          if (!def.mutates) return await def.execute(figma, args)
+          before = { pageId, snapshot: store.snapshotPage(pageId) }
+          return await store.runMutationWithLayout(
+            () => def.execute(figma, args),
+            pageId,
+            async () => {
+              const pageNode = store.graph.getNode(pageId)
+              if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
+            }
+          )
+        } finally {
+          // `switch_page` moves the run, and the user's view with it.
+          if (figma.currentPageId !== pageId) await moveRunToPage(store, figma.currentPageId)
+        }
       },
       onAfterExecute: async (def) => {
+        if (isAtomicTool(def)) return
         if (def.mutates) {
           store.requestRender()
-          if (beforeSnapshot) {
-            const before = beforeSnapshot
-            const after = store.snapshotPage()
+          if (before) {
+            const { pageId, snapshot } = before
+            const after = store.snapshotPage(pageId)
             store.pushUndoEntry({
               label: `AI: ${def.name}`,
               forward: () => store.restorePageFromSnapshot(after),
-              inverse: () => store.restorePageFromSnapshot(before)
+              inverse: () => store.restorePageFromSnapshot(snapshot)
             })
-            beforeSnapshot = null
+            before = null
           }
         }
       },
       onFlashNodes: (nodeIds) => {
+        markRunWork(store, nodeIds)
         store.renderer?.aiClearActive()
         if (nodeIds.length > 0) {
           store.aiFlashDone(nodeIds)
         }
       },
       onToolLog: (entry) => {
-        runState.toolLog.push(entry)
+        recordToolCompleted(
+          {
+            tool: entry.tool,
+            durationMs: entry.durationMs,
+            mutates: entry.mutates,
+            failed: Boolean(entry.error)
+          },
+          diagnosticContext
+        )
       },
-      getStepBudget: (): StepBudget => ({
-        current: runState.currentSteps,
-        max: MAX_AGENT_STEPS
-      })
+      getStepBudget: () => stepBudget(store)
     },
-    { v, valibotSchema, tool }
+    { tool }
   )
 }
 

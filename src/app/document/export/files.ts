@@ -11,6 +11,7 @@ import { renderNodesToImage } from '@open-pencil/core/io/formats/raster'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { ExportOptions } from '@/app/document/export/types'
+import { pickBrowserSaveFile, supportsFileSystemAccess } from '@/app/document/io/capability'
 import { isTauri } from '@/app/tauri/env'
 
 type ExportData = string | ArrayBuffer | Uint8Array
@@ -73,25 +74,20 @@ export function getExportBaseName(graph: SceneGraph, target: ExportRequest['targ
   return 'Export'
 }
 
-export function getExportOptions(formatId: string, options?: ExportOptions): unknown {
-  if (formatId === 'png' || formatId === 'jpg' || formatId === 'webp') {
-    return {
-      format: formatId.toUpperCase(),
-      scale: options?.scale ?? 1,
-      quality: options?.quality
-    }
+export function getExportOptions(format: IOFormatAdapter, options?: ExportOptions): unknown {
+  if (format.exportOptions?.scale) {
+    return { scale: options?.scale ?? 1, quality: options?.quality }
   }
-  if (formatId === 'jsx') return { format: options?.jsxFormat ?? 'openpencil' }
   return undefined
 }
 
 export function getExportFileName(
   baseName: string,
-  formatId: string,
+  format: IOFormatAdapter,
   extension: string,
   options?: ExportOptions
 ): string {
-  return formatId === 'png' || formatId === 'jpg' || formatId === 'webp'
+  return format.exportOptions?.scale
     ? `${baseName}@${options?.scale ?? 1}x.${extension}`
     : `${baseName}.${extension}`
 }
@@ -158,9 +154,9 @@ export async function saveExportedFile(
     return
   }
 
-  if (window.showSaveFilePicker) {
+  if (supportsFileSystemAccess()) {
     try {
-      const handle = await window.showSaveFilePicker({
+      const handle = await pickBrowserSaveFile({
         suggestedName: fileName,
         types: [
           {
@@ -169,9 +165,11 @@ export async function saveExportedFile(
           }
         ]
       })
-      const writable = await handle.createWritable()
-      await writable.write(new Uint8Array(data))
-      await writable.close()
+      if (handle) {
+        const writable = await handle.createWritable()
+        await writable.write(new Uint8Array(data))
+        await writable.close()
+      }
       return
     } catch (e) {
       if ((e as Error).name === 'AbortError') return

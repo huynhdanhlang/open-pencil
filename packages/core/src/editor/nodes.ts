@@ -1,8 +1,17 @@
 import { pick } from 'es-toolkit/object'
 
-import { styleDetachmentChanges, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  styleDetachmentChanges,
+  findInstanceAncestor,
+  cloneInstanceOverrideState,
+  recordInstanceOverride,
+  type SceneNode
+} from '@open-pencil/scene-graph'
+
+import { reconcileVariableLayouts } from '#core/layout/variables'
 
 import { createLayoutModeActions } from './layout-mode'
+import { createNodePreviewActions } from './node-preview'
 import { createNudgeActions } from './nudge'
 import { textAutoResizeChanges } from './text/auto-resize'
 import { pathTextEditChanges } from './text/path-edit'
@@ -23,6 +32,11 @@ export function createNodeActions(ctx: EditorContext) {
   const nudgeActions = createNudgeActions(ctx)
   const variableBindingActions = createVariableBindingActions(ctx)
 
+  function runChangedLayout(id: string, changes: Partial<SceneNode>) {
+    if (changes.variableModes) reconcileVariableLayouts(ctx.graph)
+    ctx.runLayoutForNode(id)
+  }
+
   function updateNode(id: string, changes: Partial<SceneNode>) {
     const node = ctx.graph.getNode(id)
     if (!node) return
@@ -34,7 +48,8 @@ export function createNodeActions(ctx: EditorContext) {
       ...pathTextEditChanges(node, changes)
     })
     ctx.graph.updateNode(id, nextChanges)
-    ctx.runLayoutForNode(id)
+    recordInstanceOverride(ctx.graph, id, Object.keys(nextChanges))
+    runChangedLayout(id, nextChanges)
   }
 
   function updateNodeWithUndo(id: string, changes: Partial<SceneNode>, label = 'Update') {
@@ -46,21 +61,31 @@ export function createNodeActions(ctx: EditorContext) {
       ...textAutoResizeChanges(node, changes),
       ...pathTextEditChanges(node, changes)
     })
+    const owner = findInstanceAncestor(ctx.graph, id)
+    const previousOverrides = owner
+      ? cloneInstanceOverrideState(owner.instanceOverrides)
+      : undefined
     const previous = pick(
       node,
       Object.keys(nextChanges) as (keyof SceneNode)[]
     ) as Partial<SceneNode>
     ctx.graph.updateNode(id, nextChanges)
-    ctx.runLayoutForNode(id)
+    recordInstanceOverride(ctx.graph, id, Object.keys(nextChanges))
+    runChangedLayout(id, nextChanges)
     ctx.undo.push({
       label,
       forward: () => {
         ctx.graph.updateNode(id, nextChanges)
-        ctx.runLayoutForNode(id)
+        recordInstanceOverride(ctx.graph, id, Object.keys(nextChanges))
+        runChangedLayout(id, nextChanges)
       },
       inverse: () => {
         ctx.graph.updateNode(id, previous)
-        ctx.runLayoutForNode(id)
+        if (owner && previousOverrides)
+          ctx.graph.updateNode(owner.id, {
+            instanceOverrides: cloneInstanceOverrideState(previousOverrides)
+          })
+        runChangedLayout(id, nextChanges)
       }
     })
     ctx.requestRender()
@@ -87,6 +112,7 @@ export function createNodeActions(ctx: EditorContext) {
 
   return {
     updateNode,
+    ...createNodePreviewActions(ctx, updateNode),
     updateNodeWithUndo,
     setOpacity,
     ...layoutModeActions,

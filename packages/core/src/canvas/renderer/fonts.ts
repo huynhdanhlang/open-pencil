@@ -9,9 +9,33 @@ import {
   SECTION_TITLE_FONT_SIZE,
   SIZE_FONT_SIZE
 } from '#core/constants'
+import { withTextMeasurer } from '#core/layout/text-measurement'
 import { fontManager } from '#core/text/fonts'
 import { prepareGraphFonts } from '#core/text/prepare'
-import type { FontResolutionSnapshot } from '#core/text/resolver'
+import {
+  fontCoverageDemand,
+  fontResolver,
+  missingGlyphsByScript,
+  type MissingGlyphOccurrence,
+  type FontResolutionSnapshot
+} from '#core/text/resolver'
+
+export function resolveLabelFontCoverage(
+  r: Pick<SkiaRenderer, 'isDestroyed' | 'onFontResolutionSettled'>,
+  missing: readonly MissingGlyphOccurrence[],
+  resolver = fontResolver
+): void {
+  if (r.isDestroyed()) return
+  for (const [script, characters] of missingGlyphsByScript(missing)) {
+    const demand = fontCoverageDemand(script, characters)
+    const state = resolver.state(demand).state
+    if (state === 'loaded') resolver.exhaust(demand)
+    else if (state === 'idle' || state === 'loading') {
+      // No fake TEXT node: the shared settlement callback refreshes font generation and repaints.
+      void resolver.demand(demand, r.onFontResolutionSettled)
+    }
+  }
+}
 
 export function syncFontGeneration(r: SkiaRenderer): void {
   r.fontGeneration = fontManager.generation()
@@ -111,15 +135,12 @@ export async function prepareForExport(
   graph: SceneGraph,
   pageId: string,
   nodeIds: string[]
-): Promise<() => void> {
-  const { getTextMeasurer, setTextMeasurer, computeAllLayouts } = await import('#core/layout')
-
-  const previousTextMeasurer = getTextMeasurer()
-  setTextMeasurer((node, maxWidth) => r.measureTextNode(node, maxWidth))
-
+): Promise<void> {
+  const { computeAllLayouts } = await import('#core/layout')
   await prepareGraphFonts(graph, nodeIds)
   syncFontGeneration(r)
-  computeAllLayouts(graph, pageId)
-
-  return () => setTextMeasurer(previousTextMeasurer)
+  withTextMeasurer(
+    (node, maxWidth) => r.measureTextNode(node, maxWidth),
+    () => computeAllLayouts(graph, pageId)
+  )
 }

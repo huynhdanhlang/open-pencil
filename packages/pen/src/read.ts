@@ -126,7 +126,7 @@ function applyTextProps(node: SceneNode, pen: PenNode, ctx: VarContext): void {
 function resolveSizing(pen: PenNode, ctx: VarContext) {
   const isTextLike = pen.type === 'text' || pen.type === 'icon_font'
   const defaultSize = isTextLike ? 20 : 100
-  const defaultW = isTextLike && pen.width === undefined ? 10_000 : defaultSize
+  const defaultW = isTextLike && pen.width === undefined ? 0 : defaultSize
   const w = parseSize(pen.width, defaultW, ctx)
   const h = parseSize(pen.height, defaultSize, ctx)
   const layout = mapLayoutMode(pen)
@@ -233,6 +233,9 @@ function createSceneNode(
   const overrides = buildBaseOverrides(pen)
   overrides.width = w.value
   overrides.height = h.value
+  const hasChildren = (pen.children?.length ?? 0) > 0
+  if (!hasChildren && w.fitContentFallback !== undefined) overrides.minWidth = w.fitContentFallback
+  if (!hasChildren && h.fitContentFallback !== undefined) overrides.minHeight = h.fitContentFallback
 
   const parentLayout = graph.getNode(parentId)?.layoutMode ?? 'NONE'
   if (layout !== 'NONE') {
@@ -255,8 +258,11 @@ function createSceneNode(
     applyTextProps(node, pen, ctx)
     if (parentLayout === 'NONE' && pen.width === undefined && !pen.textGrowth) {
       node.textAutoResize = 'NONE'
-      node.width = node.text.length * node.fontSize * 0.65
+      node.width = estimateTextWidth(node)
       node.height = node.fontSize * (node.lineHeight ? node.lineHeight / node.fontSize : 1.2)
+    } else if (pen.width === undefined) {
+      // Headless layout keeps stored sizes, so an omitted width starts from the content.
+      node.width = estimateTextWidth(node)
     }
   }
 
@@ -472,12 +478,8 @@ function fixInstanceWidths(graph: SceneGraph): void {
   }
 }
 
-function fixTextWidths(graph: SceneGraph): void {
-  for (const node of graph.getAllNodes()) {
-    if (node.type !== 'TEXT' || !node.text || node.text.length <= 1) continue
-    if (node.width >= node.fontSize * 2) continue
-    node.width = node.text.length * node.fontSize * 0.65
-  }
+function estimateTextWidth(node: SceneNode): number {
+  return node.text.length * node.fontSize * 0.65
 }
 
 export function parsePenFile(json: string): SceneGraph {
@@ -505,7 +507,6 @@ export function parsePenFile(json: string): SceneGraph {
   populateInstances(graph)
   resolveThemeVariables(doc.children, graph, ctx)
   fixInstanceWidths(graph)
-  fixTextWidths(graph)
 
   if (graph.getPages(true).length === 0) {
     graph.addPage('Page 1')

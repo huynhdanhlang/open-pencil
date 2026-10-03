@@ -1,11 +1,19 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
 export * from './mutation-impact'
+export * from './variables/bindings'
+export { rescaleNodeTree, scaleNodeChanges } from './scaling'
+import { TRANSFORM_FIELDS, SIZE_FIELDS } from './fields/geometry'
+export { TRANSFORM_FIELDS, SIZE_FIELDS } from './fields/geometry'
+export { TEXT_METRIC_FIELDS, TEXT_SHAPING_FIELDS, TEXT_LAYOUT_FIELDS } from './fields/text'
+export * from './transfer'
 export * from './instance-overrides'
 export * from './images'
 export * from './components/properties'
 export * from './copy'
+export { createDefaultNode } from './node-defaults'
 export {
   copyInstanceComponentProps,
+  findInstanceAncestor,
   hasInstanceOverride,
   INSTANCE_SYNC_FIELDS,
   INSTANCE_SYNC_PROPS,
@@ -21,6 +29,7 @@ export {
   type InstanceOverrideState
 } from './instance-overrides'
 export * from './snap'
+export * from './export-format'
 export * from './export-scale'
 export * from './coordinate'
 export * from './constants'
@@ -33,15 +42,16 @@ export { default as TransformMatrix } from './matrix'
 export type { Mat3 } from './matrix'
 export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
 
-import { createNanoEvents } from 'nanoevents'
-
 import { removeStaleBindings } from './bindings'
+export { CommittedGraphEventError } from './buffered-events'
+import { BufferedSceneEmitter } from './buffered-events'
 import { cloneNodeProps } from './copy'
 import { bindNodeEvents } from './events'
 import * as HitTest from './hit-test'
 import * as Instances from './instances'
+import Matrix, { type Mat3 } from './matrix'
 import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
-import { updateNodePreview } from './preview'
+import { updateNodePreview, type NodePreviewObserver } from './preview'
 import { styleDetachmentChanges } from './shared-styles'
 import { markSourceFieldsEdited } from './source-metadata'
 import { GLYPH_AFFECTING_KEYS, invalidateTextCaches, TEXT_PICTURE_KEYS } from './text-picture'
@@ -51,16 +61,19 @@ import { normalizeVectorNetwork } from './vector-network'
 export type { GUID, Color, Size, Vector } from './primitives'
 export * from './types'
 
-import type { Emitter } from 'nanoevents'
-
-import { getAbsolutePosition } from './coordinate'
+import {
+  getAbsolutePosition,
+  getNodeLocalMatrix,
+  getParentWorldMatrix,
+  isTranslationOnly,
+  localTransformFromWorld
+} from './coordinate'
 import type { Color, Rect, Vector } from './primitives'
 import type {
   DocumentColorSpace,
   EnabledLibraryBinding,
   NodeType,
   SceneGraphEventHandlers,
-  SceneGraphEvents,
   SceneNode,
   SourceMetadata,
   Variable,
@@ -84,6 +97,19 @@ export function generateId(): string {
   return `0:${nextLocalID++}`
 }
 
+function stripUndefinedProps<T extends object>(obj: T): T {
+  const result = {} as T
+  for (const key of Object.keys(obj) as (keyof T)[]) {
+    const val = obj[key]
+    if (val !== undefined) {
+      result[key] = val
+    }
+  }
+  return result
+}
+
+export { captureGraphCheckpoint } from './checkpoint'
+
 export class SceneGraph {
   nodes = new Map<string, SceneNode>()
   images = new Map<string, Uint8Array>()
@@ -94,12 +120,14 @@ export class SceneGraph {
   figKiwiVersion: number | null = null
   /** Deflated kiwi schema bytes from the original .fig file, preserved for roundtrip fidelity. */
   figSchemaDeflated: Uint8Array | null = null
-  documentColorSpace: DocumentColorSpace = 'display-p3'
+  documentColorSpace: DocumentColorSpace = 'srgb'
   enabledLibraries = new Map<string, EnabledLibraryBinding>()
-  readonly emitter: Emitter<SceneGraphEvents> = createNanoEvents()
+  readonly emitter = new BufferedSceneEmitter()
   private absPosCache = new Map<string, Vector>()
   private previewMutationDepth = 0
+  private previewObservers: NodePreviewObserver[] = []
   private sourceMetadataPreservationDepth = 0
+  private importedStateApplicationDepth = 0
   private layoutMutationDepth = 0
   positionPreviewVersion = 0
   instanceIndex = new Map<string, Set<string>>()
@@ -230,6 +258,10 @@ export class SceneGraph {
     return Variables.resolveNumberVariableForNode(this, nodeId, variableId)
   }
 
+  resolveStringVariableForNode(nodeId: string, variableId: string): string | undefined {
+    return Variables.resolveStringVariableForNode(this, nodeId, variableId)
+  }
+
   getVariablesForCollection(collectionId: string): Variable[] {
     return Variables.getVariablesForCollection(this, collectionId)
   }
@@ -313,6 +345,11 @@ export class SceneGraph {
     this.emitter.emit('node:created', node)
     return node
   }
+  /** Publish synchronous graph events only after the supplied mutation succeeds. */
+  withBufferedEvents<T>(action: () => T): T {
+    return this.emitter.batch(action)
+  }
+
   createNode(type: NodeType, parentId: string, overrides: Partial<SceneNode> = {}): SceneNode {
     const node = createDefaultNode(() => this.generateNodeId(), type, overrides)
     this.nodes.get(parentId)?.childIds.push(node.id)
@@ -335,13 +372,8 @@ export class SceneGraph {
   static GLYPH_AFFECTING_KEYS: ReadonlySet<string> = GLYPH_AFFECTING_KEYS
 
   static LAYOUT_AFFECTING_KEYS: ReadonlySet<string> = new Set([
-    'x',
-    'y',
-    'width',
-    'height',
-    'rotation',
-    'flipX',
-    'flipY',
+    ...TRANSFORM_FIELDS,
+    ...SIZE_FIELDS,
     'layoutMode',
     'layoutDirection',
     'itemSpacing',
@@ -373,11 +405,13 @@ export class SceneGraph {
     'maxHeight'
   ])
 
-  runPreviewUpdates(fn: () => void): void {
+  runPreviewUpdates(fn: () => void, beforeUpdate?: NodePreviewObserver): void {
     this.previewMutationDepth++
+    if (beforeUpdate) this.previewObservers.push(beforeUpdate)
     try {
       fn()
     } finally {
+      if (beforeUpdate) this.previewObservers.pop()
       this.previewMutationDepth--
     }
   }
@@ -389,6 +423,23 @@ export class SceneGraph {
       this.sourceMetadataPreservationDepth--
     }
   }
+  get isPreservingSourceMetadata(): boolean {
+    return this.sourceMetadataPreservationDepth > 0
+  }
+
+  applyImportedStateDuring(fn: () => void): void {
+    this.importedStateApplicationDepth++
+    try {
+      this.preserveSourceMetadataDuring(fn)
+    } finally {
+      this.importedStateApplicationDepth--
+    }
+  }
+
+  get isApplyingImportedState(): boolean {
+    return this.importedStateApplicationDepth > 0
+  }
+
   withLayoutMutations(fn: () => void): void {
     this.layoutMutationDepth++
     try {
@@ -404,9 +455,12 @@ export class SceneGraph {
     this.updateNodePreview(id, { x, y })
   }
   updateNodePreview(id: string, changes: Partial<SceneNode>): void {
-    const appliedChanges = updateNodePreview(this, id, changes)
+    const appliedChanges = updateNodePreview(this, id, changes, (node, applied) => {
+      for (const observe of this.previewObservers) observe(node, applied)
+    })
     if (appliedChanges) this.emitter.emit('node:previewUpdated', id, appliedChanges)
   }
+
   updateNode(id: string, changes: Partial<SceneNode>): void {
     if (this.previewMutationDepth > 0) {
       this.updateNodePreview(id, changes)
@@ -415,15 +469,31 @@ export class SceneGraph {
 
     const node = this.nodes.get(id)
     if (!node) return
-    let entries = Object.entries(changes) as Array<[string, unknown]>
-    changes = Object.fromEntries(
-      entries.filter(([, value]) => value !== undefined)
-    ) as Partial<SceneNode>
-    changes = styleDetachmentChanges(node, changes)
-    entries = Object.entries(changes) as Array<[string, unknown]>
-    changes = Object.fromEntries(
-      entries.filter(([, value]) => value !== undefined)
-    ) as Partial<SceneNode>
+    changes = stripUndefinedProps(styleDetachmentChanges(node, stripUndefinedProps(changes)))
+    this.applyNodeChanges(node, changes)
+  }
+
+  /** Replay captured properties without dropping explicit undefined values or absent keys. */
+  restoreNodeProperties(
+    id: string,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[]
+  ): void {
+    const node = this.nodes.get(id)
+    if (node) this.applyNodeChanges(node, changes, absent)
+  }
+
+  private applyNodeChanges(
+    node: SceneNode,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[] = []
+  ): void {
+    const { id } = node
+    // Include removed keys in cache invalidation and update notifications.
+    if (absent.length) {
+      changes = { ...changes }
+      for (const key of absent) Reflect.set(changes, key, undefined)
+    }
 
     // Only clear absPosCache when layout-affecting properties change.
     // Fills, strokes, effects, plugin data changes do NOT affect absolute position.
@@ -445,7 +515,7 @@ export class SceneGraph {
       }
     }
     if (node.type === 'TEXT') invalidateTextCaches(node, changes)
-    if (this.sourceMetadataPreservationDepth === 0) {
+    if (this.sourceMetadataPreservationDepth === 0 && !this.isApplyingLayout) {
       markSourceFieldsEdited(node, Object.keys(changes))
     }
     if (changes.vectorNetwork) {
@@ -454,6 +524,7 @@ export class SceneGraph {
     Object.assign(node, changes)
     if (changes.fills) removeStaleBindings(node, 'fills', changes)
     if (changes.strokes) removeStaleBindings(node, 'strokes', changes)
+    for (const key of absent) Reflect.deleteProperty(node, key)
     this.emitter.emit('node:updated', id, changes)
   }
 
@@ -470,12 +541,8 @@ export class SceneGraph {
     const oldParentId = node.parentId
     this.absPosCache.clear()
 
-    const absPos = this.getAbsolutePosition(nodeId)
-    const newParentNode = this.nodes.get(newParentId)
-    const newParentAbs =
-      newParentId === this.rootId || newParentNode?.type === 'CANVAS'
-        ? { x: 0, y: 0 }
-        : this.getAbsolutePosition(newParentId)
+    const oldParentWorld = this.parentWorldMatrix(oldParent)
+    const newParentWorld = this.parentWorldMatrix(newParent)
 
     if (oldParent) {
       oldParent.childIds = oldParent.childIds.filter((cid) => cid !== nodeId)
@@ -484,10 +551,20 @@ export class SceneGraph {
     node.parentId = newParentId
     newParent.childIds.push(nodeId)
 
-    node.x = absPos.x - newParentAbs.x
-    node.y = absPos.y - newParentAbs.y
+    if (isTranslationOnly(oldParentWorld) && isTranslationOnly(newParentWorld)) {
+      node.x += oldParentWorld[2] - newParentWorld[2]
+      node.y += oldParentWorld[5] - newParentWorld[5]
+    } else {
+      const world = Matrix.multiply(oldParentWorld, getNodeLocalMatrix(node))
+      const local = localTransformFromWorld(node, world, newParentWorld)
+      if (local) Object.assign(node, local)
+    }
 
     this.emitter.emit('node:reparented', nodeId, oldParentId, newParentId)
+  }
+
+  private parentWorldMatrix(parent: SceneNode | undefined): Mat3 {
+    return getParentWorldMatrix(parent, this)
   }
 
   reorderChild(nodeId: string, parentId: string, insertIndex: number): void {

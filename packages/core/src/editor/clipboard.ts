@@ -1,18 +1,19 @@
+import { CommittedGraphEventError } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
-import {
-  importClipboardNodes,
-  parseFigmaClipboard,
-  parseOpenPencilClipboard
-} from '#core/clipboard'
+import { parseFigmaClipboard, parseOpenPencilClipboard } from '#core/clipboard'
+import { prepareClipboardImport } from '#core/clipboard/fig-import'
 import { computeAllLayouts } from '#core/layout'
 
 import { createClipboardAssetActions } from './clipboard/assets'
+import type { ClipboardSnapshot } from './clipboard/copy'
 import { createClipboardCopyActions } from './clipboard/copy'
+import { importClipboardDependencies } from './clipboard/dependencies'
 import { createClipboardExportActions } from './clipboard/export'
 import { createClipboardFontActions } from './clipboard/fonts'
 import { deleteIds, recreateSnapshots, restoreDeletedEntries } from './clipboard/history'
+import type { PasteHistoryOperation } from './clipboard/paste-replace'
 import { replaceTargetsWithCreated, selectedReplacementTargets } from './clipboard/paste-replace'
 import { resolvePasteTarget } from './clipboard/paste-target'
 import { createClipboardPlacementActions } from './clipboard/placement'
@@ -66,28 +67,83 @@ export function createClipboardActions(ctx: EditorContext) {
     }
   }
 
-  function pushCreatedNodesUndo(created: string[], prevSelection: Set<string>, label = 'Paste') {
+  function pushCreatedNodesUndo(
+    created: string[],
+    prevSelection: Set<string>,
+    label = 'Paste',
+    operation?: PasteHistoryOperation
+  ) {
     const allNodes = collectSubtrees(ctx.graph, created)
     const pageId = ctx.state.currentPageId
+    operation?.capture()
     ctx.undo.push({
       label,
       forward: () => {
-        recreateSnapshots(ctx, allNodes, pageId)
+        if (operation) operation.redo()
+        else recreateSnapshots(ctx, allNodes, pageId)
         computeAllLayouts(ctx.graph, pageId)
         ctx.setSelectedIds(new Set(created))
       },
       inverse: () => {
-        deleteIds(ctx, created)
+        if (operation) operation.undo()
+        else deleteIds(ctx, created)
         computeAllLayouts(ctx.graph, pageId)
         ctx.setSelectedIds(prevSelection)
       }
     })
   }
 
+  async function pasteSnapshot(
+    snapshot: ClipboardSnapshot,
+    cursorPos?: Vector,
+    options: PasteOptions = {}
+  ) {
+    let created: string[] = []
+    ctx.undo.runBatch('Paste', () => {
+      const dependencies = importClipboardDependencies(ctx, snapshot)
+      if (dependencies.styleSnapshots.length > 0) {
+        ctx.undo.push({
+          label: 'Import clipboard styles',
+          forward: () => {
+            for (const style of dependencies.styleSnapshots) {
+              ctx.graph.preserveSourceMetadataDuring(() =>
+                ctx.graph.createNode(style.type, ctx.state.currentPageId, style)
+              )
+            }
+          },
+          inverse: () => {
+            for (const style of dependencies.styleSnapshots) ctx.graph.deleteNode(style.id)
+          }
+        })
+      }
+      if (dependencies.applyVariables && dependencies.revertVariables) {
+        ctx.undo.push({
+          label: 'Import clipboard variables',
+          forward: dependencies.applyVariables,
+          inverse: dependencies.revertVariables
+        })
+      }
+      created = pasteOpenPencilNodes(
+        dependencies.nodes,
+        snapshot.images,
+        dependencies.componentDependencies,
+        cursorPos,
+        options
+      )
+    })
+    await fontActions.loadFontsForNodes(created)
+  }
+
   async function pasteFromHTML(html: string, cursorPos?: Vector, options: PasteOptions = {}) {
     const openPencil = parseOpenPencilClipboard(html)
     if (openPencil) {
-      const created = pasteOpenPencilNodes(openPencil.nodes, openPencil.images, cursorPos, options)
+      const created = pasteOpenPencilNodes(
+        openPencil.nodes,
+        openPencil.images,
+        [],
+        cursorPos,
+        options
+      )
       await fontActions.loadFontsForNodes(created)
       return
     }
@@ -97,7 +153,15 @@ export function createClipboardActions(ctx: EditorContext) {
       const prevSelection = new Set(ctx.state.selectedIds)
       const replacementTargets = options.replaceSelection ? selectedReplacementTargets(ctx) : []
       const pasteTarget = replacementTargets[0]?.parentId ?? resolvePasteTarget(ctx)
-      const created = importClipboardNodes(figma.nodes, ctx.graph, pasteTarget, 0, 0, figma.blobs)
+      const operation = prepareClipboardImport(figma.nodes, ctx.graph, pasteTarget, figma.blobs)
+      let deliveryError: CommittedGraphEventError | undefined
+      try {
+        operation.commit()
+      } catch (error) {
+        if (!(error instanceof CommittedGraphEventError)) throw error
+        deliveryError = error
+      }
+      const created = operation.plan.rootIds
       if (created.length === 0) return
 
       if (replacementTargets.length > 0) {
@@ -106,7 +170,8 @@ export function createClipboardActions(ctx: EditorContext) {
           placementActions.centerNodesAt,
           created,
           replacementTargets,
-          prevSelection
+          prevSelection,
+          operation
         )
       } else {
         const { width: viewW, height: viewH } = ctx.getViewportSize()
@@ -115,9 +180,10 @@ export function createClipboardActions(ctx: EditorContext) {
         placementActions.centerNodesAt(created, cx, cy)
         computeAllLayouts(ctx.graph, ctx.state.currentPageId)
         ctx.setSelectedIds(new Set(created))
-        pushCreatedNodesUndo(created, prevSelection)
+        pushCreatedNodesUndo(created, prevSelection, 'Paste', operation)
       }
 
+      if (deliveryError) throw deliveryError
       await Promise.all([
         hydrateFigmaClipboardImages(figma.meta.fileKey, created),
         fontActions.loadFontsForNodes(created)
@@ -129,6 +195,7 @@ export function createClipboardActions(ctx: EditorContext) {
   function pasteOpenPencilNodes(
     nodes: Array<SceneNode & { children?: SceneNode[] }>,
     images: Map<string, Uint8Array>,
+    dependencies: Array<SceneNode & { children?: SceneNode[] }> = [],
     cursorPos?: Vector,
     options: PasteOptions = {}
   ) {
@@ -137,6 +204,7 @@ export function createClipboardActions(ctx: EditorContext) {
     for (const [hash, bytes] of images) ctx.graph.images.set(hash, bytes)
 
     const created: string[] = []
+    const copiedIds = new Map<string, string>()
     const createNodeTree = (source: SceneNode & { children?: SceneNode[] }, parentId: string) => {
       const { id: _id, childIds: _childIds, children = [], parentId: _parentId, ...rest } = source
       const node = ctx.graph.createNode(source.type, parentId, {
@@ -145,12 +213,39 @@ export function createClipboardActions(ctx: EditorContext) {
         y: source.y + 20,
         childIds: []
       })
+      copiedIds.set(source.id, node.id)
       for (const child of children) createNodeTree(child, node.id)
       return node.id
     }
 
     const pasteTarget = replacementTargets[0]?.parentId ?? resolvePasteTarget(ctx)
+    const dependencyRootIds: string[] = []
+    for (const dependency of dependencies)
+      dependencyRootIds.push(createNodeTree(dependency, ctx.state.currentPageId))
     for (const node of nodes) created.push(createNodeTree(node, pasteTarget))
+    for (const id of copiedIds.values()) {
+      const node = ctx.graph.getNode(id)
+      if (!node) continue
+      const componentId = node.componentId ? copiedIds.get(node.componentId) : undefined
+      const instanceOverrides = {
+        self: node.instanceOverrides.self,
+        descendants: new Map(
+          [...node.instanceOverrides.descendants].map(([target, fields]) => [
+            copiedIds.get(target) ?? target,
+            fields
+          ])
+        )
+      }
+      ctx.graph.updateNode(id, { componentId: componentId ?? node.componentId, instanceOverrides })
+    }
+    if (dependencyRootIds.length > 0) {
+      const snapshots = collectSubtrees(ctx.graph, dependencyRootIds)
+      ctx.undo.push({
+        label: 'Import component dependencies',
+        forward: () => recreateSnapshots(ctx, snapshots, ctx.state.currentPageId),
+        inverse: () => deleteIds(ctx, dependencyRootIds)
+      })
+    }
     if (created.length === 0) return created
 
     if (replacementTargets.length > 0) {
@@ -270,6 +365,7 @@ export function createClipboardActions(ctx: EditorContext) {
     ...fontActions,
     duplicateSelected,
     ...copyActions,
+    pasteSnapshot,
     pasteFromHTML,
     warnMissingImages,
     deleteSelected,

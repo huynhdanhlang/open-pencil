@@ -2,14 +2,15 @@ import { promiseTimeout } from '@vueuse/core'
 import { shallowRef, computed, triggerRef } from 'vue'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { findFigThumbnailPageId } from '@open-pencil/core/io/formats/fig'
+import { findFigThumbnailPageId, populateFigPage } from '@open-pencil/core/io/formats/fig'
 import { renderThumbnail } from '@open-pencil/core/io/formats/raster'
-import { populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { setOpenPencilStore } from '@/app/browser-bridge'
 import { describeDiagnosticError, recordStorageFailure } from '@/app/diagnostics'
+import { confirmAllDocuments } from '@/app/document/close/all'
+import { requestDocumentClose } from '@/app/document/close/prompt'
 import { readFigDocument } from '@/app/document/io/fig'
 import { applyImportedDocument } from '@/app/document/io/imported-document'
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
@@ -29,6 +30,7 @@ import {
   loadCachedRecentFileThumbnail,
   rememberRecentStorageDocument
 } from '@/app/recent-files'
+import { createDeferred } from '@/app/runtime/deferred'
 import { toast } from '@/app/shell/ui'
 import { getLocalCanvasStore } from '@/app/storage/local-store'
 import { seedStorageCanvasFromRemote } from '@/app/storage/sync/persist'
@@ -64,6 +66,7 @@ export const allTabs = computed(() =>
     id: t.id,
     name: t.store.state.documentName,
     isHome: t.kind === 'home',
+    isDirty: t.kind === 'document' && t.store.hasUnsavedChanges(),
     isPreparing: t.store.state.preparation !== null,
     preparationProgress: t.store.state.preparation?.progress ?? null,
     isActive: t.id === activeTabId.value
@@ -142,10 +145,12 @@ function activateTab(tab: Tab) {
   setOpenPencilStore(tab.store)
 }
 
-export function switchTab(tabId: string) {
+/** Activates the tab. False when no tab carries that id, so callers can tell a no-op apart. */
+export function switchTab(tabId: string): boolean {
   const tab = tabsRef.value.find((t) => t.id === tabId)
-  if (!tab) return
+  if (!tab) return false
   activateTab(tab)
+  return true
 }
 
 export async function closeTab(tabId: string): Promise<void> {
@@ -154,11 +159,16 @@ export async function closeTab(tabId: string): Promise<void> {
 
   const closingTab = tabsRef.value[idx]
   if (closingTab.kind === 'home' && tabsRef.value.length === 1) return
+  const choice = await requestDocumentClose(closingTab.store, closingTab.store.state.documentName)
+  if (choice === 'cancel') return
+  if (choice === 'discard') await closingTab.store.discardRecovery()
+  else await closingTab.store.persistRecoveryNow()
+  if (!tabsRef.value.includes(closingTab)) return
+  if (choice !== 'discard' && closingTab.store.hasUnsavedChanges()) return
   const wasActive = activeTabId.value === tabId
   coverThumbnailListeners.get(closingTab.store)?.()
   coverThumbnailListeners.delete(closingTab.store)
   closingTab.store.preparationController.dispose()
-  await closingTab.store.persistRecoveryNow()
   closingTab.store.dispose()
   tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
 
@@ -204,7 +214,7 @@ async function readFigForTab(file: File, signal?: AbortSignal): Promise<SceneGra
   if (firstPageId) computeAllLayouts(imported, firstPageId)
   const coverPageId = findFigThumbnailPageId(imported.getPages())
   if (coverPageId && coverPageId !== firstPageId) {
-    populateLazyFigImportRoots(imported, [coverPageId])
+    populateFigPage(imported, coverPageId)
     computeAllLayouts(imported, coverPageId)
   }
   return imported
@@ -420,7 +430,7 @@ export async function openFileInNewTab(
       subject: file.name
     })
 
-    const completion = Promise.withResolvers<undefined>()
+    const completion = createDeferred<undefined>()
     void completion.promise.catch(() => undefined)
     const pendingOpen = { completion: completion.promise, identity, store }
     fileOpenCoordinator.add(pendingOpen)
@@ -537,6 +547,12 @@ export async function restoreRecoverySnapshot(id: string): Promise<void> {
   } finally {
     if (succeeded) load.complete()
   }
+}
+
+export function prepareForClose(): Promise<boolean> {
+  return confirmAllDocuments(() =>
+    tabsRef.value.filter((tab) => tab.kind === 'document').map((tab) => tab.store)
+  )
 }
 
 export async function prepareForReload(): Promise<void> {

@@ -8,10 +8,10 @@ import { UndoManager } from '@open-pencil/scene-graph/undo'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { prefetchFigmaSchema } from '#core/clipboard'
 import { IS_BROWSER } from '#core/constants'
-import { clearLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import { releaseFigPopulationWorker } from '#core/kiwi/fig/population/client'
 import { releaseOriginalFigArchive } from '#core/kiwi/fig/session/original-archive'
 import { setTextMeasurer } from '#core/layout'
+import { createLayoutRunner } from '#core/layout/mutations'
 import { emitNavigationTrace } from '#core/profiler'
 import { TextEditor } from '#core/text/editor'
 import { fontManager } from '#core/text/fonts'
@@ -29,7 +29,6 @@ import { createComponentActions } from './components'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
 import { createGuideActions } from './guides'
-import { createLayoutRunner } from './layout-runner'
 import { createNodeActions } from './nodes'
 import { createPageActions } from './pages'
 import { createSelectionActions } from './selection'
@@ -54,7 +53,7 @@ export { createDefaultEditorState } from './state'
 export function createEditor(options?: EditorOptions) {
   let _graph = options?.graph ?? new SceneGraph()
   const skipInitialGraphSetup = options?.skipInitialGraphSetup ?? false
-  const undo = new UndoManager()
+  const undo = new UndoManager({ onChange: () => emitEditorEvent('history:changed') })
   const _loadFont = options?.loadFont ?? fontManager.loadFont.bind(fontManager)
   const _getViewportSize =
     options?.getViewportSize ??
@@ -65,6 +64,7 @@ export function createEditor(options?: EditorOptions) {
   let _ck: CanvasKit | null = null
   let _renderer: SkiaRenderer | null = null
   const _renderers = new Set<SkiaRenderer>()
+  const interactiveEdits = new Set<symbol>()
   let _textEditor: TextEditor | null = null
   const events: Emitter<EditorEvents> = createNanoEvents()
   const stopFontResolutionEvents = fontResolver.subscribe((event, snapshot) => {
@@ -111,6 +111,16 @@ export function createEditor(options?: EditorOptions) {
       renderVersion: state.renderVersion,
       sceneVersion: state.sceneVersion
     })
+  }
+
+  /** Track an actual live edit independently of history batching. Release is idempotent. */
+  function beginInteractiveEdit() {
+    const token = Symbol('interactive-edit')
+    interactiveEdits.add(token)
+    requestRepaint()
+    return () => {
+      if (interactiveEdits.delete(token)) requestRepaint()
+    }
   }
 
   function setNavigationPhase(phase: EditorState['navigation']['phase'], inputAt = 0) {
@@ -192,6 +202,8 @@ export function createEditor(options?: EditorOptions) {
     getTextEditor: () => _textEditor,
     requestRender,
     requestRepaint,
+    beginInteractiveEdit,
+    onEditorEvent,
     emitEditorEvent,
     setSelectedIds,
     setActiveTool,
@@ -242,6 +254,8 @@ export function createEditor(options?: EditorOptions) {
   }
 
   function replaceGraph(newGraph: SceneGraph) {
+    nodes.cancelNodePreviews()
+    undo.discardBatches()
     _graph = newGraph
     subscribeToGraph()
     const previousPageId = state.currentPageId
@@ -263,6 +277,8 @@ export function createEditor(options?: EditorOptions) {
   }
 
   function dispose() {
+    nodes.cancelNodePreviews()
+    interactiveEdits.clear()
     stopFontResolutionEvents()
     unsubscribeFromGraph()
   }
@@ -270,7 +286,6 @@ export function createEditor(options?: EditorOptions) {
   function releaseGraphResources() {
     releaseFigPopulationWorker(_graph)
     releaseOriginalFigArchive(_graph)
-    clearLazyFigImportContext(_graph)
   }
 
   return {
@@ -295,6 +310,8 @@ export function createEditor(options?: EditorOptions) {
     ...graphReads,
 
     // Lifecycle
+    beginInteractiveEdit,
+    isInteractiveEditing: () => interactiveEdits.size > 0,
     requestRender,
     requestRepaint,
     onEditorEvent,

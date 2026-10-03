@@ -1,8 +1,6 @@
 import type { DocumentColorSpace, SceneNode } from '@open-pencil/scene-graph'
+import { resolveOkHCLForPreview, rgbaToOkHCL } from '@open-pencil/scene-graph/color'
 import { copyEffects, copyFill, copyStyleRuns, copyStroke } from '@open-pencil/scene-graph/copy'
-
-import { resolveOkHCLForPreview } from '#core/color/management'
-import { rgbaToOkHCL } from '#core/color/okhcl'
 
 import type { EditorContext } from './types'
 
@@ -83,6 +81,7 @@ export function createColorSpaceActions(ctx: EditorContext) {
     }
 
     ctx.graph.documentColorSpace = colorSpace
+    ctx.emitEditorEvent('document:color-space-changed', colorSpace)
     ctx.requestRender()
   }
 

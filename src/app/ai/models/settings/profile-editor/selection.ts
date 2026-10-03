@@ -11,6 +11,7 @@ import type { AIModelProfileDraft, AIModelCapability } from '@/app/ai/models'
 import { resolveModelsDevModel } from '@/app/ai/models/catalog'
 import { useProviderModelCatalog } from '@/app/ai/models/catalog/use'
 import { modelPickerOptions, type ModelPickerLabels } from '@/app/ai/models/picker/options'
+import { supportsThinkingLevel } from '@/app/ai/models/thinking'
 
 export function useProfileModelSelection(
   draft: AIModelProfileDraft,
@@ -31,9 +32,7 @@ export function useProfileModelSelection(
   const { models: availableModels } = useProviderModelCatalog(catalogProviderID, fallbackModels)
   const isACP = computed(() => draft.providerID.startsWith('acp:'))
   const isHarness = computed(() => draft.providerID === 'harness:pi')
-  const supportsReasoningEffort = computed(() =>
-    ['openai', 'openai-compatible', 'openrouter'].includes(draft.providerID)
-  )
+  const supportsThinking = computed(() => supportsThinkingLevel(draft.providerID))
   const providerDisplayName = computed(() => {
     if (!isACP.value) return providerDef.value.name
 
@@ -42,16 +41,20 @@ export function useProfileModelSelection(
   })
   const modelOptions = computed(() => {
     const options = modelPickerOptions(availableModels.value, providerDef.value.models, ai.value)
-    if (providerDef.value.supportsCustomModel) {
-      options.push({
-        value: CUSTOM_MODEL_VALUE,
-        label: ai.value.customModel,
-        description: '',
-        meta: undefined,
-        group: ai.value.customModel
-      })
+    if (!providerDef.value.supportsCustomModel) return options
+    // Keep the custom entry after the curated picks and ahead of the long tail, so it stays
+    // reachable in the picker's capped result list.
+    const customOption = {
+      value: CUSTOM_MODEL_VALUE,
+      label: ai.value.customModel,
+      description: '',
+      meta: undefined,
+      group: ai.value.customModelGroup
     }
-    return options
+    const group = ai.value.recommendedModels
+    const insertAt = options.findIndex((option) => option.group !== group)
+    if (insertAt === -1) return [...options, customOption]
+    return [...options.slice(0, insertAt), customOption, ...options.slice(insertAt)]
   })
   const selectedModelValue = computed(() =>
     customModelSelected.value ? CUSTOM_MODEL_VALUE : draft.modelID
@@ -167,7 +170,7 @@ export function useProfileModelSelection(
     isACP,
     isHarness,
     customModelSelected,
-    supportsReasoningEffort,
+    supportsThinking,
     providerDisplayName,
     modelOptions,
     selectedModelValue,

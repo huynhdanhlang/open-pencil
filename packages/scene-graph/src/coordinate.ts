@@ -2,7 +2,7 @@ import type { SceneGraph, SceneNode } from './index'
 import Matrix, { type Mat3 } from './matrix'
 import type { Rect, Vector } from './primitives'
 
-export function getWorldMatrix(node: SceneNode, graph: SceneGraph): Mat3 {
+export function getWorldMatrix(node: SceneNode, graph: Pick<SceneGraph, 'getNode'>): Mat3 {
   const chain: SceneNode[] = []
   let current: SceneNode | undefined = node
 
@@ -22,25 +22,56 @@ export function getWorldMatrix(node: SceneNode, graph: SceneGraph): Mat3 {
   return matrix
 }
 
-export function getAxisAlignedWorldBounds(node: SceneNode, graph: SceneGraph) {
-  const matrix = getWorldMatrix(node, graph)
-  const points = Matrix.mapPoints(matrix, [
-    0,
-    0,
-    node.width,
-    0,
-    node.width,
-    node.height,
-    0,
-    node.height
-  ])
-  const xs = [points[0], points[2], points[4], points[6]]
-  const ys = [points[1], points[3], points[5], points[7]]
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
+/** Axis-aligned box around interleaved `x, y` points; empty input gives an empty box at the origin. */
+function boundsOfPoints(points: readonly number[]): Rect {
+  if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 }
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (let i = 0; i < points.length; i += 2) {
+    minX = Math.min(minX, points[i])
+    minY = Math.min(minY, points[i + 1])
+    maxX = Math.max(maxX, points[i])
+    maxY = Math.max(maxY, points[i + 1])
+  }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+function cornersOf(node: Pick<SceneNode, 'width' | 'height'>): number[] {
+  return [0, 0, node.width, 0, node.width, node.height, 0, node.height]
+}
+
+export function getAxisAlignedWorldBounds(node: SceneNode, graph: Pick<SceneGraph, 'getNode'>) {
+  return boundsOfPoints(Matrix.mapPoints(getWorldMatrix(node, graph), cornersOf(node)))
+}
+
+/** World matrix of a parent; the document root and a missing parent are the identity. */
+export function getParentWorldMatrix(
+  parent: SceneNode | undefined,
+  graph: Pick<SceneGraph, 'getNode' | 'rootId'>
+): Mat3 {
+  if (!parent || parent.id === graph.rootId) return Matrix.identity()
+  return getWorldMatrix(parent, graph)
+}
+
+/**
+ * Axis-aligned box of `nodes` in `parentId`'s own axes: where a group, frame, or boolean operation
+ * made from them sits. Each node's corners are mapped through the parent's inverse world matrix,
+ * so a rotated or flipped parent gets a box in its own axes and the nodes keep their drawn places
+ * once they move into the container.
+ */
+export function getAxisAlignedBoundsInParent(
+  nodes: readonly SceneNode[],
+  parentId: string,
+  graph: Pick<SceneGraph, 'getNode' | 'rootId'>
+): Rect {
+  const toParent =
+    Matrix.invert(getParentWorldMatrix(graph.getNode(parentId), graph)) ?? Matrix.identity()
+  const points = nodes.flatMap((node) =>
+    Matrix.mapPoints(Matrix.multiply(toParent, getWorldMatrix(node, graph)), cornersOf(node))
+  )
+  return boundsOfPoints(points)
 }
 
 export function getAbsolutePosition(node: SceneNode, graph: SceneGraph): Vector {
@@ -121,63 +152,28 @@ export function getAbsolutePositionFull(node: SceneNode, graph: SceneGraph) {
     centerY
   }
 }
-export function getNodeLocalMatrix(n: SceneNode) {
-  const rad = (n.rotation * Math.PI) / 180
+/** Lines retain their origin pivot; other shapes rotate around their center. */
+export function getNodeRotationOrigin(node: SceneNode): Vector {
+  return node.type === 'LINE' ? { x: 0, y: 0 } : { x: node.width / 2, y: node.height / 2 }
+}
 
-  const cx = n.width / 2
-  const cy = n.height / 2
-
-  const sx = n.flipX ? -1 : 1
-  const sy = n.flipY ? -1 : 1
-
-  let m = Matrix.identity()
-
-  // local translation (relative to parent)
-  m = Matrix.multiply(m, Matrix.translated(n.x, n.y))
-
-  // pivot to center
-  m = Matrix.multiply(m, Matrix.translated(cx, cy))
-
+/** Position can be applied separately by renderers before setting up local opacity layers. */
+export function getNodeLocalMatrix(n: SceneNode, position: Vector = n) {
+  let matrix = Matrix.translated(position.x, position.y)
   if (n.flipX || n.flipY) {
-    m = Matrix.multiply(m, Matrix.scaled(sx, sy))
+    matrix = Matrix.multiply(
+      matrix,
+      Matrix.scaled(n.flipX ? -1 : 1, n.flipY ? -1 : 1, n.width / 2, n.height / 2)
+    )
   }
-
-  // rotate around center
   if (n.rotation) {
-    m = Matrix.multiply(m, Matrix.rotated(rad, 0, 0))
+    const pivot = getNodeRotationOrigin(n)
+    matrix = Matrix.multiply(matrix, Matrix.rotated((n.rotation * Math.PI) / 180, pivot.x, pivot.y))
   }
-
-  // pivot back
-  m = Matrix.multiply(m, Matrix.translated(-cx, -cy))
-
-  return m
+  return matrix
 }
 export function getNodeWorldBounds(node: SceneNode) {
-  const m = getNodeLocalMatrix(node)
-
-  const points = Matrix.mapPoints(m, [0, 0, node.width, 0, node.width, node.height, 0, node.height])
-
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-
-  for (let i = 0; i < points.length; i += 2) {
-    const x = points[i]
-    const y = points[i + 1]
-
-    minX = Math.min(minX, x)
-    minY = Math.min(minY, y)
-    maxX = Math.max(maxX, x)
-    maxY = Math.max(maxY, y)
-  }
-
-  return {
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY
-  }
+  return boundsOfPoints(Matrix.mapPoints(getNodeLocalMatrix(node), cornersOf(node)))
 }
 
 /**
@@ -187,7 +183,11 @@ export function getNodeWorldBounds(node: SceneNode) {
  * or the visible handles are ~25px off and unclickable. Defaults to full node
  * bounds.
  */
-export function getWorldHandles(node: SceneNode, graph: SceneGraph, localRect?: Rect) {
+export function getWorldHandles(
+  node: SceneNode,
+  graph: Pick<SceneGraph, 'getNode'>,
+  localRect?: Rect
+) {
   const matrix = getWorldMatrix(node, graph)
 
   const x0 = localRect?.x ?? 0
@@ -230,4 +230,32 @@ export function getWorldHandles(node: SceneNode, graph: SceneGraph, localRect?: 
     sw: { x: pts[12], y: pts[13] },
     w: { x: pts[14], y: pts[15] }
   }
+}
+
+type LocalTransform = Pick<SceneNode, 'x' | 'y' | 'rotation' | 'flipX' | 'flipY'>
+
+/**
+ * Local transform that draws `node` with the given world matrix once it sits under a parent
+ * whose world matrix is `parentWorld`. Keeps the node's own `flipX` when the matrix allows it.
+ */
+export function localTransformFromWorld(
+  node: SceneNode,
+  world: Mat3,
+  parentWorld: Mat3
+): LocalTransform | null {
+  const parentInverse = Matrix.invert(parentWorld)
+  if (!parentInverse) return null
+  const local = Matrix.multiply(parentInverse, world)
+  const [a, b, , c, d] = local
+  const sx = node.flipX ? -1 : 1
+  const sy = a * d - b * c < 0 ? -sx : sx
+  let rotation = (Math.atan2(sy * c, sx * a) * 180) / Math.PI
+  if (Math.abs(rotation) < 1e-9) rotation = 0
+  const transform = { rotation, flipX: sx < 0, flipY: sy < 0 }
+  const origin = getNodeLocalMatrix({ ...node, ...transform }, { x: 0, y: 0 })
+  return { ...transform, x: local[2] - origin[2], y: local[5] - origin[5] }
+}
+
+export function isTranslationOnly(matrix: Mat3): boolean {
+  return matrix[0] === 1 && matrix[1] === 0 && matrix[3] === 0 && matrix[4] === 1
 }

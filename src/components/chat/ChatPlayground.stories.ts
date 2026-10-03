@@ -7,6 +7,7 @@ import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import ChatComposer from './ChatComposer.vue'
 import ChatHistory from './ChatHistory.vue'
+import ChatThinkingSelect from './ChatThinkingSelect.vue'
 import ChatTranscript from './ChatTranscript.vue'
 import { useConversations } from './stories/useConversations'
 
@@ -29,6 +30,7 @@ const meta = {
     components: {
       ChatHistory,
       ChatComposer,
+      ChatThinkingSelect,
       ChatTranscript,
       TooltipProvider,
       AppSelect,
@@ -53,7 +55,6 @@ const meta = {
           </fieldset>
           <section aria-label="Chat preview" :data-narrow="args.narrow" class="flex h-[620px] w-[420px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel data-[narrow=true]:w-[300px]">
             <ChatHistory
-              :debug="true"
               :saved="hasSavedConversation"
               :conversations="conversationOptions"
               :selected-id="selectedId"
@@ -79,11 +80,15 @@ const meta = {
               @settings="showProfileNotice"
             >
               <template #model>
-                <AppSelect
-                  v-model="profile"
-                  label="Mock model profile"
-                  :options="profileOptions"
-                />
+                <div class="@container flex min-w-0 items-center">
+                  <AppSelect
+                    v-model="profile"
+                    label="Mock model profile"
+                    :options="profileOptions"
+                    :ui="{ trigger: 'min-w-0 shrink' }"
+                  />
+                  <ChatThinkingSelect />
+                </div>
               </template>
             </ChatComposer>
           </section>
@@ -110,7 +115,7 @@ export const Interaction: Story = {
     await userEvent.type(title, 'My dashboard')
     await userEvent.click(canvas.getByRole('button', { name: 'Delete fixture' }))
     await expect(title).toHaveValue('Monthly expense dashboard')
-    await expect(canvas.getByRole('button', { name: 'Create Frame Done' })).toBeVisible()
+    await expect(canvas.getByRole('button', { name: /^Done Create Frame\b/ })).toBeVisible()
   }
 }
 export const Empty: Story = { args: { initialChat: 'empty' } }

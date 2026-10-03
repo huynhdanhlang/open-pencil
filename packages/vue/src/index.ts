@@ -18,6 +18,8 @@ export { createEditor, EDITOR_TOOLS, TOOL_SHORTCUTS } from '@open-pencil/core/ed
 export { provideEditor, useEditor, EDITOR_KEY } from '#vue/editor/context'
 
 /** Canvas and input integration composables. */
+export { supportsWideGamutPresentation } from '#vue/canvas/surface/color-space'
+export type { PresentationColorSpace } from '#vue/canvas/surface/color-space'
 export { useCanvas } from '#vue/canvas/surface/use'
 export type { UseCanvasOptions } from '#vue/canvas/surface/use'
 export { useCanvasInput } from '#vue/canvas/useCanvasInput'
@@ -31,11 +33,16 @@ export { useNodeProps, MIXED } from '#vue/controls/node-props/use'
 export type { MixedValue } from '#vue/controls/node-props/use'
 export { useSceneComputed } from '#vue/internal/scene-computed/use'
 export { useSelectionState } from '#vue/editor/selection-state/use'
+export { createSelectedNodeState } from '#vue/editor/selection-state/nodes'
+export { provideRetainedActivity, useRetainedActivity } from '#vue/lifecycle/retention/context'
+export { createRetainedScopePlugin } from '#vue/lifecycle/retention/plugin'
+export { useRetainedPopup } from '#vue/lifecycle/retention/popup'
+export type { SelectedNodeState } from '#vue/editor/selection-state/nodes'
 export { useEditorEvent } from '#vue/editor/events/use'
 export { useSelectionCapabilities } from '#vue/editor/selection-capabilities/use'
 
 /** Command palette primitives and search state. */
-export { CommandPaletteRoot } from '#vue/primitives/CommandPalette'
+export { CommandPaletteRoot, useCommandPalette } from '#vue/primitives/CommandPalette'
 export type {
   CommandPaletteGroup,
   CommandPaletteItem,
@@ -100,7 +107,7 @@ export type {
   UseDocumentWorkspaceOptions
 } from '#vue/document/workspace/use'
 export { useExport } from '#vue/document/export/use'
-export type { ExportFormatId, ExportSetting } from '#vue/document/export/use'
+export type { ExportFormatId, ExportFormatOption, ExportSetting } from '#vue/document/export/use'
 export { useFillControls } from '#vue/controls/fill/use'
 export { useColorVariableBinding } from '#vue/controls/color-variable-binding/use'
 export { useNumberVariableBinding } from '#vue/controls/number-variable-binding/use'
@@ -240,7 +247,7 @@ export type {
   VariantDefinitionControl
 } from '#vue/controls/component-props'
 export type { CornerGeometryKey, CornerRadiusKey } from '#vue/controls/appearance/types'
-export { PageListRoot } from '#vue/primitives/PageList'
+export { isPageDivider, PageListRoot, PAGE_DIVIDER_PATTERN } from '#vue/primitives/PageList'
 export { PositionControlsRoot } from '#vue/primitives/PositionControls'
 export { useEditorPropertyList } from '#vue/controls/property-list'
 export {

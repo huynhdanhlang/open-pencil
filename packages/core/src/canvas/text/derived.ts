@@ -1,4 +1,5 @@
 import type { Canvas, Paint, Path } from 'canvaskit-wasm'
+import { fromUint8Array } from 'js-base64'
 
 import type {
   Color,
@@ -10,9 +11,15 @@ import type {
   TextDecorationStyle
 } from '@open-pencil/scene-graph'
 
-import { encodeBase64 } from '#core/bytes'
+import { ResourceCache } from '#core/cache/resource'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { geometryBlobToPath } from '#core/vector'
+
+const MAX_GLYPH_SILHOUETTES = 512
+
+export function createGlyphSilhouetteCache(): ResourceCache<string, Path> {
+  return new ResourceCache({ maxEntries: MAX_GLYPH_SILHOUETTES, dispose: (path) => path.delete() })
+}
 
 interface DecorationRange {
   x1: number
@@ -270,8 +277,8 @@ function getGlyphSilhouette(
 ): GlyphSilhouette {
   const blob = glyph.commandsBlob
   const relativeWeight = stroke.weight / glyph.fontSize
-  const key = `${encodeBase64(blob)}:${relativeWeight.toFixed(5)}`
-  const cached = r.glyphSilhouetteCache.get(key)
+  const key = `${fromUint8Array(blob)}:${relativeWeight.toFixed(5)}`
+  const cached = r.glyphSilhouetteCache.peek(key)
   if (cached) return { path: cached, cached: true }
 
   const base = geometryBlobToPath(r.ck, blob, 'NONZERO')
@@ -294,12 +301,8 @@ function getGlyphSilhouette(
   base.delete()
   stroked?.delete()
   outline.delete()
-  // ponytail: crude bound — a live stroke-weight drag mints a key per tick;
-  // wholesale clear beats an LRU here since rebuild is cheap.
-  if (r.glyphSilhouetteCache.size >= 512) {
-    for (const path of r.glyphSilhouetteCache.values()) path.delete()
-    r.glyphSilhouetteCache.clear()
-  }
+  // Preserve reset-at-capacity for stroke-weight sweeps; the cache owns path disposal.
+  if (r.glyphSilhouetteCache.size >= MAX_GLYPH_SILHOUETTES) r.glyphSilhouetteCache.clear()
   r.glyphSilhouetteCache.set(key, merged)
   return { path: merged, cached: true }
 }
@@ -373,12 +376,33 @@ export function drawReflowedPathTextSilhouettes(
  *                            black fills vs white strokeGeometry
  *   4. scale(fontSize,-fs) — font units → px; Y flip (font space is up-positive)
  */
+function savedTextEligibility(node: SceneNode): boolean {
+  return (
+    node.styleRuns.length === 0 ||
+    (node.fills.filter((paint) => paint.visible).length === 1 &&
+      !!node.derivedTextGlyphs?.every((glyph) => glyph.firstCharacter !== undefined) &&
+      node.styleRuns.every(
+        (run) =>
+          !run.style.fills ||
+          run.style.fills.every(
+            (paint) => paint.type === 'SOLID' && (!paint.blendMode || paint.blendMode === 'NORMAL')
+          )
+      ))
+  )
+}
+
+export function canDrawSavedText(node: SceneNode, fill?: Fill): boolean {
+  if (fill && fill.type !== 'SOLID') return false
+  return savedTextEligibility(node)
+}
+
 export function drawDerivedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): boolean {
   if (!node.derivedTextGlyphs?.length) return false
 
   // Pixel-snap is for horizontal Figma baselines only — on a curve it stair-steps
   // letter positions and breaks registration with strokeGeometry.
   const snapBaselines = !hasRotatedDerivedGlyphs(node)
+  const savedTextEligible = savedTextEligibility(node)
   let underlineBaselineY = 0
   for (const glyph of node.derivedTextGlyphs) {
     const glyphY = snapBaselines ? snapDerivedGlyphBaseline(glyph.y) : glyph.y
@@ -388,7 +412,29 @@ export function drawDerivedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode
     applyGlyphEmTransform(canvas, glyph, glyphY)
     const shouldUseHardCoverage = shouldUseHardDerivedGlyphCoverage(node)
     if (shouldUseHardCoverage) r.fillPaint.setAntiAlias(false)
-    canvas.drawPath(path, r.fillPaint)
+    const run =
+      glyph.firstCharacter === undefined
+        ? undefined
+        : node.styleRuns.find(
+            (run) =>
+              glyph.firstCharacter !== undefined &&
+              glyph.firstCharacter >= run.start &&
+              glyph.firstCharacter < run.start + run.length
+          )
+    const fills = run?.style.fills
+    if (fills && savedTextEligible) {
+      const paint = r.fillPaint.copy()
+      try {
+        for (const fill of fills) {
+          if (!fill.visible || fill.type !== 'SOLID') continue
+          const color = fill.color
+          paint.setColor(r.ck.Color4f(color.r, color.g, color.b, color.a * fill.opacity))
+          canvas.drawPath(path, paint)
+        }
+      } finally {
+        paint.delete()
+      }
+    } else canvas.drawPath(path, r.fillPaint)
     if (shouldUseHardCoverage) r.fillPaint.setAntiAlias(true)
     canvas.restore()
     path.delete()

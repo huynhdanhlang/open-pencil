@@ -1,6 +1,7 @@
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import type {
+  DocumentColorSpace,
   SceneGraph,
   SceneGraphEvents,
   SceneNode,
@@ -14,8 +15,9 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { GuideOverlayState } from '#core/canvas/guides/types'
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
-import type { MeasurementMode, RenderOverlays } from '#core/canvas/renderer/types'
+import type { MeasurementMode, PresenceCursor, RenderOverlays } from '#core/canvas/renderer/types'
 import type { SnappingPreferences } from '#core/editor/preferences'
+import type { RotationPreview } from '#core/geometry'
 import type { TextEditor } from '#core/text/editor'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
 
@@ -35,13 +37,7 @@ export type Tool =
 export interface EditorSharedState {
   activeTool: Tool
   snappingPreferences: SnappingPreferences
-  remoteCursors: Array<{
-    name: string
-    color: Color
-    x: number
-    y: number
-    selection?: string[]
-  }>
+  presenceCursors: PresenceCursor[]
   documentName: string
   rulerTheme?: RulerTheme
   sceneVersion: number
@@ -53,7 +49,7 @@ export interface EditorViewState {
   marquee: Rect | null
   snapGuides: SnapGuide[]
   guides: GuideOverlayState
-  rotationPreview: { nodeId: string; angle: number } | null
+  rotationPreview: RotationPreview | null
   dropTargetId: string | null
   layoutInsertIndicator: {
     parentId: string
@@ -122,7 +118,10 @@ export interface EditorEvents extends SceneGraphEvents {
   'render:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'repaint:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'graph:replaced': (graph: SceneGraph) => void
+  'document:color-space-changed': (colorSpace: DocumentColorSpace) => void
+  'history:changed': () => void
   'selection:changed': (selectedIds: string[], previousIds: string[]) => void
+  'rotation:preview-changed': (preview: RotationPreview | null) => void
   'tool:changed': (tool: Tool, previousTool: Tool) => void
   'page:changed': (pageId: string, previousPageId: string) => void
   'guides:changed': (ownerId: string, guides: readonly CanvasGuide[]) => void
@@ -169,6 +168,8 @@ export interface EditorContext {
   getTextEditor: () => TextEditor | null
   requestRender: () => void
   requestRepaint: () => void
+  beginInteractiveEdit: () => () => void
+  onEditorEvent: <K extends EditorEventName>(event: K, handler: EditorEvents[K]) => () => void
   emitEditorEvent: <K extends EditorEventName>(
     event: K,
     ...args: Parameters<EditorEvents[K]>

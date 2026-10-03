@@ -1,19 +1,18 @@
 /**
  * Adapter: tool definitions → Vercel AI SDK `tool()` objects.
  *
- * Converts ParamDef types to valibot schemas and wraps execute
- * functions with FigmaAPI instantiation.
+ * Consumes native tool input schemas and wraps execution with FigmaAPI instantiation.
  */
 
-import type { valibotSchema as createValibotSchema } from '@ai-sdk/valibot'
+// eslint-disable-next-line open-pencil/no-mixed-case-acronym-identifiers -- Upstream export spelling.
+import { toStandardJsonSchema as toStandardJSONSchema } from '@valibot/to-json-schema'
 import type { ToolSet, tool as createTool } from 'ai'
-import type * as valibot from 'valibot'
 
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { FigmaAPI } from '#core/figma-api'
 
-import type { ToolDef, ParamDef, ParamType } from './schema'
+import { isToolExposed, type ToolDef } from './schema'
 
 export interface ToolLogEntry {
   tool: string
@@ -139,27 +138,35 @@ function emitToolLog(
   })
 }
 
+function isImageOutput(
+  output: unknown
+): output is { base64: string; mimeType: string; [key: string]: unknown } {
+  return (
+    typeof output === 'object' &&
+    output !== null &&
+    'base64' in output &&
+    typeof output.base64 === 'string' &&
+    'mimeType' in output &&
+    typeof output.mimeType === 'string' &&
+    output.mimeType.startsWith('image/')
+  )
+}
+
 export function toolsToAI(
   tools: ToolDef[],
   options: AIAdapterOptions,
   deps: {
-    v: typeof valibot
-    valibotSchema: typeof createValibotSchema
     tool: typeof createTool
   }
 ): ToolSet {
-  const { v, valibotSchema, tool } = deps
+  const { tool } = deps
   const result: ToolSet = {}
 
   for (const def of tools) {
-    const shape: Record<string, unknown> = {}
-    for (const [key, param] of Object.entries(def.params)) {
-      shape[key] = paramToValibot(v, param)
-    }
-
+    if (!isToolExposed(def, 'ai')) continue
     const toolOpts: Record<string, unknown> = {
       description: def.description,
-      inputSchema: valibotSchema(v.object(shape as Record<string, never>)),
+      inputSchema: toStandardJSONSchema(def.input),
       execute: async (args: Record<string, unknown>) => {
         const startTime = Date.now()
         const figma = options.getFigma()
@@ -190,17 +197,19 @@ export function toolsToAI(
       }
     }
 
-    if (def.name === 'export_image') {
-      toolOpts.toModelOutput = ({ output }: { output: unknown }) => {
-        if (output && typeof output === 'object' && 'base64' in output && 'mimeType' in output) {
-          const r = output as { base64: string; mimeType: string }
-          return {
-            type: 'content' as const,
-            value: [{ type: 'media' as const, mediaType: r.mimeType, data: r.base64 }]
-          }
-        }
-        return { type: 'json' as const, value: output as JSONObject }
+    // Image results reach the model as media, with their metadata as text.
+    toolOpts.toModelOutput = ({ output }: { output: unknown }) => {
+      if (isImageOutput(output)) {
+        const { base64, mimeType, ...metadata } = output
+        const media = { type: 'media' as const, mediaType: mimeType, data: base64 }
+        return Object.keys(metadata).length > 0
+          ? {
+              type: 'content' as const,
+              value: [{ type: 'text' as const, text: JSON.stringify(metadata) }, media]
+            }
+          : { type: 'content' as const, value: [media] }
       }
+      return { type: 'json' as const, value: output as JSONObject }
     }
 
     result[def.name] = tool(toolOpts as never)
@@ -302,31 +311,4 @@ export function buildDebugLog(entries: ToolLogEntry[]): ToolDebugLog {
   }
 
   return { entries, duplicates, noopMutations, totalResultBytes }
-}
-
-function paramToValibot(v: typeof valibot, param: ParamDef): unknown {
-  const typeMap: Record<ParamType, () => unknown> = {
-    string: () => (param.enum ? v.picklist(param.enum as [string, ...string[]]) : v.string()),
-    number: () => {
-      const pipes: unknown[] = [v.number()]
-      if (param.min !== undefined) pipes.push(v.minValue(param.min))
-      if (param.max !== undefined) pipes.push(v.maxValue(param.max))
-      return pipes.length > 1 ? v.pipe(...(pipes as [never, never, ...never[]])) : v.number()
-    },
-    boolean: () => v.boolean(),
-    color: () => v.pipe(v.string(), v.description('Color value (hex like #ff0000 or #ff000080)')),
-    'string[]': () => v.pipe(v.array(v.string()), v.minLength(1))
-  }
-
-  let schema = typeMap[param.type]()
-
-  if (param.description && param.type !== 'color') {
-    schema = v.pipe(schema as never, v.description(param.description))
-  }
-
-  if (!param.required) {
-    schema = v.optional(schema as never, param.default as never)
-  }
-
-  return schema
 }
