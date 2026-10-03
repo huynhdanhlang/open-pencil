@@ -16,8 +16,10 @@ export interface DocumentDiff {
     status: 'added' | 'removed' | 'changed' | 'unchanged'
     diff: string | null
   }[]
-  /** All page patches joined, or `null` when the documents match. */
+  /** All page patches joined, or `null` when no page that both documents have differs. */
   diff: string | null
+  /** Whether the documents differ, including pages only one of them has. */
+  changed: boolean
 }
 
 type PageStatus = DocumentDiff['pages'][number]['status']
@@ -28,20 +30,12 @@ function pageStatus(before: boolean, after: boolean, diff: string | null): PageS
   return diff ? 'changed' : 'unchanged'
 }
 
-/** A page with no children, standing in for one only the other document has. */
-function emptyPage(page: ProjectedNode): ProjectedNode {
-  return { ...page, attributes: {}, children: [] }
-}
-
 function pageDiff(
-  before: ProjectedNode | null,
-  after: ProjectedNode | null,
+  before: ProjectedNode,
+  after: ProjectedNode,
   afterGraph: SceneGraph
 ): string | null {
-  const from = before ?? (after ? emptyPage(after) : null)
-  const to = after ?? (before ? emptyPage(before) : null)
-  if (!from || !to) return null
-  const operations = deltaOperations(diffProjections(from, to), from, to, (id) =>
+  const operations = deltaOperations(diffProjections(before, after), before, after, (id) =>
     sceneNodeToJSX(id, afterGraph)
   )
   return operations.length > 0 ? formatOperations(operations) : null
@@ -50,7 +44,8 @@ function pageDiff(
 /**
  * Structural diff of two documents, page by page. Pages match by name and nodes by name path,
  * so two versions of a file compare even though their node IDs differ. Each page's patch
- * applies to the first document.
+ * applies to the first document. Patches do not add or remove pages, so a page only one
+ * document has is reported by its status alone.
  */
 export function diffDocuments(
   before: SceneGraph,
@@ -67,14 +62,16 @@ export function diffDocuments(
   const pages = names.map((name) => {
     const beforePage = beforePages.get(name)
     const afterPage = afterPages.get(name)
-    const diff = pageDiff(
-      beforePage ? projectTree(before, beforePage.id, project) : null,
-      afterPage ? projectTree(after, afterPage.id, project) : null,
-      after
-    )
+    const from = beforePage ? projectTree(before, beforePage.id, project) : null
+    const to = afterPage ? projectTree(after, afterPage.id, project) : null
+    const diff = from && to ? pageDiff(from, to, after) : null
     return { name, status: pageStatus(Boolean(beforePage), Boolean(afterPage), diff), diff }
   })
 
   const patches = pages.flatMap((page) => (page.diff ? [page.diff] : []))
-  return { pages, diff: patches.length > 0 ? patches.join('\n') : null }
+  return {
+    pages,
+    diff: patches.length > 0 ? patches.join('\n') : null,
+    changed: pages.some((page) => page.status !== 'unchanged')
+  }
 }

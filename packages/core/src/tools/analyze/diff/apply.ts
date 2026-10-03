@@ -3,6 +3,7 @@ import { groupBy, isEqual } from 'es-toolkit'
 import {
   buildComponent,
   createElement,
+  DESIGN_JSX_SUPPORTED_PROPERTIES,
   jsxNodeFields,
   parseJSXAttributes,
   resolveToTree,
@@ -40,11 +41,11 @@ interface NodeUpdate {
   unbind: string[]
 }
 
-/** Where a moved node (`id`) or an added one (`jsx`) ends up. */
+/** Where a moved node (`ids`) or an added one (`jsx`, rendered into `ids`) ends up. */
 interface Placement {
   parentId: string
   index: number
-  id?: string
+  ids?: string[]
   jsx?: string
 }
 
@@ -75,8 +76,12 @@ function editableNode(graph: SceneGraph, id: string): SceneNode | string {
   return node
 }
 
+/** Attributes as written; one the renderer would ignore fails, rather than applying as nothing. */
 function parseSources(sources: string[]): JSXAttributeSource[] {
-  return sources.flatMap((source) => parseJSXAttributes(source))
+  const attributes = sources.flatMap((source) => parseJSXAttributes(source))
+  const unsupported = attributes.find(({ name }) => !DESIGN_JSX_SUPPORTED_PROPERTIES.has(name))
+  if (unsupported) throw new Error(`Unsupported attribute "${unsupported.name}"`)
+  return attributes
 }
 
 /** Old values that differ from the node's, and new attributes it already has. */
@@ -186,7 +191,7 @@ function planOperation(graph: SceneGraph, operation: DiffOperation, force: boole
       const node = editableNode(graph, operation.id)
       if (typeof node === 'string') return failed(operation, node)
       if (!node.parentId) return failed(operation, `Node "${node.id}" has no parent`)
-      const place = { parentId: node.parentId, index: operation.index, id: node.id }
+      const place = { parentId: node.parentId, index: operation.index, ids: [node.id] }
       return { result: { path: operation.path, id: node.id, status: 'moved' }, place }
     }
   }
@@ -211,33 +216,44 @@ function commitUpdate(graph: SceneGraph, update: NodeUpdate): void {
   }
 }
 
+type Placed = Plan & { place: Placement }
+
 /**
- * Moves and additions under one parent, as jsondiffpatch patches arrays: take the moved
- * children out, then insert each moved or added child at its final index, in index order.
+ * Render added nodes before changing anything else. Rendering can still fail, for example on
+ * an icon that cannot be fetched; then the nodes rendered so far are deleted and nothing else
+ * is committed, so a patch never half-applies.
  */
-async function commitPlacements(
-  figma: FigmaAPI,
-  parentId: string,
-  plans: (Plan & { place: Placement })[]
-) {
+async function renderAdditions(figma: FigmaAPI, plans: Placed[]): Promise<boolean> {
   const { renderJSX } = await import('#core/design-jsx')
-  const graph = figma.graph
-  const moved = new Set(plans.flatMap((plan) => plan.place.id ?? []))
-  const order = (graph.getNode(parentId)?.childIds ?? []).filter((id) => !moved.has(id))
-  for (const plan of plans.toSorted((a, b) => a.place.index - b.place.index)) {
-    const { id, jsx, index } = plan.place
-    if (id) {
-      order.splice(index, 0, id)
-      continue
-    }
+  const rendered: string[] = []
+  for (const plan of plans) {
+    const { jsx, parentId } = plan.place
+    if (jsx === undefined) continue
     try {
-      const results = await renderJSX(graph, jsx ?? '', { parentId })
+      const results = await renderJSX(figma.graph, jsx, { parentId })
+      plan.place.ids = results.map((result) => result.id)
       plan.result.id = results[0].id
-      order.splice(index, 0, ...results.map((result) => result.id))
+      rendered.push(...plan.place.ids)
     } catch (error) {
       plan.result.status = 'failed'
       plan.result.error = errorMessage(error)
+      for (const id of rendered.toReversed()) figma.graph.deleteNode(id)
+      for (const other of plans) if (other.place.jsx !== undefined) other.result.id = null
+      return false
     }
+  }
+  return true
+}
+
+/**
+ * Moves and additions under one parent, as jsondiffpatch patches arrays: take the placed
+ * children out, then insert each at its final index, in index order.
+ */
+function commitPlacements(graph: SceneGraph, parentId: string, plans: Placed[]): void {
+  const placed = new Set(plans.flatMap((plan) => plan.place.ids ?? []))
+  const order = (graph.getNode(parentId)?.childIds ?? []).filter((id) => !placed.has(id))
+  for (const plan of plans.toSorted((a, b) => a.place.index - b.place.index)) {
+    order.splice(plan.place.index, 0, ...(plan.place.ids ?? []))
   }
   for (const [index, id] of order.entries()) {
     if (graph.getNode(parentId)?.childIds[index] !== id) graph.insertChildAt(id, parentId, index)
@@ -246,8 +262,9 @@ async function commitPlacements(
 
 /**
  * Apply a patch's operations. Every operation is checked first and nothing changes unless all
- * pass; a dry run stops there. Updates go through the JSX renderer's prop handling and change
- * only the fields their attributes move, so IDs, instance links, and other state survive.
+ * pass; a dry run stops there. Added nodes render first, so one that fails to render leaves the
+ * document as it was. Updates go through the JSX renderer's prop handling and change only the
+ * fields their attributes move, so IDs, instance links, and other state survive.
  */
 export async function applyOperations(
   figma: FigmaAPI,
@@ -255,9 +272,10 @@ export async function applyOperations(
   options: ApplyOptions
 ): Promise<ApplyResult[]> {
   const plans = planOperations(figma.graph, operations, options.force)
-  if (options.dryRun || plans.some((plan) => plan.result.status === 'failed')) {
-    return plans.map((plan) => plan.result)
-  }
+  const results = () => plans.map((plan) => plan.result)
+  if (options.dryRun || plans.some((plan) => plan.result.status === 'failed')) return results()
+  const placed = plans.filter((plan): plan is Placed => !!plan.place)
+  if (!(await renderAdditions(figma, placed))) return results()
   for (const plan of plans) {
     if (plan.update && plan.result.status === 'applied') {
       commitUpdate(figma.graph, plan.update)
@@ -269,10 +287,8 @@ export async function applyOperations(
       figma.getNodeById(plan.result.id)?.remove()
     }
   }
-  const placed = plans.filter((plan): plan is Plan & { place: Placement } => !!plan.place)
-  const byParent = groupBy(placed, (plan) => plan.place.parentId)
-  for (const [parentId, group] of Object.entries(byParent)) {
-    await commitPlacements(figma, parentId, group)
+  for (const [parentId, group] of Object.entries(groupBy(placed, (plan) => plan.place.parentId))) {
+    commitPlacements(figma.graph, parentId, group)
   }
-  return plans.map((plan) => plan.result)
+  return results()
 }

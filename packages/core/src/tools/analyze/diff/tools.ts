@@ -47,7 +47,12 @@ export const diffCreate = defineTool({
     ...nodeComparisonInput.entries,
     depth: v.optional(
       toolNumber(
-        v.pipe(v.number(), v.description(`Max tree depth (default: ${DEFAULT_DIFF_DEPTH})`))
+        v.pipe(
+          v.number(),
+          v.integer(),
+          v.minValue(0),
+          v.description(`Max tree depth (default: ${DEFAULT_DIFF_DEPTH})`)
+        )
       )
     )
   }),

@@ -19,7 +19,6 @@ export const chatToolTheme = tv({
     nodeLabel: 'truncate',
     image:
       'max-h-56 w-auto max-w-full rounded border border-border bg-[repeating-conic-gradient(var(--color-hover)_0_25%,transparent_0_50%)] bg-size-[12px_12px] object-contain',
-    json: 'max-h-64 overflow-auto rounded border border-border bg-input p-2 font-mono text-[10px] text-muted',
     compare:
       'relative w-full max-w-full overflow-hidden rounded border border-border bg-input select-none data-[mode=highlight]:[&>img:first-child]:opacity-40',
     compareImage: 'absolute inset-0 size-full object-contain',

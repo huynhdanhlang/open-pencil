@@ -36,7 +36,7 @@ Each hunk names a node by path, for reading, and by ID, which locates it. `-` li
 openpencil diff show 1:24 design.fig --attributes 'bg="#F4F4F5" rounded={8}' > header.diff
 ```
 
-`diff apply` applies a patch to the document whose IDs it names. Every node must still have the patch's old values, and nothing changes unless every hunk applies, so a patch made against an older state never half-applies:
+`diff apply` applies a patch to the document whose IDs it names. Every node must still have the patch's old values unless `--force` skips that check, and nothing changes unless every hunk applies, so a patch never half-applies:
 
 ```sh
 openpencil diff apply header.diff design.fig --dry-run   # validate first
@@ -69,7 +69,7 @@ openpencil diff files before.fig after.fig
 openpencil diff files before.fig after.fig --page "Mobile" --json
 ```
 
-Compares two documents page by page. Pages match by name and nodes by name path, so two versions of a file compare even though node IDs differ; the patch applies to the first document. Like `diff(1)`, the command exits with status 1 when the documents differ.
+Compares two documents page by page. Pages match by name and nodes by name path, so two versions of a file compare even though node IDs differ; the patch applies to the first document. Patches do not add or remove pages: a page only one document has is listed by name and status instead. Like `diff(1)`, the command exits with status 1 when the documents differ.
 
 ## Agents
 

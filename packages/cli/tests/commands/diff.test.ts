@@ -58,6 +58,16 @@ describe('diff CLI', () => {
     expect(stale.stdout).toContain('name: expected name=\\"Other\\", found name=\\"Logo\\"')
   })
 
+  test.each([
+    [['--page', 'Nope'], 'Neither document has a page named "Nope"'],
+    [['--depth', 'abc'], '--depth must be a non-negative integer, got "abc"'],
+    [['--depth=-1'], '--depth must be a non-negative integer, got "-1"']
+  ])('files rejects %p instead of reporting a match', async (options, error) => {
+    const result = await cli(['diff', 'files', FIXTURE, FIXTURE, ...options])
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr).toContain(error)
+  })
+
   test('visual writes a PNG and reports the changed area', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'open-pencil-diff-'))
     const output = join(dir, 'diff.png')

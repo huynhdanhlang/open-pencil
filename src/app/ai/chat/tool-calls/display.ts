@@ -28,10 +28,10 @@ export function toolDisplayName(part: ToolCallPart): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** The element and name a JSX source opens with, such as `Frame "Pricing"`. */
 /** The root element's opening tag, which may still be streaming in. */
 const ROOT_TAG = /<([A-Z][\w.]*)([^>]*)/
 
+/** The element and name a JSX source opens with, such as `Frame "Pricing"`. */
 function jsxSummary(jsx: string): string {
   const root = ROOT_TAG.exec(jsx)
   if (!root) return ''

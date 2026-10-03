@@ -252,7 +252,7 @@ openpencil diff show <id> [file] --attributes '<jsx attributes>' [--json]
 
 ## diff apply
 
-Apply a patch from `diff create`, `diff show`, or `diff files`. Every node must still match the patch's old values, and nothing changes unless every hunk applies.
+Apply a patch from `diff create`, `diff show`, or `diff files`. Every node must still match the patch's old values unless `--force` is set, and nothing changes unless every hunk applies.
 
 ```sh
 openpencil diff apply <patch> [file] [options]
@@ -286,7 +286,7 @@ openpencil diff visual [file] --from <id> --to <id> --output <png> [options]
 
 ## diff files
 
-Structural diff of two documents, page by page. Pages match by name and nodes by name path, so two versions of a file compare even though their node IDs differ. Exits with status 1 when the documents differ.
+Structural diff of two documents, page by page. Pages match by name and nodes by name path, so two versions of a file compare even though their node IDs differ. Exits with status 1 when the documents differ and 2 when the options are invalid, such as a `--page` neither document has.
 
 ```sh
 openpencil diff files <before> <after> [options]

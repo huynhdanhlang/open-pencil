@@ -160,6 +160,36 @@ describe('diff_create and diff_apply', () => {
     expect(graph.getNode(label.id)).toBeUndefined()
   })
 
+  test('rejects an attribute the renderer would ignore', async () => {
+    const { graph, figma, card } = setup()
+    const patch = `@@ /Card #${card.id}\n+opacity={0.5}\n+bogus={1}`
+
+    const applied = await run<ApplyResult>(figma, 'diff_apply', { patch })
+    expect(applied.error).toBe('Patch does not apply')
+    expect(applied.results?.[0]?.error).toBe('Unsupported attribute "bogus"')
+    expect(getNodeOrThrow(graph, card.id).opacity).toBe(1)
+  })
+
+  test('leaves the document as it was when an added node fails to render', async () => {
+    const { graph, figma, card } = setup()
+    const children = [...getNodeOrThrow(graph, card.id).childIds]
+    // The JSX evaluates, so the check passes, but rendering finds no such component.
+    const patch = [
+      `@@ /Card #${card.id}`,
+      '+opacity={0.5}',
+      `@@ /Card/Dot added to #${card.id} at 0`,
+      '+<Ellipse name="Dot" />',
+      `@@ /Card/Button added to #${card.id} at 1`,
+      '+<Instance component="Missing" />'
+    ].join('\n')
+
+    const applied = await run<ApplyResult>(figma, 'diff_apply', { patch })
+    expect(applied.error).toBe('Patch does not apply')
+    expect(applied.results?.[0]?.error).toContain('component not found: Missing')
+    expect(getNodeOrThrow(graph, card.id).opacity).toBe(1)
+    expect(getNodeOrThrow(graph, card.id).childIds).toEqual(children)
+  })
+
   test('reports a hunk it cannot read', async () => {
     const { figma } = setup()
     const applied = await run<ApplyResult>(figma, 'diff_apply', { patch: 'w={1}' })
@@ -216,6 +246,24 @@ describe('diffDocuments', () => {
   test('reports identical documents as unchanged', () => {
     const result = diffDocuments(setup().graph, setup().graph)
     expect(result.diff).toBeNull()
+    expect(result.changed).toBe(false)
     expect(result.pages.map((page) => page.status)).toEqual(['unchanged'])
+  })
+
+  test('reports a page only one document has by status, without a patch', () => {
+    const before = setup()
+    const after = setup()
+    after.graph.addPage('Empty')
+    const extra = after.graph.addPage('Extra')
+    after.graph.createNode('FRAME', extra.id, { name: 'Card' })
+
+    const result = diffDocuments(before.graph, after.graph)
+    expect(result.changed).toBe(true)
+    expect(result.diff).toBeNull()
+    expect(result.pages.map(({ name, status, diff }) => ({ name, status, diff }))).toEqual([
+      { name: 'Page 1', status: 'unchanged', diff: null },
+      { name: 'Empty', status: 'added', diff: null },
+      { name: 'Extra', status: 'added', diff: null }
+    ])
   })
 })
