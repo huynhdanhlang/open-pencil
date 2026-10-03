@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { tv } from 'tailwind-variants'
+
+import theme from '@/theme/settings/ai-setup/wizard'
+
 const { label, description } = defineProps<{ label: string; description?: string }>()
+const styles = tv(theme)()
 </script>
 
 <template>
-  <label
-    class="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-3 transition-colors hover:bg-hover has-[:checked]:border-accent has-[:checked]:bg-accent/5 has-[[data-state=checked]]:border-accent has-[[data-state=checked]]:bg-accent/5 focus-within:ring-2 focus-within:ring-accent/50"
-  >
+  <label :class="styles.choice()">
     <slot />
     <span
       ><span class="font-medium">{{ label }}</span

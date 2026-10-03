@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, useId } from 'vue'
 
 import AppButton from '@/components/ui/button/AppButton.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
+import AppRadioGroup from '@/components/ui/toggle/AppRadioGroup.vue'
 import theme from '@/theme/settings/ai-setup/wizard'
 
-import { accounts, goals, proposeSetup, type SetupAnswers } from './recommendations'
+import { accounts, goals, proposeSetup, type SetupAnswers, type Spending } from './recommendations'
 import SetupActions from './SetupActions.vue'
 import SetupChoice from './SetupChoice.vue'
 import TaskAssignmentReview from './TaskAssignmentReview.vue'
@@ -38,6 +39,7 @@ const answers = reactive<SetupAnswers>({
 const step = ref(initialStep)
 const applied = ref(false)
 const styles = tv(theme)()
+const headingId = useId()
 const proposals = computed(() => proposeSetup(answers))
 const required = computed(() => [
   ...new Set(proposals.value.flatMap((item) => (item.requires ? [item.requires] : [])))
@@ -48,6 +50,10 @@ const titles = [
   'Include pay-as-you-go models?',
   'Connect recommended access',
   'Your AI setup'
+]
+const spendingOptions: { value: Spending; label: string }[] = [
+  { value: 'existing', label: 'Use my existing accounts only' },
+  { value: 'metered', label: 'Include pay-as-you-go options' }
 ]
 const waiting = ref('')
 function toggle<T>(list: T[], value: T, checked: boolean) {
@@ -80,7 +86,9 @@ function confirm(assignments: Record<string, string>) {
         >{{ mode === 'adjust' ? 'Adjust your AI setup' : 'AI setup' }} · {{ step + 1 }} of 5</span
       ><AppButton @click="emit('manual')">Manual configuration</AppButton>
     </header>
-    <h1 :class="styles.heading()">{{ applied ? 'Your setup is saved' : titles[step] }}</h1>
+    <h1 :id="headingId" :class="styles.heading()">
+      {{ applied ? 'Your setup is saved' : titles[step] }}
+    </h1>
     <div v-if="applied" class="mt-3 text-xs text-muted">
       You can change connections and task assignments independently in Settings.
     </div>
@@ -125,12 +133,12 @@ function confirm(assignments: Record<string, string>) {
           Additional models can provide visual feedback or generate vector artwork. Requests are
           billed to the API or gateway account you connect, separately from your AI subscriptions.
         </p>
-        <SetupChoice label="Use my existing accounts only">
-          <input v-model="answers.spending" type="radio" value="existing" name="spending" />
-        </SetupChoice>
-        <SetupChoice label="Include pay-as-you-go options">
-          <input v-model="answers.spending" type="radio" value="metered" name="spending" />
-        </SetupChoice>
+        <AppRadioGroup
+          v-model="answers.spending"
+          :labelledby="headingId"
+          :options="spendingOptions"
+          :ui="{ root: 'gap-3', option: styles.choice() }"
+        />
         <p :class="styles.help()">Choosing an option here only changes our recommendations.</p>
       </template>
       <template v-else-if="step === 3">
