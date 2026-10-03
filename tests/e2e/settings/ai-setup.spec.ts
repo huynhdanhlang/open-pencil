@@ -73,6 +73,9 @@ test('guided setup connects a local server and saves it as the design model', as
   await setup.getByRole('button', { name: 'Done' }).click()
 
   const models = page.getByTestId('settings-model-list')
-  await expect(models.getByText('qwen3-coder:30b', { exact: true })).toBeVisible()
+  const model = models.locator('[data-model-id]', { hasText: 'qwen3-coder:30b' })
+  await expect(model).toBeVisible()
+  // The saved key shows without reopening Settings.
+  await expect(model.getByText('Connected', { exact: true })).toBeVisible()
   await expect(models.getByText('Design model', { exact: true })).toHaveCount(0)
 })
