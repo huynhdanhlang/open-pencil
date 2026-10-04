@@ -25,7 +25,7 @@ import { createCanvasJSXPreview } from '@/app/ai/preview/canvas'
 import { createAITools, endRun, recordStep, runPageId, startRun } from '@/app/ai/tools'
 import { enabledAIToolDefinitions } from '@/app/ai/tools/catalog'
 import { aiToolOverrides } from '@/app/ai/tools/preferences'
-import { diagnosticErrorDetails } from '@/app/diagnostics/error'
+import { diagnosticErrorDetails } from '@/app/diagnostics'
 import {
   recordChatCompleted,
   recordChatFailed,

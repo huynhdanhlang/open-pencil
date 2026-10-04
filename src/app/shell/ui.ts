@@ -1,7 +1,7 @@
 import { useEventListener } from '@vueuse/core'
 import { ref } from 'vue'
 
-import { recordRuntimeError } from '@/app/diagnostics/events/runtime'
+import { recordRuntimeError } from '@/app/diagnostics'
 import { isTauri } from '@/app/tauri/env'
 import type { ToastProgress, ToastVariant } from '@/components/ui/feedback/toast'
 

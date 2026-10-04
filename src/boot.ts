@@ -4,7 +4,7 @@ import { createApp, nextTick } from 'vue'
 import { createRetainedScopePlugin } from '@open-pencil/vue'
 
 import './app.css'
-import { recordRuntimeError } from '@/app/diagnostics/events/runtime'
+import { recordRuntimeError } from '@/app/diagnostics'
 import { preloadFonts } from '@/app/editor/fonts'
 import { observeBootErrors } from '@/app/shell/support/boot'
 import { reportBootFailure } from '@/app/shell/support/gate'

@@ -78,26 +78,31 @@ export function recordChatFailed(
   recordAIEvent('chat.failed', input, chatFailedSchema, context)
 }
 
+type ToolOutcome = { level: DiagnosticLevel; details: Record<string, DiagnosticValue> }
+
 /**
- * A failed tool is a warning, since models often call one wrongly. When the engine itself
- * broke, it is an error with the message and stack; otherwise only the error's name is kept.
+ * A failed call is a warning, since models often call a tool wrongly, and keeps only the
+ * error's name: its message quotes the call's input. A bug in OpenPencil is an error and
+ * keeps its message and stack, which name code rather than content.
  */
+function toolOutcome(failed: boolean, cause: unknown): ToolOutcome {
+  if (!failed) return { level: 'info', details: {} }
+  if (isInternalError(cause)) {
+    return {
+      level: 'error',
+      details: pick(diagnosticErrorDetails(cause), ['errorName', 'message', 'stack'])
+    }
+  }
+  // A tool that returned `{ error }` threw nothing.
+  const details = cause === undefined ? {} : pick(describeDiagnosticError(cause), ['errorName'])
+  return { level: 'warning', details }
+}
+
 export function recordToolCompleted(
   input: Omit<v.InferOutput<typeof toolCompletedSchema>, 'errorName' | 'message' | 'stack'>,
   context?: AIDiagnosticContext,
   cause?: unknown
 ): void {
-  const record = (attributes: Record<string, DiagnosticValue>, level: DiagnosticLevel) =>
-    recordAIEvent(
-      'tool.completed',
-      { ...input, ...attributes },
-      toolCompletedSchema,
-      context,
-      level
-    )
-  if (!input.failed) return record({}, 'info')
-  if (isInternalError(cause)) {
-    return record(pick(diagnosticErrorDetails(cause), ['errorName', 'message', 'stack']), 'error')
-  }
-  record(cause === undefined ? {} : pick(describeDiagnosticError(cause), ['errorName']), 'warning')
+  const { level, details } = toolOutcome(input.failed, cause)
+  recordAIEvent('tool.completed', { ...input, ...details }, toolCompletedSchema, context, level)
 }
