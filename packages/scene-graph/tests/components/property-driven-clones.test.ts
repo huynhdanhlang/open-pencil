@@ -79,3 +79,48 @@ test('a late visibility-driven child takes the assigned visibility', () => {
   const badge = graph.getChildren(instance.id).find((child) => child.name === 'Badge')
   expect(badge?.visible).toBe(false)
 })
+
+/**
+ * A property id belongs to the component that defines it. A nested instance of a component that
+ * defines the same id owns that reference, so an outer instance's unrelated property of the same
+ * id must not reach it.
+ */
+test('a nested component that defines the id keeps an outer assignment out', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+
+  const inner = graph.createNode('COMPONENT', page.id, {
+    name: 'Inner',
+    componentPropertyDefinitions: [
+      { id: 'shared', name: 'Label', type: 'TEXT', defaultValue: 'Inner default' }
+    ]
+  })
+  const outer = graph.createNode('COMPONENT', page.id, {
+    name: 'Outer',
+    componentPropertyDefinitions: [
+      { id: 'shared', name: 'Caption', type: 'TEXT', defaultValue: 'Outer default' }
+    ]
+  })
+  graph.createInstance(inner.id, outer.id)
+
+  const placed = graph.createInstance(outer.id, page.id)
+  graph.updateNode(placed.id, { componentPropertyAssignments: { shared: 'Outer assigned' } })
+
+  // Inner gains a layer its own property drives, after everything above exists.
+  graph.createNode('TEXT', inner.id, {
+    name: 'Inner label',
+    text: 'Inner default',
+    componentPropertyReferences: [{ propertyId: 'shared', field: 'TEXT' }]
+  })
+  graph.syncInstances(inner.id)
+  graph.syncInstances(outer.id)
+
+  const innerInstance = graph
+    .getChildren(placed.id)
+    .find((child) => child.type === 'INSTANCE')
+  const label = innerInstance
+    ? graph.getChildren(innerInstance.id).find((child) => child.name === 'Inner label')
+    : undefined
+
+  expect(label?.text).toBe('Inner default')
+})

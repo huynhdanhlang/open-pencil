@@ -183,7 +183,20 @@ const PROPERTY_REFERENCE_FIELDS: Partial<Record<ComponentPropertyReferenceField,
   INSTANCE_SWAP: 'componentId'
 }
 
-/** What the nearest enclosing instance assigns `propertyId`, if any does. */
+/** Whether this instance's component, or its set, is where `propertyId` is defined. */
+function definesProperty(graph: SceneGraph, instance: SceneNode, propertyId: string): boolean {
+  const component = instance.componentId ? graph.nodes.get(instance.componentId) : undefined
+  const set = component?.parentId ? graph.nodes.get(component.parentId) : undefined
+  return [component, set]
+    .flatMap((node) => node?.componentPropertyDefinitions ?? [])
+    .some((definition) => definition.id === propertyId)
+}
+
+/**
+ * What the nearest enclosing instance assigns `propertyId`, if any does. A property id belongs
+ * to the component that defines it, so the walk stops at an instance of that component even
+ * when it assigns nothing; otherwise an outer instance's unrelated property of the same id wins.
+ */
 function enclosingAssignment(
   graph: SceneGraph,
   node: SceneNode,
@@ -191,11 +204,11 @@ function enclosingAssignment(
 ): string | undefined {
   let current: SceneNode | undefined = node
   while (current) {
-    if (
-      current.type === 'INSTANCE' &&
-      Object.hasOwn(current.componentPropertyAssignments, propertyId)
-    )
-      return current.componentPropertyAssignments[propertyId]
+    if (current.type === 'INSTANCE') {
+      if (Object.hasOwn(current.componentPropertyAssignments, propertyId))
+        return current.componentPropertyAssignments[propertyId]
+      if (definesProperty(graph, current, propertyId)) return undefined
+    }
     current = current.parentId ? graph.nodes.get(current.parentId) : undefined
   }
   return undefined
