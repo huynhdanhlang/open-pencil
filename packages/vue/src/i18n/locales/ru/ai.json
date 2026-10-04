@@ -225,5 +225,14 @@
   "aiSetupAgentCopyPrompt": "Скопировать промпт настройки",
   "aiSetupAgentCheckAgain": "Проверить снова",
   "aiSetupAgentGuide": "Руководство по настройке",
-  "aiSetupGetDesktop": "Скачать настольное приложение"
+  "aiSetupGetDesktop": "Скачать настольное приложение",
+  "aiSetupAgentNeedsAdapter": "установлен · нет адаптера OpenPencil",
+  "aiSetupAgentInstallAdapter": "Установить адаптер",
+  "aiSetupAgentInstallMCP": "Установить MCP-сервер",
+  "aiSetupAgentInstalling": "Устанавливаем…",
+  "aiSetupAgentGetCLI": "Установить {agent}",
+  "aiSetupAgentNeedsNpm": "Для установки нужен npm, который входит в Node.js. Установите Node.js и проверьте снова.",
+  "aiSetupAgentInstallFailed": "Установка не завершилась. Проверьте подключение или выполните команду вручную.",
+  "aiSetupAgentMCPStartFailed": "MCP-сервер установлен, но не запустился. Перезапустите OpenPencil и проверьте снова.",
+  "aiSetupAgentLookupFailed": "Не удалось проверить этот компьютер. Попробуйте снова."
 }

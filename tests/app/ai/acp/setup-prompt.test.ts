@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 
-import { MCP_INSTALL_COMMAND } from '@/app/ai/acp/install'
-import { codingAgentGuideURL, codingAgentSetupPrompt } from '@/app/ai/acp/setup-prompt'
+import {
+  codingAgentGuideURL,
+  codingAgentSetupPrompt,
+  MCP_INSTALL_COMMAND
+} from '@/app/ai/acp/setup-prompt'
 
 describe('codingAgentSetupPrompt', () => {
   for (const agent of ACP_AGENTS) {

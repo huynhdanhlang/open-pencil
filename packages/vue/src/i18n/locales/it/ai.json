@@ -225,5 +225,14 @@
   "aiSetupAgentCopyPrompt": "Copia il prompt di configurazione",
   "aiSetupAgentCheckAgain": "Controlla di nuovo",
   "aiSetupAgentGuide": "Guida alla configurazione",
-  "aiSetupGetDesktop": "Scarica l’app desktop"
+  "aiSetupGetDesktop": "Scarica l’app desktop",
+  "aiSetupAgentNeedsAdapter": "installato · manca l’adattatore OpenPencil",
+  "aiSetupAgentInstallAdapter": "Installa adattatore",
+  "aiSetupAgentInstallMCP": "Installa server MCP",
+  "aiSetupAgentInstalling": "Installazione…",
+  "aiSetupAgentGetCLI": "Installa {agent}",
+  "aiSetupAgentNeedsNpm": "Per installare serve npm, incluso in Node.js. Installa Node.js e poi controlla di nuovo.",
+  "aiSetupAgentInstallFailed": "L’installazione non è stata completata. Controlla la connessione o esegui il comando manualmente.",
+  "aiSetupAgentMCPStartFailed": "Il server MCP è installato ma non si è avviato. Riavvia OpenPencil e controlla di nuovo.",
+  "aiSetupAgentLookupFailed": "Impossibile controllare questo computer. Riprova."
 }

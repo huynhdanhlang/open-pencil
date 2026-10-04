@@ -225,5 +225,14 @@
   "aiSetupAgentCopyPrompt": "セットアップ用プロンプトをコピー",
   "aiSetupAgentCheckAgain": "もう一度確認",
   "aiSetupAgentGuide": "セットアップガイド",
-  "aiSetupGetDesktop": "デスクトップアプリを入手"
+  "aiSetupGetDesktop": "デスクトップアプリを入手",
+  "aiSetupAgentNeedsAdapter": "インストール済み・OpenPencil アダプターがありません",
+  "aiSetupAgentInstallAdapter": "アダプターをインストール",
+  "aiSetupAgentInstallMCP": "MCP サーバーをインストール",
+  "aiSetupAgentInstalling": "インストールしています…",
+  "aiSetupAgentGetCLI": "{agent} をインストール",
+  "aiSetupAgentNeedsNpm": "インストールには Node.js に含まれる npm が必要です。Node.js をインストールしてから、もう一度確認してください。",
+  "aiSetupAgentInstallFailed": "インストールが完了しませんでした。接続を確認するか、コマンドを自分で実行してください。",
+  "aiSetupAgentMCPStartFailed": "MCP サーバーはインストール済みですが起動しませんでした。OpenPencil を再起動してから、もう一度確認してください。",
+  "aiSetupAgentLookupFailed": "このコンピューターを確認できませんでした。もう一度お試しください。"
 }

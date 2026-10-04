@@ -2,8 +2,12 @@ ja:ai.aiSetupAccessAPI
 ja:ai.aiSetupAccessAgentsDesktop
 ja:ai.aiSetupAccessServerDescription
 ja:ai.aiSetupAgentDescription
+ja:ai.aiSetupAgentInstallMCP
 ja:ai.aiSetupAgentMCP
 ja:ai.aiSetupAgentMCPInstall
+ja:ai.aiSetupAgentMCPStartFailed
+ja:ai.aiSetupAgentNeedsAdapter
+ja:ai.aiSetupAgentNeedsNpm
 ja:ai.aiSetupAgentPromptHint
 ja:ai.aiSetupConnectTitle
 ja:ai.aiSetupGapAddOpenRouter
@@ -168,8 +172,12 @@ zh-cn:ai.aiSetupAccessAPI
 zh-cn:ai.aiSetupAccessAgentsDesktop
 zh-cn:ai.aiSetupAccessServerDescription
 zh-cn:ai.aiSetupAgentDescription
+zh-cn:ai.aiSetupAgentInstallMCP
 zh-cn:ai.aiSetupAgentMCP
 zh-cn:ai.aiSetupAgentMCPInstall
+zh-cn:ai.aiSetupAgentMCPStartFailed
+zh-cn:ai.aiSetupAgentNeedsAdapter
+zh-cn:ai.aiSetupAgentNeedsNpm
 zh-cn:ai.aiSetupAgentPromptHint
 zh-cn:ai.aiSetupConnectTitle
 zh-cn:ai.aiSetupGapAddOpenRouter

@@ -151,6 +151,12 @@ export interface ACPAgentDef {
   name: string
   command: string
   args: string[]
+  /** The agent's own CLI, when the ACP program is a separate adapter for it. */
+  cliCommand?: string
+  /** npm package that provides `command` when it is an adapter. */
+  adapterPackage?: string
+  /** The vendor's installation guide for the agent itself. */
+  setupURL?: string
   installCommand?: string
 }
 
@@ -160,6 +166,9 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     name: 'Claude Code',
     command: 'claude-agent-acp',
     args: [],
+    cliCommand: 'claude',
+    adapterPackage: '@agentclientprotocol/claude-agent-acp',
+    setupURL: 'https://code.claude.com/docs/en/setup',
     installCommand: 'npm i -g @agentclientprotocol/claude-agent-acp'
   },
   {
@@ -167,13 +176,17 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     name: 'Codex',
     command: 'codex-acp',
     args: [],
-    installCommand: 'npm i -g @zed-industries/codex-acp'
+    cliCommand: 'codex',
+    adapterPackage: '@agentclientprotocol/codex-acp',
+    setupURL: 'https://developers.openai.com/codex/cli',
+    installCommand: 'npm i -g @agentclientprotocol/codex-acp'
   },
   {
     id: 'gemini-cli',
     name: 'Gemini CLI',
     command: 'gemini',
     args: ['--acp'],
+    setupURL: 'https://geminicli.com/docs/get-started/installation/',
     installCommand: 'npm i -g @google/gemini-cli'
   }
 ]

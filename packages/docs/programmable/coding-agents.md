@@ -33,7 +33,7 @@ Sign in by running `claude` and using `/login`. The ACP program uses the same ac
 ## Codex
 
 ```sh
-npm install -g @zed-industries/codex-acp
+npm install -g @agentclientprotocol/codex-acp
 ```
 
 Sign in with `codex login`.

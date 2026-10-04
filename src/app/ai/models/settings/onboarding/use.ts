@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import { IS_TAURI } from '@open-pencil/core/constants'
 
@@ -79,6 +79,10 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
   const { connection, ready, markKeySaved } = connections
   const signIn = useOnboardingSignIn(connections)
   const agents = useOnboardingAgents()
+  // Look for installed agents when they are about to be connected, and again on return.
+  watch(step, (current) => {
+    if (current === 'connect') void agents.refreshAgents()
+  })
 
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0

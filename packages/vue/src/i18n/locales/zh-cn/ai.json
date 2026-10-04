@@ -225,5 +225,14 @@
   "aiSetupAgentCopyPrompt": "复制设置提示词",
   "aiSetupAgentCheckAgain": "重新检查",
   "aiSetupAgentGuide": "设置指南",
-  "aiSetupGetDesktop": "获取桌面应用"
+  "aiSetupGetDesktop": "获取桌面应用",
+  "aiSetupAgentNeedsAdapter": "已安装 · 缺少 OpenPencil 适配器",
+  "aiSetupAgentInstallAdapter": "安装适配器",
+  "aiSetupAgentInstallMCP": "安装 MCP 服务器",
+  "aiSetupAgentInstalling": "正在安装…",
+  "aiSetupAgentGetCLI": "安装 {agent}",
+  "aiSetupAgentNeedsNpm": "安装需要 Node.js 自带的 npm。请先安装 Node.js，然后重新检查。",
+  "aiSetupAgentInstallFailed": "安装未完成。请检查网络连接，或自行运行该命令。",
+  "aiSetupAgentMCPStartFailed": "MCP 服务器已安装但未能启动。请重启 OpenPencil，然后重新检查。",
+  "aiSetupAgentLookupFailed": "无法检查这台电脑，请重试。"
 }

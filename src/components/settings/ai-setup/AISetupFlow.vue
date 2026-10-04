@@ -192,7 +192,7 @@ async function finish(): Promise<void> {
           :has-saved-key="onboarding.hasSavedKey(providerID)"
           :sign-in-status="onboarding.signInStatus(providerID)"
           :server-vision="answers.serverVision ?? false"
-          :agent-status="onboarding.agentStatus(providerID)"
+          :agent-setup="onboarding.agentSetup(providerID)"
           :recommended="!answers.access.includes(providerID)"
           :disabled="busy"
           @update="updateConnection(providerID, $event)"
@@ -202,7 +202,9 @@ async function finish(): Promise<void> {
           @cancel-sign-in="onboarding.cancelSignIn(providerID)"
           @sign-out="onboarding.signOut(providerID)"
           @server-vision="answers.serverVision = $event"
-          @check-agent="onboarding.checkAgent(providerID)"
+          @check-agent="onboarding.refreshAgents()"
+          @install-agent="onboarding.installAgent(providerID)"
+          @install-bridge="onboarding.setupCanvasBridge()"
         />
       </template>
 

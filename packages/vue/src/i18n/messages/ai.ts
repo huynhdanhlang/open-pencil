@@ -213,6 +213,18 @@ export const aiMessageDefaults = {
   aiSetupAgentPromptHint: params(
     'Already using {agent} or another coding agent? Copy the setup prompt and paste it there; it installs what OpenPencil needs.'
   ),
+  aiSetupAgentNeedsAdapter: 'installed · OpenPencil adapter missing',
+  aiSetupAgentInstallAdapter: 'Install adapter',
+  aiSetupAgentInstallMCP: 'Install MCP server',
+  aiSetupAgentInstalling: 'Installing…',
+  aiSetupAgentGetCLI: params('Install {agent}'),
+  aiSetupAgentNeedsNpm:
+    'Installing needs npm, which comes with Node.js. Install Node.js, then check again.',
+  aiSetupAgentInstallFailed:
+    'The installation didn’t finish. Check your connection, or run the command yourself.',
+  aiSetupAgentMCPStartFailed:
+    'The MCP server is installed but didn’t start. Restart OpenPencil, then check again.',
+  aiSetupAgentLookupFailed: 'Couldn’t check this computer. Try again.',
   aiSetupAgentCopyPrompt: 'Copy setup prompt',
   aiSetupAgentCheckAgain: 'Check again',
   aiSetupAgentGuide: 'Setup guide',

@@ -2,7 +2,10 @@ import dedent from 'dedent'
 
 import { ACP_AGENTS, type ACPAgentID } from '@open-pencil/core/constants'
 
-import { MCP_INSTALL_COMMAND } from './install'
+import { MCP_INSTALL_TARGET } from '@/app/automation/mcp/failure'
+
+/** Installs OpenPencil's MCP server at the version that matches the app. */
+export const MCP_INSTALL_COMMAND = `npm i -g ${MCP_INSTALL_TARGET}`
 
 /** The public guide for connecting a coding agent, one section per agent. */
 export const CODING_AGENTS_GUIDE_URL = 'https://openpencil.dev/programmable/coding-agents'

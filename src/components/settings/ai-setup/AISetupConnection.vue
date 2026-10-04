@@ -6,7 +6,7 @@ import { ACP_AGENTS, AI_PROVIDERS } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
-import type { AgentInstallStatus } from '@/app/ai/models/settings/onboarding/agents'
+import type { AgentSetupState } from '@/app/ai/models/settings/onboarding/agents'
 import {
   ONBOARDING_SERVER_PRESETS,
   type OnboardingConnectionPatch,
@@ -36,7 +36,7 @@ const {
   providerID,
   state,
   hasSavedKey = false,
-  agentStatus = 'unknown',
+  agentSetup,
   serverVision = false,
   signInStatus = 'idle',
   recommended = false,
@@ -47,7 +47,7 @@ const {
   /** A key saved for the connection that matches what is entered now. */
   hasSavedKey?: boolean
   /** Whether a coding agent and the MCP server it needs are installed. */
-  agentStatus?: AgentInstallStatus
+  agentSetup?: AgentSetupState
   /** The person says the server's model can read images. */
   serverVision?: boolean
   /** Progress of signing in with the provider, for providers that support it. */
@@ -65,6 +65,8 @@ const emit = defineEmits<{
   signOut: []
   serverVision: [value: boolean]
   checkAgent: []
+  installAgent: []
+  installBridge: []
 }>()
 const { ai, common, credentials } = useI18n()
 const styles = tv(theme)()
@@ -117,7 +119,14 @@ const keyHint = computed(() => {
       {{ name }}
     </h3>
 
-    <AISetupAgent v-if="agent" :agent="agent" :status="agentStatus" @check="emit('checkAgent')" />
+    <AISetupAgent
+      v-if="agent && agentSetup"
+      :agent="agent"
+      :setup="agentSetup"
+      @check="emit('checkAgent')"
+      @install-agent="emit('installAgent')"
+      @install-bridge="emit('installBridge')"
+    />
 
     <template v-else>
       <p v-if="recommended" :class="styles.help()">{{ ai.aiSetupMeteredNote }}</p>

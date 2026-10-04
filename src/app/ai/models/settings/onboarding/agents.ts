@@ -1,40 +1,53 @@
-import { tryOnScopeDispose } from '@vueuse/core'
-import { reactive } from 'vue'
-
-import type { ACPAgentID } from '@open-pencil/core/constants'
-
-import { checkACPAgentInstall, type ACPAgentInstall } from '@/app/ai/acp/install'
+import { agentDiscovery, type DetectedAgent } from '@/app/ai/agents/discovery'
 
 import { isOnboardingAgent, type OnboardingAccess } from './plan'
 
-export type AgentInstallStatus = 'checking' | 'unknown' | ACPAgentInstall
+type AgentDiscovery = typeof agentDiscovery
 
-/** Checks whether the coding agents being connected, and the MCP server they need, are installed. */
-export function useOnboardingAgents() {
-  const statuses = reactive<Partial<Record<OnboardingAccess, AgentInstallStatus>>>({})
-  const requests = new Map<OnboardingAccess, number>()
-  let disposed = false
-  tryOnScopeDispose(() => {
-    disposed = true
-  })
+/** What guided setup knows about one coding agent and the MCP server it needs. */
+export interface AgentSetupState {
+  /** False where agents cannot run, so only manual instructions apply. */
+  supported: boolean
+  scanning: boolean
+  detected: DetectedAgent | null
+  /** OpenPencil's MCP server, through which agents reach the canvas. */
+  bridge: boolean
+  /** npm, which one-click installation runs. */
+  npm: boolean
+  installingAgent: boolean
+  installingBridge: boolean
+  error: AgentDiscovery['error']['value']
+}
 
-  async function checkAgent(providerID: OnboardingAccess): Promise<void> {
-    if (!isOnboardingAgent(providerID)) return
-    const request = (requests.get(providerID) ?? 0) + 1
-    requests.set(providerID, request)
-    statuses[providerID] = 'checking'
-    const agentID = providerID.slice('acp:'.length) as ACPAgentID
-    const install = await checkACPAgentInstall(agentID).catch(() => null)
-    if (disposed || requests.get(providerID) !== request) return
-    statuses[providerID] = install ?? 'unknown'
+/** Coding agent setup in guided setup, backed by the desktop agent discovery. */
+export function useOnboardingAgents(discovery: AgentDiscovery = agentDiscovery) {
+  function agentID(providerID: OnboardingAccess) {
+    return isOnboardingAgent(providerID) ? providerID.slice('acp:'.length) : null
   }
 
-  /** The last result, starting a check the first time an agent is shown. */
-  function agentStatus(providerID: OnboardingAccess): AgentInstallStatus {
-    const status = statuses[providerID]
-    if (status === undefined) void checkAgent(providerID)
-    return statuses[providerID] ?? 'checking'
+  function agentSetup(providerID: OnboardingAccess): AgentSetupState {
+    const id = agentID(providerID)
+    return {
+      supported: discovery.supported,
+      scanning: discovery.scanning.value,
+      detected: discovery.agents.value.find((agent) => agent.definition.id === id) ?? null,
+      bridge: discovery.canvasBridgeAvailable.value,
+      npm: discovery.npmAvailable.value,
+      installingAgent: discovery.installing.value === id,
+      installingBridge: discovery.installing.value === 'canvas',
+      error: discovery.error.value
+    }
   }
 
-  return { agentStatus, checkAgent }
+  function installAgent(providerID: OnboardingAccess): Promise<void> {
+    const detected = agentSetup(providerID).detected
+    return detected ? discovery.install(detected.definition.id) : Promise.resolve()
+  }
+
+  return {
+    agentSetup,
+    installAgent,
+    refreshAgents: () => discovery.refresh(true),
+    setupCanvasBridge: () => discovery.setupCanvasBridge()
+  }
 }

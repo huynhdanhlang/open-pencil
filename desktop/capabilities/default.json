@@ -60,6 +60,18 @@
         { "name": "claude-agent-acp", "cmd": "claude-agent-acp", "args": true },
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
         { "name": "gemini", "cmd": "gemini", "args": true },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": [
+            "install",
+            "--global",
+            {
+              "validator": "^(@agentclientprotocol/(claude-agent-acp|codex-acp)|@open-pencil/mcp@[0-9]+\\.[0-9]+\\.[0-9]+)$"
+            },
+            "--registry=https://registry.npmjs.org"
+          ]
+        },
         { "name": "openpencil-mcp-http", "cmd": "openpencil-mcp-http", "args": true },
         { "name": "openpencil-harness", "cmd": "openpencil-harness", "args": false },
         { "name": "cmd", "cmd": "cmd", "args": true }

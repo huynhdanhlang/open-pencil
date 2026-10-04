@@ -1,3 +1,4 @@
+mod agents;
 mod credentials;
 mod deep_link;
 mod fig_container;
@@ -10,8 +11,8 @@ mod oauth;
 mod window;
 
 use credentials::{
-    credential_access_paused, credential_read, credential_remove, credential_retry_access,
-    credential_status, credential_store_availability, credential_write,
+    credential_access_paused, credential_retry_access, credential_read, credential_remove, credential_status, credential_store_availability,
+    credential_write,
 };
 use deep_link::path_matches_suffix;
 use fig_container::build_fig_file;
@@ -149,21 +150,6 @@ struct McpLookup {
     path: Option<String>,
     /// Existing directories that were searched, for diagnostics.
     searched: Vec<String>,
-}
-
-/// Executables of the coding agents guided setup offers (`ACP_AGENTS` in
-/// `packages/core/src/constants.ts`). Only these can be looked up, so the
-/// webview cannot probe for arbitrary programs.
-const AGENT_EXECUTABLES: [&str; 3] = ["claude-agent-acp", "codex-acp", "gemini"];
-
-/// Whether a coding agent's executable is installed, using the same widened
-/// `PATH` as the MCP lookup so global npm, Bun, and Homebrew installs count.
-#[tauri::command]
-fn agent_lookup(command: String) -> Result<bool, String> {
-    if !AGENT_EXECUTABLES.contains(&command.as_str()) {
-        return Err(format!("Unknown agent executable: {command}"));
-    }
-    Ok(which::which(&command).is_ok())
 }
 
 #[tauri::command]
@@ -311,6 +297,7 @@ pub fn run() {
         .manage(PendingOpen(Mutex::new(Vec::new())))
         .manage(oauth::OAuthLoopbacks::default())
         .invoke_handler(tauri::generate_handler![
+            agents::agent_lookup,
             build_fig_file,
             credential_read,
             credential_access_paused,
@@ -319,7 +306,6 @@ pub fn run() {
             credential_status,
             credential_store_availability,
             credential_write,
-            agent_lookup,
             mcp_lookup,
             path_matches_suffix,
             list_system_fonts,
@@ -418,15 +404,6 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::agent_lookup;
-
-    #[test]
-    fn agent_lookup_rejects_unknown_executables() {
-        assert!(agent_lookup("sh".to_string()).is_err());
-        assert!(agent_lookup("../claude-agent-acp".to_string()).is_err());
-        assert!(agent_lookup("claude-agent-acp".to_string()).is_ok());
-    }
-
     use super::*;
 
     #[test]
