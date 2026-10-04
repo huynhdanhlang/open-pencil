@@ -66,7 +66,9 @@ export function useRecentDiagnostics(
     unsubscribe()
   })
 
+  // Events recorded before the panel opened count too.
   void refresh()
+  void refreshStats()
 
   return {
     visible,

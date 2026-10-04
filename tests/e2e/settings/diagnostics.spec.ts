@@ -109,6 +109,8 @@ test('uncaught errors are listed with their stack and can be filtered and copied
   )
   await failure.click()
   await expect(events.locator('pre')).toContainText('TypeError')
+  // Events recorded before Settings opened are counted.
+  await expect(page.getByText(/^[1-9]\d* events · /)).toBeVisible()
 
   // Info events such as the completed chat drop out when only problems are shown.
   await expect(events.getByRole('button', { name: /AI chat completed/ })).toBeVisible()
