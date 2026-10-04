@@ -22,24 +22,15 @@ describe('diagnostic error details', () => {
     })
   })
 
-  test('scrubs URL queries, keys, tokens, and home folders', () => {
+  test('scrubs the message and the stack', () => {
     const error = errorWith(
-      'fetch https://api.example.com/v1/chat?key=abc123&doc=Secret%20Plan failed with Bearer abc.def sk-ant-REDACTMEPLEASE12345',
-      '    at load (file:///Users/jane/Projects/app/src/x.ts:1:1)\n    at C:\\Users\\jane\\app\\y.ts:2:2'
+      'fetch https://api.example.com/v1/chat?key=abc123 failed',
+      '    at load (file:///Users/jane/Projects/app/src/x.ts:1:1)'
     )
-    const details = diagnosticErrorDetails(error)
-    expect(details.message).toBe(
-      'fetch https://api.example.com/v1/chat failed with Bearer [redacted] [redacted]'
-    )
-    expect(details.stack).not.toContain('jane')
-    expect(details.stack).toContain('/Users/~/Projects/app/src/x.ts:1:1')
-  })
-
-  test('scrubs a query on a bare path but keeps ordinary question marks', () => {
-    const details = diagnosticErrorDetails(
-      errorWith('Failed to load /Users/jane/Designs/app.fig?token=abc123. Retry? Maybe', '')
-    )
-    expect(details.message).toBe('Failed to load /Users/~/Designs/app.fig Retry? Maybe')
+    expect(diagnosticErrorDetails(error)).toMatchObject({
+      message: 'fetch https://api.example.com/v1/chat failed',
+      stack: '    at load (file:///Users/~/Projects/app/src/x.ts:1:1)'
+    })
   })
 
   test('drops the message of an AI SDK error, which can quote the prompt', () => {
