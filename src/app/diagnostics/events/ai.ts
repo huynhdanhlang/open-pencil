@@ -14,7 +14,12 @@ const modelStepSchema = v.object({
 })
 
 const chatCompletedSchema = v.object({ finishReason: v.nullable(v.string()) })
-const chatFailedSchema = v.object({ errorName: v.string() })
+const chatFailedSchema = v.object({
+  errorName: v.string(),
+  errorCode: v.optional(v.nullable(v.string())),
+  message: v.optional(v.nullable(v.string())),
+  stack: v.optional(v.nullable(v.string()))
+})
 const toolCompletedSchema = v.object({
   tool: v.string(),
   durationMs: v.number(),
