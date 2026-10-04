@@ -33,16 +33,17 @@ describe('diagnostic error details', () => {
     })
   })
 
-  test('drops the message of an AI SDK error, which can quote the prompt', () => {
+  test('drops the message of an AI SDK error, which can quote the prompt, from its stack too', () => {
+    const message = 'Invalid prompt: the user asked for a "secret plan"'
     const error = errorWith(
-      'Invalid prompt: the user asked for a "secret plan"',
-      'stack',
+      message,
+      `AI_InvalidPromptError: ${message}\n    at standardize (prompt.ts:4:2)`,
       'AI_InvalidPromptError'
     )
     expect(diagnosticErrorDetails(error)).toMatchObject({
       errorName: 'AI_InvalidPromptError',
       message: null,
-      stack: 'stack'
+      stack: 'AI_InvalidPromptError: [redacted]\n    at standardize (prompt.ts:4:2)'
     })
   })
 

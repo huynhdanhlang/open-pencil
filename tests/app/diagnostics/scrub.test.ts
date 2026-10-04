@@ -50,6 +50,26 @@ describe('scrubDiagnosticText', () => {
       'GET https://[redacted]@example.com/x'
     ],
     ['a bearer token', 'Authorization: Bearer abc.def', 'Authorization: Bearer [redacted]'],
+    [
+      'a Basic authorization value',
+      'Authorization: Basic dXNlcjpwYXNz rejected',
+      'Authorization: Basic [redacted] rejected'
+    ],
+    [
+      'credential assignments',
+      'api_key=short password: hunter2 key=abc client_secret="xyz"',
+      'api_key=[redacted] password: [redacted] key=[redacted] client_secret=[redacted]'
+    ],
+    [
+      'a key that contains slashes',
+      ['Upload ', 'Zx9Yw8Vu7Ts6Rq5Po4Nm3', '/', 'Lk2Ji1HgFeDcBa0aB3cD4eF5', ' rejected'].join(''),
+      'Upload [redacted]/[redacted] rejected'
+    ],
+    [
+      'a home folder name with a space',
+      'at /Users/Jane Doe/app/x.ts:1:1 and C:\\Users\\Jane Doe\\app\\y.ts:2:2',
+      'at /Users/~/app/x.ts:1:1 and C:\\Users\\~\\app\\y.ts:2:2'
+    ],
     ['an email address', 'No account for jane.doe@example.com.', 'No account for [redacted].'],
     [
       'the user name in home folders',
@@ -60,10 +80,21 @@ describe('scrubDiagnosticText', () => {
     expect(scrubDiagnosticText(text)).toBe(scrubbed)
   })
 
+  test.each([
+    "undefined is not an object (evaluating 'node.parent?.children')",
+    'Missing key: fills',
+    'Basic authentication is not supported',
+    'Retry? Maybe later'
+  ])('keeps ordinary text: %s', (text) => {
+    expect(scrubDiagnosticText(text)).toBe(text)
+  })
+
   test('keeps code locations, package versions, and Safari stack frames', () => {
     const stack = [
       'TypeError: stops.map is not a function',
       '    at gradient (http://localhost:1420/packages/design-jsx/src/paints.ts:69:20)',
+      '    at connect (http://localhost:1420/src/app/ai/models/settings/profile-editor/connection.ts:12:3)',
+      '    at render (http://localhost:1420/src/components/libraries/review/LibraryComparisonPreview.vue:40:7)',
       '    at node_modules/.bun/vue@3.5.41/node_modules/vue/dist/vue.js:12:3',
       'merge@http://localhost:1420/src/app/ai/chat/stream.ts:12:4'
     ].join('\n')
