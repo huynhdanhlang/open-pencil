@@ -49,7 +49,10 @@ export const isConfigured = computed(() => {
 })
 
 async function refreshStatus(reference: CredentialRef): Promise<CredentialStatus> {
-  const status = await appCredentialServices.manager.status(reference)
+  // A key the store cannot read is reported as unavailable rather than rejecting startup.
+  const status = await appCredentialServices.manager
+    .status(reference)
+    .catch((): CredentialStatus => 'unavailable')
   return status === 'missing' && hasLegacyCredential(reference) ? 'configured' : status
 }
 

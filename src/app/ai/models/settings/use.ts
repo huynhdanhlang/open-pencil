@@ -41,10 +41,13 @@ export function useModelSettings() {
   async function refreshStatuses(): Promise<void> {
     const request = ++version
     const entries = await Promise.all(
-      aiModelSettings.value.connections.map(
-        async (connection) =>
-          [connection.id, await modelConnectionCredentialStatus(connection.id)] as const
-      )
+      aiModelSettings.value.connections.map(async (connection) => {
+        // One unreadable credential marks its own row instead of failing the whole list.
+        const status: CredentialStatus = await modelConnectionCredentialStatus(connection.id).catch(
+          () => 'unavailable'
+        )
+        return [connection.id, status] as const
+      })
     )
     if (!disposed && request === version) statusByConnection.value = Object.fromEntries(entries)
   }

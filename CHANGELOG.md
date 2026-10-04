@@ -80,6 +80,7 @@
 - Load the Medium, Semibold, Bold, and other styles of installed variable fonts such as SF Pro on macOS instead of reporting them as substituted (#752).
 - Ship the MIT license text in every published npm package, and add READMEs for `@open-pencil/core`, `@open-pencil/cli`, and `@open-pencil/mcp` on npm.
 - Draw unchecked checkboxes in the Publish library dialog as empty boxes instead of filled squares, which were nearly black in the light theme.
+- Show a saved AI key the browser can no longer read as Unavailable on its model in Settings, instead of a "Browser credential operation failed" error each time Settings or the app opens.
 
 ### Performance
 
