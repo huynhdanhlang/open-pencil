@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { planOnboarding, type OnboardingAnswers } from '@/app/ai/models/settings/onboarding/plan'
+import {
+  coversGoals,
+  planOnboarding,
+  roleChoiceKey,
+  roleOptions,
+  type OnboardingAnswers
+} from '@/app/ai/models/settings/onboarding/plan'
 
 const desktop = { agentsAvailable: true }
 const browser = { agentsAvailable: false }
@@ -64,7 +70,7 @@ describe('planOnboarding', () => {
 
   test('proposes nothing when no access is selected and spending is not allowed', () => {
     const plan = planOnboarding(answers({ goals: ['design', 'vision'] }), desktop)
-    expect(plan).toEqual({ design: null, vision: null, connections: [] })
+    expect(plan).toEqual({ design: null, vision: null, review: null, fast: null, connections: [] })
   })
 
   test('uses a server with a model it names itself and no assumed vision', () => {
@@ -102,7 +108,7 @@ describe('planOnboarding with configured models', () => {
   test('keeps a configured design model while its access is still selected', () => {
     const plan = planOnboarding(answers({ access: ['anthropic'] }), {
       ...desktop,
-      current: { design: opus, vision: null }
+      current: { configured: true, design: opus, vision: null, review: null, fast: null }
     })
     expect(plan.design).toBe(opus)
     expect(plan.connections).toEqual([])
@@ -111,7 +117,7 @@ describe('planOnboarding with configured models', () => {
   test('replaces a configured design model whose access was deselected', () => {
     const plan = planOnboarding(answers({ access: ['openai'] }), {
       ...desktop,
-      current: { design: opus, vision: null }
+      current: { configured: true, design: opus, vision: null, review: null, fast: null }
     })
     expect(plan.design).toMatchObject({ providerID: 'openai' })
     expect(plan.design?.profileId).toBeUndefined()
@@ -120,7 +126,10 @@ describe('planOnboarding with configured models', () => {
   test('keeps models from providers onboarding does not offer', () => {
     const plan = planOnboarding(
       answers({ goals: ['design', 'vision'], access: ['openai-compatible'] }),
-      { ...desktop, current: { design: null, vision: zai } }
+      {
+        ...desktop,
+        current: { configured: true, design: null, vision: zai, review: null, fast: null }
+      }
     )
     expect(plan.vision).toBe(zai)
     expect(plan.connections).toEqual(['openai-compatible'])
@@ -129,9 +138,90 @@ describe('planOnboarding with configured models', () => {
   test('keeps a configured vision model when nothing new covers visual review', () => {
     const plan = planOnboarding(answers({ goals: ['design', 'vision'], access: ['acp:codex'] }), {
       ...desktop,
-      current: { design: null, vision: { ...opus, profileId: 'model-opus' } }
+      current: {
+        configured: true,
+        design: null,
+        vision: { ...opus, profileId: 'model-opus' },
+        review: null,
+        fast: null
+      }
     })
     expect(plan.design).toMatchObject({ providerID: 'acp:codex' })
     expect(plan.vision).toMatchObject({ profileId: 'model-opus' })
+  })
+})
+
+describe('planOnboarding for review and fast work', () => {
+  test('gives fast work the provider model tagged as fast', () => {
+    const plan = planOnboarding(answers({ access: ['openrouter'] }), desktop)
+    expect(plan.review).toBe('design')
+    expect(plan.fast).toMatchObject({
+      providerID: 'openrouter',
+      modelID: 'google/gemini-3.8-flash'
+    })
+  })
+
+  test('follows the design model when its provider has no separate fast model', () => {
+    expect(planOnboarding(answers({ access: ['anthropic'] }), desktop).fast).toBe('design')
+  })
+
+  test('uses the API vision model for review and fast work behind an agent', () => {
+    const plan = planOnboarding(
+      answers({ goals: ['design', 'vision'], access: ['acp:codex', 'openai'] }),
+      desktop
+    )
+    expect(plan.vision).toMatchObject({ providerID: 'openai', modelID: 'gpt-5.6' })
+    expect(plan.review).toMatchObject({ providerID: 'openai', modelID: 'gpt-5.6' })
+    expect(plan.fast).toMatchObject({ providerID: 'openai', modelID: 'gpt-5.4-mini' })
+    expect(planOnboarding(answers({ access: ['acp:codex'] }), desktop)).toMatchObject({
+      review: null,
+      fast: null
+    })
+  })
+
+  test('keeps configured review and fast choices, including none', () => {
+    const plan = planOnboarding(answers({ access: ['openrouter'] }), {
+      ...desktop,
+      current: { configured: true, design: null, vision: null, review: null, fast: 'design' }
+    })
+    expect(plan.review).toBeNull()
+    expect(plan.fast).toBe('design')
+  })
+})
+
+describe('roleOptions', () => {
+  const plan = planOnboarding(
+    answers({ goals: ['design', 'vision'], access: ['acp:claude-code', 'openrouter'] }),
+    desktop
+  )
+
+  test('offers an agent only for the design role', () => {
+    expect(roleOptions('design', plan, []).map(roleChoiceKey)).toContain('acp:claude-code::')
+    expect(roleOptions('review', plan, []).map(roleChoiceKey)).not.toContain('acp:claude-code::')
+  })
+
+  test('offers only image-capable models for vision and none instead of an agent design', () => {
+    const vision = roleOptions('vision', plan, [])
+    expect(vision).toContain(null)
+    expect(vision).not.toContain('design')
+    for (const option of vision) {
+      if (option && option !== 'design') expect(option.capabilities).toContain('vision')
+    }
+  })
+
+  test('offers same as design when the design model can take the role', () => {
+    const api = planOnboarding(answers({ access: ['openrouter'] }), desktop)
+    expect(roleOptions('fast', api, []).slice(0, 2)).toEqual(['design', null])
+  })
+})
+
+describe('coversGoals', () => {
+  test('reports whether every requested role has a model', () => {
+    const plan = planOnboarding(
+      answers({ goals: ['design', 'vision'], access: ['acp:codex'] }),
+      desktop
+    )
+    expect(coversGoals(plan, ['design'])).toBe(true)
+    expect(coversGoals(plan, ['design', 'vision'])).toBe(false)
   })
 })

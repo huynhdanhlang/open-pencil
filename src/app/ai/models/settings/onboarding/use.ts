@@ -5,52 +5,27 @@ import { IS_TAURI } from '@open-pencil/core/constants'
 import { refreshAIProviderStatus } from '@/app/ai/chat/storage'
 import {
   aiModelSettings,
-  modelConnection,
-  modelProfile,
   modelSettingsSnapshot,
   replaceAIModelSettings,
-  setModelConnectionAPIKey,
-  type AIModelRoleAssignment
+  setModelConnectionAPIKey
 } from '@/app/ai/models'
 import type { SettingsSaveResult } from '@/app/settings/save-result'
 
-import { applyOnboardingPlan, isUnconfiguredModelSettings } from './apply'
+import { applyOnboardingPlan } from './apply'
 import { existingOnboardingConnection, useOnboardingConnections } from './connections'
+import { currentOnboardingModels } from './current'
 import {
+  coversGoals,
   isOnboardingAccess,
   planOnboarding,
-  type CurrentOnboardingModels,
   type OnboardingAccess,
   type OnboardingAnswers,
   type PlannedModel
 } from './plan'
+import { useOnboardingRoles } from './roles'
 import { useOnboardingSignIn } from './sign-in'
 
-export const AI_SETUP_STEPS = ['goals', 'access', 'spending', 'connect', 'review'] as const
-export type AISetupStep = (typeof AI_SETUP_STEPS)[number]
-
-function configuredModel(assignment: AIModelRoleAssignment): PlannedModel | null {
-  const profile = assignment && assignment !== 'design' ? modelProfile(assignment) : null
-  const connection = profile ? modelConnection(profile.connectionId) : null
-  if (!profile || !connection) return null
-  return {
-    providerID: connection.providerID,
-    modelID: profile.customModelID || profile.modelID,
-    name: profile.name,
-    capabilities: [...profile.capabilities],
-    profileId: profile.id
-  }
-}
-
-/** What the design and vision roles use now, so setup keeps models configured by hand. */
-function currentModels(): CurrentOnboardingModels {
-  if (isUnconfiguredModelSettings(aiModelSettings.value)) return { design: null, vision: null }
-  const { design, vision } = aiModelSettings.value.assignments
-  return {
-    design: configuredModel(design),
-    vision: vision === 'design' ? 'design' : configuredModel(vision)
-  }
-}
+export type AISetupStep = 'goals' | 'access' | 'spending' | 'connect' | 'review'
 
 /** Starts from what is already configured, so running setup again adjusts instead of resets. */
 function initialAnswers(): OnboardingAnswers {
@@ -72,20 +47,43 @@ interface AIOnboardingOptions {
 
 export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOptions = {}) {
   const answers = reactive<OnboardingAnswers>(initialAnswers())
-  const current = currentModels()
+  const current = currentOnboardingModels(aiModelSettings.value)
+  const configured = [current.design, current.vision, current.review, current.fast].filter(
+    (model): model is PlannedModel => model !== null && model !== 'design'
+  )
   const step = ref<AISetupStep>('goals')
   const busy = ref(false)
   const saveResult = ref<SettingsSaveResult | null>(null)
 
-  const plan = computed(() => planOnboarding(answers, { agentsAvailable, current }))
-  const hasProposal = computed(() => plan.value.design !== null || plan.value.vision !== null)
+  const recommended = computed(() => planOnboarding(answers, { agentsAvailable, current }))
+  const roles = useOnboardingRoles(recommended, configured)
+  const { plan } = roles
+  const hasProposal = computed(() => coversGoals(recommended.value, answers.goals))
+
+  /** Pay-as-you-go only matters when the access already selected leaves a goal uncovered. */
+  const needsSpending = computed(
+    () =>
+      !coversGoals(
+        planOnboarding({ ...answers, spending: 'existing' }, { agentsAvailable, current }),
+        answers.goals
+      )
+  )
+  const steps = computed<AISetupStep[]>(() => [
+    'goals',
+    'access',
+    ...(needsSpending.value ? (['spending'] as const) : []),
+    'connect',
+    'review'
+  ])
 
   function plannedModel(providerID: OnboardingAccess): PlannedModel | null {
-    const { design, vision } = plan.value
-    if (design?.providerID === providerID) return design
-    return vision !== null && vision !== 'design' && vision.providerID === providerID
-      ? vision
-      : null
+    const { design, vision, review, fast } = recommended.value
+    return (
+      [design, vision, review, fast].find(
+        (model): model is PlannedModel =>
+          model !== null && model !== 'design' && model.providerID === providerID
+      ) ?? null
+    )
   }
 
   const connections = useOnboardingConnections({ plannedModel })
@@ -94,22 +92,22 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
 
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0
-    if (step.value === 'connect') return hasProposal.value && plan.value.connections.every(ready)
+    if (step.value === 'connect') {
+      return hasProposal.value && recommended.value.connections.every(ready)
+    }
     return true
   })
 
   function next(): void {
-    const index = AI_SETUP_STEPS.indexOf(step.value)
-    if (canContinue.value && index < AI_SETUP_STEPS.length - 1) {
-      step.value = AI_SETUP_STEPS[index + 1]
-    }
+    const index = steps.value.indexOf(step.value)
+    if (canContinue.value && index < steps.value.length - 1) step.value = steps.value[index + 1]
   }
 
   /** Returns false on the first step, where going back leaves setup. */
   function back(): boolean {
-    const index = AI_SETUP_STEPS.indexOf(step.value)
-    if (index === 0) return false
-    step.value = AI_SETUP_STEPS[index - 1]
+    const index = steps.value.indexOf(step.value)
+    if (index <= 0) return false
+    step.value = steps.value[index - 1]
     return true
   }
 
@@ -132,7 +130,6 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
       const { settings, connectionIds } = applyOnboardingPlan({
         settings: modelSettingsSnapshot(),
         plan: plan.value,
-        goals: [...answers.goals],
         details,
         createId: () => crypto.randomUUID()
       })
@@ -160,7 +157,10 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
     agentsAvailable,
     answers,
     step,
+    steps,
+    recommended,
     plan,
+    roles,
     hasProposal,
     busy,
     saveResult,

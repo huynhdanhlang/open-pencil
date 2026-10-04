@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "Falls es noch nicht installiert ist, führe Folgendes aus:",
   "aiSetupMeteredNote": "OpenRouter bietet Modelle mehrerer Anbieter mit einem Konto und einem Schlüssel.",
   "aiSetupReviewTitle": "Einrichtung prüfen",
-  "aiSetupReviewDescription": "Diese Modelle werden in deinen KI-Einstellungen gespeichert. Alles andere, was du eingerichtet hast, bleibt unverändert.",
   "aiSetupAgentModel": "Vom Agenten gewähltes Modell",
   "aiSetupFinish": "Einrichtung abschließen",
   "aiSetupSavedTitle": "Die KI ist bereit",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "Die Anmeldung bei OpenRouter ist fehlgeschlagen. Versuche es erneut oder füge einen API-Schlüssel ein.",
   "aiSetupOpenRouterSignedInTitle": "Bei OpenRouter angemeldet",
   "aiSetupOpenRouterSignedInMessage": "Du kannst diesen Tab schließen und zu OpenPencil zurückkehren.",
-  "aiSetupSavedKeyHint": "Leer lassen, um den gespeicherten Schlüssel zu behalten."
+  "aiSetupSavedKeyHint": "Leer lassen, um den gespeicherten Schlüssel zu behalten.",
+  "aiSetupOpenRouterKeyLabel": "· Schlüssel „{label}“",
+  "aiSetupOpenRouterVerifying": "Dein OpenRouter-Schlüssel wird geprüft…",
+  "aiSetupOpenRouterNoCredits": "Dieses OpenRouter-Konto hat noch kein Guthaben. Lade bei OpenRouter Guthaben auf, um kostenpflichtige Modelle wie das empfohlene zu nutzen.",
+  "aiSetupOpenRouterChange": "Anderes Konto verwenden",
+  "aiSetupUseRecommended": "Empfohlene Einrichtung verwenden",
+  "aiSetupRolesDescription": "Wähle für jede Art von Arbeit ein Modell. Wir haben aus deinen Verbindungen empfohlene ausgewählt; alles andere, was du eingerichtet hast, bleibt unverändert."
 }

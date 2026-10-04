@@ -5,19 +5,33 @@ import AISetupConnection from './AISetupConnection.vue'
 
 interface Args {
   providerID: 'openrouter' | 'anthropic' | 'openai-compatible' | 'acp:claude-code'
-  signInStatus: 'idle' | 'waiting' | 'blocked' | 'cancelled' | 'expired' | 'failed'
+  signInStatus: 'idle' | 'waiting' | 'verifying' | 'blocked' | 'cancelled' | 'expired' | 'failed'
+  account: { label: string; freeTier: boolean } | null
   hasSavedKey: boolean
   recommended: boolean
 }
 
 const meta = {
   title: 'Settings/AI Setup/Connection',
-  args: { providerID: 'openrouter', signInStatus: 'idle', hasSavedKey: false, recommended: true },
+  args: {
+    providerID: 'openrouter',
+    signInStatus: 'idle',
+    hasSavedKey: false,
+    recommended: true,
+    account: null
+  },
   render: (args) => ({
     components: { AISetupConnection },
     setup: () => ({
       args,
-      state: { apiKey: '', customBaseURL: '', customModelID: '', test: 'idle', reason: null }
+      state: {
+        apiKey: args.account ? 'sk-or-story' : '',
+        customBaseURL: '',
+        customModelID: '',
+        test: 'idle',
+        reason: null,
+        account: args.account
+      }
     }),
     template:
       '<div class="w-[30rem] max-w-full"><AISetupConnection v-bind="args" :state="state" /></div>'
@@ -43,6 +57,19 @@ export const OpenRouterWaiting: Story = {
     )
     await expect(canvas.queryByRole('button', { name: 'Sign in with OpenRouter' })).toBeNull()
   }
+}
+export const OpenRouterVerifying: Story = { args: { signInStatus: 'verifying' } }
+export const OpenRouterSignedIn: Story = {
+  args: { account: { label: 'OpenPencil', freeTier: false } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('status')).toHaveTextContent('Signed in to OpenRouter')
+    await expect(canvas.queryByLabelText('API Key')).toBeNull()
+    await expect(canvas.queryByRole('button', { name: 'Test connection' })).toBeNull()
+  }
+}
+export const OpenRouterSignedInWithoutCredits: Story = {
+  args: { account: { label: 'OpenPencil', freeTier: true } }
 }
 export const OpenRouterPopupBlocked: Story = { args: { signInStatus: 'blocked' } }
 export const OpenRouterFailed: Story = { args: { signInStatus: 'failed' } }

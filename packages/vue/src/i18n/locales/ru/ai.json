@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "Если он ещё не установлен, выполните:",
   "aiSetupMeteredNote": "OpenRouter даёт доступ к моделям разных компаний с одним аккаунтом и одним ключом.",
   "aiSetupReviewTitle": "Проверьте настройку",
-  "aiSetupReviewDescription": "Эти модели сохранятся в настройках ИИ. Остальные ваши настройки не изменятся.",
   "aiSetupAgentModel": "Модель выбирает агент",
   "aiSetupFinish": "Завершить настройку",
   "aiSetupSavedTitle": "ИИ готов к работе",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "Не удалось войти в OpenRouter. Попробуйте снова или вставьте ключ API.",
   "aiSetupOpenRouterSignedInTitle": "Вход в OpenRouter выполнен",
   "aiSetupOpenRouterSignedInMessage": "Можно закрыть эту вкладку и вернуться в OpenPencil.",
-  "aiSetupSavedKeyHint": "Оставьте поле пустым, чтобы использовать сохранённый ключ."
+  "aiSetupSavedKeyHint": "Оставьте поле пустым, чтобы использовать сохранённый ключ.",
+  "aiSetupOpenRouterKeyLabel": "· ключ «{label}»",
+  "aiSetupOpenRouterVerifying": "Проверяем ключ OpenRouter…",
+  "aiSetupOpenRouterNoCredits": "На этом аккаунте OpenRouter пока нет кредитов. Пополните баланс в OpenRouter, чтобы пользоваться платными моделями, например рекомендованной.",
+  "aiSetupOpenRouterChange": "Использовать другой аккаунт",
+  "aiSetupUseRecommended": "Использовать рекомендуемую настройку",
+  "aiSetupRolesDescription": "Выберите модель для каждого вида работы. Мы подобрали рекомендуемые из подключённого; остальные ваши настройки не изменятся."
 }

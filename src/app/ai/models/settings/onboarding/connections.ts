@@ -11,6 +11,7 @@ import {
   resolveModelConnectionAPIKey,
   type AIModelConnection
 } from '@/app/ai/models'
+import type { OpenRouterKeyInfo } from '@/app/ai/providers/openrouter/key'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 
 import {
@@ -29,6 +30,8 @@ export interface OnboardingConnectionState {
   customModelID: string
   test: ConnectionTestStatus
   reason: ProviderConnectionTestFailureReason | null
+  /** Set once a key from signing in has been checked with the provider. */
+  account: OpenRouterKeyInfo | null
 }
 
 /** Details the person edits while connecting. */
@@ -99,7 +102,8 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
       customBaseURL: existing?.customBaseURL ?? '',
       customModelID: serverProfile?.customModelID ?? '',
       test: 'idle',
-      reason: null
+      reason: null,
+      account: null
     }
     return states[providerID]
   }
@@ -123,7 +127,7 @@ export function useOnboardingConnections({ plannedModel }: OnboardingConnections
   function ready(providerID: OnboardingAccess): boolean {
     if (isOnboardingAgent(providerID)) return true
     const state = connection(providerID)
-    if (state.test === 'success') return true
+    if (state.test === 'success' || state.account) return true
     return (
       providerID !== ONBOARDING_SERVER_PROVIDER && hasSavedKey(providerID) && !state.apiKey.trim()
     )

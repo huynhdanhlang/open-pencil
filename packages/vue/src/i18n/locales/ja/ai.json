@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "まだインストールしていない場合は、次を実行してください：",
   "aiSetupMeteredNote": "OpenRouter なら、1 つのアカウントと 1 つのキーで複数ベンダーのモデルを使えます。",
   "aiSetupReviewTitle": "設定を確認",
-  "aiSetupReviewDescription": "これらのモデルが AI 設定に保存されます。ほかに設定した内容はそのまま残ります。",
   "aiSetupAgentModel": "モデルはエージェントが選択",
   "aiSetupFinish": "設定を完了",
   "aiSetupSavedTitle": "AI の準備ができました",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "OpenRouter にサインインできませんでした。もう一度試すか、API キーを貼り付けてください。",
   "aiSetupOpenRouterSignedInTitle": "OpenRouter にサインインしました",
   "aiSetupOpenRouterSignedInMessage": "このタブを閉じて OpenPencil に戻ってください。",
-  "aiSetupSavedKeyHint": "保存済みのキーを使う場合は空欄のままにしてください。"
+  "aiSetupSavedKeyHint": "保存済みのキーを使う場合は空欄のままにしてください。",
+  "aiSetupOpenRouterKeyLabel": "・キー「{label}」",
+  "aiSetupOpenRouterVerifying": "OpenRouter のキーを確認しています…",
+  "aiSetupOpenRouterNoCredits": "この OpenRouter アカウントにはまだクレジットがありません。推奨モデルなどの有料モデルを使うには、OpenRouter でクレジットを追加してください。",
+  "aiSetupOpenRouterChange": "別のアカウントを使う",
+  "aiSetupUseRecommended": "推奨の設定を使う",
+  "aiSetupRolesDescription": "作業の種類ごとにモデルを選んでください。接続したものから推奨モデルを選んであります。ほかに設定した内容はそのまま残ります。"
 }

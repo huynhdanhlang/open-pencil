@@ -49,6 +49,7 @@ const emit = defineEmits<{
   signIn: []
   reopenSignIn: []
   cancelSignIn: []
+  signOut: []
 }>()
 const { ai, common, credentials } = useI18n()
 const styles = tv(theme)()
@@ -99,14 +100,43 @@ const keyHint = computed(() => {
 
     <template v-else>
       <p v-if="recommended" :class="styles.help()">{{ ai.aiSetupMeteredNote }}</p>
-      <template v-if="supportsSignIn">
-        <div v-if="signInStatus === 'waiting'" :class="styles.signIn()">
+      <div v-if="state.account" :class="styles.signIn()" data-slot="signed-in">
+        <p role="status" :class="styles.signInStatus()">
+          <icon-lucide-circle-check :class="styles.signedInIcon()" aria-hidden="true" />
+          <span>
+            {{ ai.aiSetupOpenRouterSignedInTitle }}
+            <span v-if="state.account.label" :class="styles.signInDetail()">
+              {{ ai.aiSetupOpenRouterKeyLabel({ label: state.account.label }) }}
+            </span>
+          </span>
+        </p>
+        <AppButton size="xs" @click="emit('signOut')">{{ ai.aiSetupOpenRouterChange }}</AppButton>
+      </div>
+      <AppAlert
+        v-if="state.account?.freeTier"
+        tone="warning"
+        :heading="ai.aiSetupOpenRouterNoCredits"
+      />
+      <template v-if="supportsSignIn && !state.account">
+        <div
+          v-if="signInStatus === 'waiting' || signInStatus === 'verifying'"
+          :class="styles.signIn()"
+        >
           <p role="status" :class="styles.signInStatus()">
             <icon-lucide-loader-2 :class="styles.spinner()" aria-hidden="true" />
-            {{ ai.aiSetupOpenRouterWaiting }}
+            {{
+              signInStatus === 'waiting'
+                ? ai.aiSetupOpenRouterWaiting
+                : ai.aiSetupOpenRouterVerifying
+            }}
           </p>
           <div :class="styles.signInActions()">
-            <AppButton size="xs" variant="outline" @click="emit('reopenSignIn')">
+            <AppButton
+              v-if="signInStatus === 'waiting'"
+              size="xs"
+              variant="outline"
+              @click="emit('reopenSignIn')"
+            >
               {{ ai.aiSetupOpenRouterReopen }}
             </AppButton>
             <AppButton size="xs" @click="emit('cancelSignIn')">{{ common.cancel }}</AppButton>
@@ -145,6 +175,7 @@ const keyHint = computed(() => {
         </ProviderSettingsField>
       </template>
       <ProviderSettingsKeyField
+        v-if="!state.account"
         :model-value="state.apiKey"
         :label="ai.apiKey"
         :saved="false"
@@ -156,6 +187,7 @@ const keyHint = computed(() => {
         @update:model-value="emit('update', { apiKey: $event })"
       />
       <ProviderConnectionTestButton
+        v-if="!state.account"
         :status="state.test"
         :reason="state.reason"
         :disabled="disabled"

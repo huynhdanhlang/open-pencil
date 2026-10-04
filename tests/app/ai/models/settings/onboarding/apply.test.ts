@@ -5,6 +5,7 @@ import {
   applyOnboardingPlan,
   isUnconfiguredModelSettings
 } from '@/app/ai/models/settings/onboarding/apply'
+import { currentOnboardingModels } from '@/app/ai/models/settings/onboarding/current'
 import { planOnboarding, type OnboardingAnswers } from '@/app/ai/models/settings/onboarding/plan'
 
 function freshInstall(): AIModelSettings {
@@ -75,15 +76,17 @@ function apply(
 ) {
   return applyOnboardingPlan({
     settings,
-    plan: planOnboarding(answers, { agentsAvailable: true }),
-    goals: answers.goals,
+    plan: planOnboarding(answers, {
+      agentsAvailable: true,
+      current: currentOnboardingModels(settings)
+    }),
     details,
     createId: sequentialIds()
   })
 }
 
 describe('applyOnboardingPlan', () => {
-  test('replaces the empty fresh-install profile with the planned model', () => {
+  test('replaces the empty fresh-install profile with the planned models', () => {
     const { settings, connectionIds } = apply(freshInstall(), {
       goals: ['design', 'vision'],
       access: ['openrouter'],
@@ -95,13 +98,18 @@ describe('applyOnboardingPlan', () => {
         connectionId: 'connection-id-1',
         modelID: 'anthropic/claude-sonnet-5',
         capabilities: ['tools', 'vision']
+      }),
+      expect.objectContaining({
+        id: 'model-id-3',
+        connectionId: 'connection-id-1',
+        modelID: 'google/gemini-3.8-flash'
       })
     ])
     expect(settings.connections.map((connection) => connection.id)).toEqual(['connection-id-1'])
     expect(settings.assignments).toEqual({
       design: 'model-id-2',
       review: 'design',
-      fast: 'design',
+      fast: 'model-id-3',
       vision: 'design'
     })
     expect(connectionIds).toEqual({ openrouter: 'connection-id-1' })
@@ -128,18 +136,27 @@ describe('applyOnboardingPlan', () => {
 
   test('reuses a matching connection and profile and keeps advanced settings', () => {
     const before = configured()
+    before.models.push({
+      id: 'model-sonnet',
+      name: 'Claude Sonnet 5',
+      connectionId: 'connection-anthropic',
+      modelID: 'claude-sonnet-5',
+      customModelID: '',
+      maxOutputTokens: 64_000,
+      thinkingLevel: 'low',
+      capabilities: ['tools', 'vision']
+    })
+    before.assignments = { design: 'model-sonnet', review: 'model-opus', fast: null, vision: null }
     const { settings, connectionIds } = apply(before, {
       goals: ['design'],
       access: ['anthropic'],
       spending: 'existing'
     })
     expect(settings.connections).toEqual(before.connections)
-    expect(settings.models).toEqual([
-      ...before.models,
-      expect.objectContaining({ modelID: 'claude-sonnet-5', connectionId: 'connection-anthropic' })
-    ])
-    expect(settings.assignments.review).toBe('model-opus')
-    expect(connectionIds).toEqual({ anthropic: 'connection-anthropic' })
+    expect(settings.models).toEqual(before.models)
+    // Review and fast work are never asked about, so an explicit none stays none.
+    expect(settings.assignments).toEqual(before.assignments)
+    expect(connectionIds).toEqual({})
 
     const again = apply(settings, {
       goals: ['design'],
@@ -149,15 +166,47 @@ describe('applyOnboardingPlan', () => {
     expect(again.settings).toEqual(settings)
   })
 
-  test('leaves roles that were not asked about as they were', () => {
+  test('reuses a catalog profile it would otherwise create', () => {
+    const before = freshInstall()
+    before.connections.push({
+      id: 'connection-anthropic',
+      providerID: 'anthropic',
+      customBaseURL: '',
+      customAPIType: 'completions',
+      credentialProfileId: 'connection-anthropic'
+    })
+    before.models.push({
+      id: 'model-sonnet',
+      name: 'Sonnet',
+      connectionId: 'connection-anthropic',
+      modelID: 'claude-sonnet-5',
+      customModelID: '',
+      maxOutputTokens: 64_000,
+      thinkingLevel: 'low',
+      capabilities: ['tools', 'vision']
+    })
+    const { settings, connectionIds } = apply(before, {
+      goals: ['design'],
+      access: ['anthropic'],
+      spending: 'existing'
+    })
+    expect(settings.assignments.design).toBe('model-sonnet')
+    expect(settings.models.find((profile) => profile.id === 'model-sonnet')).toMatchObject({
+      maxOutputTokens: 64_000,
+      thinkingLevel: 'low'
+    })
+    expect(connectionIds).toEqual({ anthropic: 'connection-anthropic' })
+  })
+
+  test('keeps a working vision route for roles that were not asked about', () => {
     const before = configured()
     const { settings } = apply(before, {
       goals: ['vision'],
       access: ['openai'],
       spending: 'existing'
     })
-    expect(settings.assignments.design).toBe('model-opus')
-    expect(settings.assignments.vision).toMatch(/^model-id-/)
+    expect(settings.assignments).toEqual(before.assignments)
+    expect(settings.models).toEqual(before.models)
   })
 
   test('stores the server address and model the person entered', () => {
@@ -196,27 +245,10 @@ describe('isUnconfiguredModelSettings', () => {
 describe('applyOnboardingPlan with configured models', () => {
   test('keeps a configured profile with its own settings', () => {
     const before = configured()
-    const { settings } = applyOnboardingPlan({
-      settings: before,
-      plan: planOnboarding(
-        { goals: ['design'], access: ['anthropic'], spending: 'existing' },
-        {
-          agentsAvailable: true,
-          current: {
-            design: {
-              providerID: 'anthropic',
-              modelID: 'claude-opus-5',
-              name: 'Claude Opus 5',
-              capabilities: ['tools', 'vision'],
-              profileId: 'model-opus'
-            },
-            vision: 'design'
-          }
-        }
-      ),
+    const { settings } = apply(before, {
       goals: ['design'],
-      details: {},
-      createId: sequentialIds()
+      access: ['anthropic'],
+      spending: 'existing'
     })
     expect(settings).toEqual(before)
   })
@@ -240,6 +272,9 @@ describe('applyOnboardingPlan with configured models', () => {
       customAPIType: 'completions',
       credentialProfileId: 'connection-openai'
     })
+    // Opus cannot review images here, so vision has to come from OpenAI.
+    before.models[0].capabilities = ['tools']
+    before.assignments.vision = null
     const { settings } = apply(before, {
       goals: ['vision'],
       access: ['openai'],

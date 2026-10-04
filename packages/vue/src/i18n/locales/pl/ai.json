@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "Jeśli nie jest jeszcze zainstalowany, uruchom:",
   "aiSetupMeteredNote": "OpenRouter daje dostęp do modeli wielu dostawców z jednym kontem i jednym kluczem.",
   "aiSetupReviewTitle": "Sprawdź konfigurację",
-  "aiSetupReviewDescription": "Te modele zostaną zapisane w ustawieniach AI. Pozostała konfiguracja się nie zmieni.",
   "aiSetupAgentModel": "Model wybrany przez agenta",
   "aiSetupFinish": "Zakończ konfigurację",
   "aiSetupSavedTitle": "AI jest gotowe",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "Nie udało się zalogować do OpenRouter. Spróbuj ponownie lub wklej klucz API.",
   "aiSetupOpenRouterSignedInTitle": "Zalogowano do OpenRouter",
   "aiSetupOpenRouterSignedInMessage": "Możesz zamknąć tę kartę i wrócić do OpenPencil.",
-  "aiSetupSavedKeyHint": "Pozostaw puste, aby zachować zapisany klucz."
+  "aiSetupSavedKeyHint": "Pozostaw puste, aby zachować zapisany klucz.",
+  "aiSetupOpenRouterKeyLabel": "· klucz „{label}”",
+  "aiSetupOpenRouterVerifying": "Sprawdzanie klucza OpenRouter…",
+  "aiSetupOpenRouterNoCredits": "To konto OpenRouter nie ma jeszcze środków. Doładuj je w OpenRouter, aby korzystać z płatnych modeli, takich jak polecany.",
+  "aiSetupOpenRouterChange": "Użyj innego konta",
+  "aiSetupUseRecommended": "Użyj polecanej konfiguracji",
+  "aiSetupRolesDescription": "Wybierz model dla każdego rodzaju pracy. Spośród połączonych usług wybraliśmy polecane; pozostała konfiguracja się nie zmieni."
 }

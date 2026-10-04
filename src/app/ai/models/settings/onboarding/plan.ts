@@ -1,7 +1,7 @@
 import { AI_PROVIDERS, type AIProviderID, type ModelOption } from '@open-pencil/core/constants'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
-import type { AIModelCapability, AIModelProfileId } from '@/app/ai/models/types'
+import type { AIModelCapability, AIModelProfileId, AIModelRole } from '@/app/ai/models/types'
 
 /** Roles onboarding asks about; review and fast stay in the advanced settings. */
 export const ONBOARDING_GOALS = ['design', 'vision'] as const
@@ -49,19 +49,35 @@ export interface PlannedModel {
   profileId?: AIModelProfileId
 }
 
-export type PlannedVision = PlannedModel | 'design' | null
+/** A model for a role, the design model (`'design'`), or nothing. */
+export type PlannedRole = PlannedModel | 'design' | null
+
+/** Roles in the order setup shows them. */
+export const ONBOARDING_ROLES = [
+  'design',
+  'vision',
+  'review',
+  'fast'
+] as const satisfies readonly AIModelRole[]
 
 export interface OnboardingPlan {
+  /** `null` keeps the design model that is configured now. */
   design: PlannedModel | null
-  vision: PlannedVision
+  vision: PlannedRole
+  review: PlannedRole
+  fast: PlannedRole
   /** Providers to connect before the plan can be applied, in the order they are used. */
   connections: OnboardingAccess[]
 }
 
-/** The models currently assigned to the roles onboarding covers. */
+/** The models currently assigned to each role. */
 export interface CurrentOnboardingModels {
+  /** False for a fresh install, whose empty roles are not choices to keep. */
+  configured: boolean
   design: PlannedModel | null
-  vision: PlannedVision
+  vision: PlannedRole
+  review: PlannedRole
+  fast: PlannedRole
 }
 
 export interface PlanOptions {
@@ -70,31 +86,54 @@ export interface PlanOptions {
   current?: CurrentOnboardingModels
 }
 
+const NO_CURRENT: CurrentOnboardingModels = {
+  configured: false,
+  design: null,
+  vision: null,
+  review: null,
+  fast: null
+}
+
 export function isOnboardingAgent(providerID: string): boolean {
   return providerID.startsWith('acp:')
 }
 
-function defaultModel(providerID: AIProviderID): ModelOption | null {
-  const provider = AI_PROVIDERS.find((definition) => definition.id === providerID)
-  return provider?.models.find((model) => model.id === provider.defaultModel) ?? null
+function isAgentModel(model: PlannedModel | null): boolean {
+  return Boolean(
+    model && (isOnboardingAgent(model.providerID) || model.providerID === 'harness:pi')
+  )
+}
+
+function catalogModels(providerID: AIProviderID): ModelOption[] {
+  return AI_PROVIDERS.find((definition) => definition.id === providerID)?.models ?? []
+}
+
+function fromCatalog(providerID: AIProviderID, model: ModelOption): PlannedModel {
+  return {
+    providerID,
+    modelID: model.id,
+    name: model.name,
+    capabilities: model.capabilities ? [...model.capabilities] : ['tools']
+  }
 }
 
 function plannedModel(providerID: OnboardingAccess): PlannedModel {
   if (isOnboardingAgent(providerID) || providerID === ONBOARDING_SERVER_PROVIDER) {
-    return {
-      providerID,
-      modelID: '',
-      name: modelProviderName(providerID),
-      capabilities: ['tools']
-    }
+    return { providerID, modelID: '', name: modelProviderName(providerID), capabilities: ['tools'] }
   }
-  const model = defaultModel(providerID)
-  return {
-    providerID,
-    modelID: model?.id ?? '',
-    name: model?.name ?? modelProviderName(providerID),
-    capabilities: model?.capabilities ? [...model.capabilities] : ['tools']
-  }
+  const defaultID = AI_PROVIDERS.find((definition) => definition.id === providerID)?.defaultModel
+  const model = catalogModels(providerID).find((candidate) => candidate.id === defaultID)
+  return model
+    ? fromCatalog(providerID, model)
+    : { providerID, modelID: '', name: modelProviderName(providerID), capabilities: ['tools'] }
+}
+
+/** The provider's model tagged as fast, for low-cost background work. */
+function fastModel(providerID: AIProviderID): PlannedModel | null {
+  const model = catalogModels(providerID).find(
+    (candidate) => candidate.tag === 'Fast' && candidate.capabilities?.includes('tools')
+  )
+  return model ? fromCatalog(providerID, model) : null
 }
 
 function hasVision(model: PlannedModel): boolean {
@@ -109,6 +148,12 @@ function availableAccess(answers: OnboardingAnswers, options: PlanOptions): Onbo
 function keepable(model: PlannedModel | null, access: OnboardingAccess[]): model is PlannedModel {
   if (!model) return false
   return !isOnboardingAccess(model.providerID) || access.includes(model.providerID)
+}
+
+/** Whether a role may follow the design model: agents cannot, and vision needs image input. */
+export function canFollowDesign(role: AIModelRole, design: PlannedModel | null): boolean {
+  if (!design || isAgentModel(design)) return false
+  return role !== 'vision' || hasVision(design)
 }
 
 function planDesign(
@@ -127,18 +172,14 @@ function planDesign(
   return spending === 'metered' ? plannedModel(ONBOARDING_METERED_PROVIDER) : null
 }
 
-function canInherit(design: PlannedModel | null): boolean {
-  return Boolean(design && !isOnboardingAgent(design.providerID) && hasVision(design))
-}
-
 function planVision(
   design: PlannedModel | null,
   access: OnboardingAccess[],
   spending: OnboardingSpending,
-  current: PlannedVision
-): PlannedVision {
+  current: PlannedRole
+): PlannedRole {
   if (current !== null && current !== 'design' && keepable(current, access)) return current
-  if (canInherit(design)) return 'design'
+  if (canFollowDesign('vision', design)) return 'design'
   const existing = ONBOARDING_API_PROVIDERS.filter((providerID) => access.includes(providerID))
     .map(plannedModel)
     .find(hasVision)
@@ -151,22 +192,129 @@ function planVision(
 }
 
 /**
- * Proposes models for the roles onboarding covers, preferring what is already configured and
- * then access the person already has. Agents choose their own model and cannot review images,
- * so vision falls back to an API model.
+ * Review and fast work are never asked about, so a configured choice stays, including none,
+ * unless it follows a design model it can no longer follow.
+ */
+function keepRole(
+  current: CurrentOnboardingModels,
+  role: 'review' | 'fast',
+  design: PlannedModel | null
+) {
+  const choice = current[role]
+  if (!current.configured) return false
+  if (choice === 'design') return canFollowDesign(role, design)
+  return !isAgentModel(choice)
+}
+
+/** Review follows the design model, or uses the API model chosen for vision behind an agent. */
+function planReview(
+  design: PlannedModel | null,
+  vision: PlannedRole,
+  current: CurrentOnboardingModels
+): PlannedRole {
+  if (keepRole(current, 'review', design)) return current.review
+  if (canFollowDesign('review', design)) return 'design'
+  return vision !== 'design' && vision?.capabilities.includes('tools') ? vision : null
+}
+
+/** Fast work uses the provider's fast model when it has one, otherwise the design model. */
+function planFast(
+  design: PlannedModel | null,
+  vision: PlannedRole,
+  current: CurrentOnboardingModels
+): PlannedRole {
+  if (keepRole(current, 'fast', design)) return current.fast
+  const apiVision = vision === 'design' ? null : vision
+  const base = canFollowDesign('fast', design) ? design : apiVision
+  const fast = base ? fastModel(base.providerID) : null
+  if (fast && fast.modelID !== base?.modelID) return fast
+  if (canFollowDesign('fast', design)) return 'design'
+  return base
+}
+
+function roleModels(plan: Omit<OnboardingPlan, 'connections'>): PlannedModel[] {
+  return [plan.design, plan.vision, plan.review, plan.fast].filter(
+    (model): model is PlannedModel => model !== null && model !== 'design'
+  )
+}
+
+/**
+ * Proposes a model for each role, preferring what is already configured and then access the
+ * person already has. Agents choose their own model and cannot take the other roles, so those
+ * fall back to an API model. Roles the person did not ask about keep their configuration.
  */
 export function planOnboarding(answers: OnboardingAnswers, options: PlanOptions): OnboardingPlan {
   const access = availableAccess(answers, options)
-  const current = options.current ?? { design: null, vision: null }
+  const current = options.current ?? NO_CURRENT
   const design = answers.goals.includes('design')
     ? planDesign(access, answers.spending, current.design)
-    : null
+    : current.design
   const vision = answers.goals.includes('vision')
-    ? planVision(design ?? current.design, access, answers.spending, current.vision)
-    : null
-  const connections = [design, vision === 'design' ? null : vision]
-    .filter((model) => model !== null && !model.profileId)
-    .map((model) => model?.providerID ?? '')
+    ? planVision(design, access, answers.spending, current.vision)
+    : current.vision
+  const roles = {
+    design,
+    vision,
+    review: planReview(design, vision, current),
+    fast: planFast(design, vision, current)
+  }
+  return { ...roles, connections: planConnections(roles) }
+}
+
+/** Providers the planned models need connected, skipping models that are already configured. */
+export function planConnections(roles: Omit<OnboardingPlan, 'connections'>): OnboardingAccess[] {
+  const providers = roleModels(roles)
+    .filter((model) => !model.profileId)
+    .map((model) => model.providerID)
     .filter(isOnboardingAccess)
-  return { design, vision, connections: [...new Set(connections)] }
+  return [...new Set(providers)]
+}
+
+/** Whether every role the person asked about has a model. */
+export function coversGoals(plan: OnboardingPlan, goals: OnboardingGoal[]): boolean {
+  return goals.every((goal) => plan[goal] !== null)
+}
+
+export const SAME_AS_DESIGN = '__design__'
+export const NO_MODEL = '__none__'
+
+/** A stable key for a role choice, used as the value of the role's picker. */
+export function roleChoiceKey(choice: PlannedRole): string {
+  if (choice === 'design') return SAME_AS_DESIGN
+  if (choice === null) return NO_MODEL
+  return choice.profileId ?? `${choice.providerID}::${choice.modelID}`
+}
+
+/**
+ * Choices for a role: configured models, every suitable catalog model of a connected provider,
+ * an agent or server for the design role, and for the other roles the design model or nothing.
+ */
+export function roleOptions(
+  role: AIModelRole,
+  plan: OnboardingPlan,
+  configured: PlannedModel[]
+): PlannedRole[] {
+  const needs: AIModelCapability = role === 'vision' ? 'vision' : 'tools'
+  const candidates: PlannedModel[] = [...configured]
+  for (const providerID of plan.connections) {
+    if (isOnboardingAgent(providerID) || providerID === ONBOARDING_SERVER_PROVIDER) {
+      candidates.push(
+        roleModels(plan).find((model) => model.providerID === providerID) ??
+          plannedModel(providerID)
+      )
+    } else {
+      candidates.push(
+        ...catalogModels(providerID)
+          .filter((model) => model.capabilities)
+          .map((model) => fromCatalog(providerID, model))
+      )
+    }
+  }
+  const suitable = candidates.filter(
+    (model) => model.capabilities.includes(needs) && (role === 'design' || !isAgentModel(model))
+  )
+  const unique = new Map(suitable.map((model) => [roleChoiceKey(model), model]))
+  const models = [...unique.values()]
+  if (role === 'design') return models
+  return [...(canFollowDesign(role, plan.design) ? (['design'] as const) : []), null, ...models]
 }

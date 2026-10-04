@@ -57,8 +57,9 @@ test('guided setup connects a local server and saves it as the design model', as
   await next.click()
   await setup.getByRole('checkbox', { name: 'Local model or company server' }).click()
   await next.click()
-  await next.click()
 
+  // The server covers the design goal, so setup skips the pay-as-you-go question.
+  await expect(setup.getByRole('heading', { name: 'Connect your AI' })).toBeVisible()
   await expect(next).toBeDisabled()
   await setup.getByRole('textbox', { name: 'Base URL' }).fill(SERVER_URL)
   await setup.getByRole('textbox', { name: 'Model ID' }).fill('qwen3-coder:30b')
@@ -83,6 +84,7 @@ test('guided setup connects a local server and saves it as the design model', as
 /** Stands in for OpenRouter: sign-in redirects back with a code, which exchanges for a key. */
 async function serveOpenRouter(context: BrowserContext) {
   const exchanges: unknown[] = []
+  const keyChecks: (string | undefined)[] = []
   await context.route('https://openrouter.ai/auth?**', async (route) => {
     await route.fulfill({
       contentType: 'text/html',
@@ -106,6 +108,14 @@ async function serveOpenRouter(context: BrowserContext) {
       await route.fulfill({ headers: CORS_HEADERS, json: { key: 'sk-or-e2e-key' } })
       return
     }
+    if (request.url().endsWith('/api/v1/key')) {
+      keyChecks.push(request.headers().authorization)
+      await route.fulfill({
+        headers: CORS_HEADERS,
+        json: { data: { label: 'OpenPencil', is_free_tier: false } }
+      })
+      return
+    }
     await route.fulfill({
       headers: CORS_HEADERS,
       json: {
@@ -120,11 +130,11 @@ async function serveOpenRouter(context: BrowserContext) {
       }
     })
   })
-  return exchanges
+  return { exchanges, keyChecks }
 }
 
 test('guided setup signs in with OpenRouter without pasting a key', async ({ page, context }) => {
-  const exchanges = await serveOpenRouter(context)
+  const { exchanges, keyChecks } = await serveOpenRouter(context)
   const setup = await openGuidedSetup(page)
   const next = setup.getByRole('button', { name: 'Continue' })
   await next.click()
@@ -136,18 +146,30 @@ test('guided setup signs in with OpenRouter without pasting a key', async ({ pag
   const popup = page.waitForEvent('popup')
   await setup.getByRole('button', { name: 'Sign in with OpenRouter' }).click()
   await (await popup).waitForEvent('close')
+  // Setup checks the key with OpenRouter itself instead of asking for a connection test.
+  await expect(setup.getByRole('status')).toContainText('Signed in to OpenRouter')
+  await expect(setup.getByLabel('API Key')).toHaveCount(0)
   await expect(next).toBeEnabled()
   expect(exchanges).toEqual([
     { code: 'e2e-code', code_verifier: expect.any(String), code_challenge_method: 'S256' }
   ])
+  expect(keyChecks).toEqual(['Bearer sk-or-e2e-key'])
 
   await next.click()
+  const fast = setup.getByRole('combobox', { name: 'Fast tasks' })
+  await expect(fast).toHaveText(/Gemini 3.8 Flash/)
+  await fast.click()
+  await page.getByRole('option', { name: 'Same as Design' }).click()
+  await expect(fast).toHaveText(/Same as Design/)
+  await setup.getByRole('button', { name: 'Use recommended setup' }).click()
+  await expect(fast).toHaveText(/Gemini 3.8 Flash/)
   await setup.getByRole('button', { name: 'Finish setup' }).click()
   await expect(setup.getByRole('heading', { name: 'AI is ready' })).toBeVisible()
   await setup.getByRole('button', { name: 'Done' }).click()
 
-  const model = page
-    .getByTestId('settings-model-list')
-    .locator('[data-model-id]', { hasText: 'Claude Sonnet 5' })
-  await expect(model.getByText('Connected', { exact: true })).toBeVisible()
+  const models = page.getByTestId('settings-model-list')
+  for (const name of ['Claude Sonnet 5', 'Gemini 3.8 Flash']) {
+    const model = models.locator('[data-model-id]', { hasText: name })
+    await expect(model.getByText('Connected', { exact: true })).toBeVisible()
+  }
 })

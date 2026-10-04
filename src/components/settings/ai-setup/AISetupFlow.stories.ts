@@ -102,7 +102,8 @@ export const ConnectAgentAndFinish: Story = {
     await next()
     await choose('Codex')
     await next()
-    await next()
+    // Codex covers the design goal, so there is no pay-as-you-go question.
+    await expect(page().getByRole('heading', { name: 'Connect your AI' })).toBeVisible()
     await expect(page().getByText('npm i -g @zed-industries/codex-acp')).toBeVisible()
     await next()
     await expect(page().getByText('Codex · Model chosen by the agent')).toBeVisible()
@@ -145,7 +146,6 @@ export const LocalServer: Story = {
   play: async () => {
     await next()
     await choose('Local model or company server')
-    await next()
     await next()
     await expect(page().getByRole('textbox', { name: 'Base URL' })).toBeVisible()
     await expect(page().getByRole('textbox', { name: 'Model ID' })).toBeVisible()

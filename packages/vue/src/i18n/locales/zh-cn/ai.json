@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "如果尚未安装，请运行：",
   "aiSetupMeteredNote": "OpenRouter 让你用一个账户和一个密钥使用多家厂商的模型。",
   "aiSetupReviewTitle": "检查你的设置",
-  "aiSetupReviewDescription": "这些模型会保存到你的 AI 设置中，其他已配置的内容保持不变。",
   "aiSetupAgentModel": "模型由智能体选择",
   "aiSetupFinish": "完成设置",
   "aiSetupSavedTitle": "AI 已就绪",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "无法登录 OpenRouter。请重试或粘贴 API 密钥。",
   "aiSetupOpenRouterSignedInTitle": "已登录 OpenRouter",
   "aiSetupOpenRouterSignedInMessage": "你可以关闭此标签页并返回 OpenPencil。",
-  "aiSetupSavedKeyHint": "留空即可继续使用已保存的密钥。"
+  "aiSetupSavedKeyHint": "留空即可继续使用已保存的密钥。",
+  "aiSetupOpenRouterKeyLabel": "· 密钥“{label}”",
+  "aiSetupOpenRouterVerifying": "正在检查你的 OpenRouter 密钥…",
+  "aiSetupOpenRouterNoCredits": "这个 OpenRouter 账户还没有额度。请在 OpenRouter 充值后再使用推荐模型等付费模型。",
+  "aiSetupOpenRouterChange": "使用其他账户",
+  "aiSetupUseRecommended": "使用推荐设置",
+  "aiSetupRolesDescription": "为每类工作选择模型。我们已从你连接的服务中选好推荐模型，其他已配置的内容保持不变。"
 }

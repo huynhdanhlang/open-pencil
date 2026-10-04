@@ -188,7 +188,6 @@
   "aiSetupAgentInstall": "Se non è ancora installato, esegui:",
   "aiSetupMeteredNote": "OpenRouter offre modelli di più fornitori con un solo account e una sola chiave.",
   "aiSetupReviewTitle": "Controlla la configurazione",
-  "aiSetupReviewDescription": "Questi modelli vengono salvati nelle impostazioni IA. Tutto il resto che hai configurato resta invariato.",
   "aiSetupAgentModel": "Modello scelto dall’agente",
   "aiSetupFinish": "Completa la configurazione",
   "aiSetupSavedTitle": "L’IA è pronta",
@@ -206,5 +205,11 @@
   "aiSetupOpenRouterFailed": "Impossibile accedere a OpenRouter. Riprova o incolla una chiave API.",
   "aiSetupOpenRouterSignedInTitle": "Accesso a OpenRouter eseguito",
   "aiSetupOpenRouterSignedInMessage": "Puoi chiudere questa scheda e tornare a OpenPencil.",
-  "aiSetupSavedKeyHint": "Lascia vuoto per mantenere la chiave salvata."
+  "aiSetupSavedKeyHint": "Lascia vuoto per mantenere la chiave salvata.",
+  "aiSetupOpenRouterKeyLabel": "· chiave «{label}»",
+  "aiSetupOpenRouterVerifying": "Verifica della chiave OpenRouter…",
+  "aiSetupOpenRouterNoCredits": "Questo account OpenRouter non ha ancora crediti. Aggiungi crediti su OpenRouter per usare modelli a pagamento come quello consigliato.",
+  "aiSetupOpenRouterChange": "Usa un altro account",
+  "aiSetupUseRecommended": "Usa la configurazione consigliata",
+  "aiSetupRolesDescription": "Scegli un modello per ogni tipo di lavoro. Abbiamo scelto quelli consigliati tra ciò che hai collegato; tutto il resto che hai configurato resta invariato."
 }

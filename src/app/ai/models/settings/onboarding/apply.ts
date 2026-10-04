@@ -12,7 +12,6 @@ import {
   isOnboardingAgent,
   ONBOARDING_SERVER_PROVIDER,
   type OnboardingAccess,
-  type OnboardingGoal,
   type OnboardingPlan,
   type PlannedModel
 } from './plan'
@@ -29,9 +28,8 @@ export interface OnboardingConnectionDetails {
 
 export interface ApplyOnboardingInput {
   settings: AIModelSettings
+  /** The final model for every role; a `null` design keeps the current design model. */
   plan: OnboardingPlan
-  /** Roles the person answered for; other assignments are left as they are. */
-  goals: OnboardingGoal[]
   details: Partial<Record<OnboardingAccess, OnboardingConnectionDetails>>
   createId: () => string
 }
@@ -69,6 +67,52 @@ export function isUnconfiguredModelSettings(settings: AIModelSettings): boolean 
   return settings.models.length === 1 && isPlaceholder(settings, settings.models[0])
 }
 
+function isAgentConnection(
+  settings: AIModelSettings,
+  profile: AIModelProfile | undefined
+): boolean {
+  const connection = settings.connections.find(
+    (candidate) => candidate.id === profile?.connectionId
+  )
+  return (
+    !connection ||
+    isOnboardingAgent(connection.providerID) ||
+    connection.providerID === 'harness:pi'
+  )
+}
+
+/**
+ * Clears assignments the model settings would reject: agents only take the design role, and
+ * vision needs a model that accepts images, whether assigned directly or through the design model.
+ */
+function enforceRoleRules(settings: AIModelSettings): void {
+  const profileOf = (id: string | null) => settings.models.find((profile) => profile.id === id)
+  const design = profileOf(settings.assignments.design)
+  for (const role of ['review', 'fast', 'vision'] as const) {
+    const assignment = settings.assignments[role]
+    if (assignment === null) continue
+    const profile = assignment === 'design' ? design : profileOf(assignment)
+    if (!profile) continue
+    if (
+      isAgentConnection(settings, profile) ||
+      (role === 'vision' && !profile.capabilities.includes('vision'))
+    ) {
+      settings.assignments[role] = null
+    }
+  }
+}
+
+function removeUnusedPlaceholder(settings: AIModelSettings): void {
+  const placeholder = settings.models.find((profile) => isUnusedPlaceholder(settings, profile))
+  if (!placeholder) return
+  settings.models = settings.models.filter((profile) => profile !== placeholder)
+  if (!settings.models.some((profile) => profile.connectionId === placeholder.connectionId)) {
+    settings.connections = settings.connections.filter(
+      (connection) => connection.id !== placeholder.connectionId
+    )
+  }
+}
+
 /**
  * Merges a confirmed onboarding plan into the current settings. Matching connections and
  * profiles are reused, and anything configured in the advanced settings is kept.
@@ -76,7 +120,6 @@ export function isUnconfiguredModelSettings(settings: AIModelSettings): boolean 
 export function applyOnboardingPlan({
   settings: current,
   plan,
-  goals,
   details,
   createId
 }: ApplyOnboardingInput): ApplyOnboardingResult {
@@ -136,42 +179,17 @@ export function applyOnboardingPlan({
     return profile.id
   }
 
-  if (goals.includes('design') && plan.design) {
+  if (plan.design) {
     settings.assignments.design = profileFor(plan.design) ?? settings.assignments.design
   }
-  if (goals.includes('vision')) {
-    const { vision } = plan
-    settings.assignments.vision =
-      vision === null || vision === 'design' ? vision : profileFor(vision)
+  for (const role of ['vision', 'review', 'fast'] as const) {
+    const choice = plan[role]
+    settings.assignments[role] =
+      choice === null || choice === 'design' ? choice : profileFor(choice)
   }
 
-  const design = settings.models.find((profile) => profile.id === settings.assignments.design)
-  const designConnection = settings.connections.find(
-    (connection) => connection.id === design?.connectionId
-  )
-  const designIsAgent =
-    !designConnection ||
-    isOnboardingAgent(designConnection.providerID) ||
-    designConnection.providerID === 'harness:pi'
-  // Agents can only take the design role, and vision needs a model that accepts images.
-  for (const role of ['review', 'fast', 'vision'] as const) {
-    if (settings.assignments[role] !== 'design') continue
-    if (designIsAgent || (role === 'vision' && !design?.capabilities.includes('vision'))) {
-      settings.assignments[role] = null
-    }
-  }
-  const vision = settings.models.find((profile) => profile.id === settings.assignments.vision)
-  if (vision && !vision.capabilities.includes('vision')) settings.assignments.vision = null
-
-  const placeholder = settings.models.find((profile) => isUnusedPlaceholder(settings, profile))
-  if (placeholder) {
-    settings.models = settings.models.filter((profile) => profile !== placeholder)
-    if (!settings.models.some((profile) => profile.connectionId === placeholder.connectionId)) {
-      settings.connections = settings.connections.filter(
-        (connection) => connection.id !== placeholder.connectionId
-      )
-    }
-  }
+  enforceRoleRules(settings)
+  removeUnusedPlaceholder(settings)
 
   return { settings, connectionIds }
 }

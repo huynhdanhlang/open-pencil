@@ -13,7 +13,7 @@ import {
   type OnboardingGoal,
   type OnboardingSpending
 } from '@/app/ai/models/settings/onboarding/plan'
-import { AI_SETUP_STEPS, useAIOnboarding } from '@/app/ai/models/settings/onboarding/use'
+import { useAIOnboarding } from '@/app/ai/models/settings/onboarding/use'
 import SettingsSaveFeedback from '@/components/settings/layout/SettingsSaveFeedback.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import { AppDialogBody, AppDialogFooter, AppDialogHeader } from '@/components/ui/dialog'
@@ -25,6 +25,7 @@ import theme from '@/theme/settings/ai-setup/flow'
 import AISetupAccess from './AISetupAccess.vue'
 import AISetupConnection from './AISetupConnection.vue'
 import AISetupReview from './AISetupReview.vue'
+import AISetupRoles from './AISetupRoles.vue'
 import SetupChoice from './SetupChoice.vue'
 
 const { entry, agentsAvailable = IS_TAURI } = defineProps<{
@@ -36,7 +37,19 @@ const { ai, common } = useI18n()
 const styles = tv(theme)()
 
 const onboarding = useAIOnboarding({ agentsAvailable })
-const { answers, step, plan, hasProposal, busy, saveResult, canContinue } = onboarding
+const {
+  answers,
+  step,
+  steps,
+  recommended,
+  plan,
+  roles,
+  hasProposal,
+  busy,
+  saveResult,
+  canContinue
+} = onboarding
+const { isRecommended } = roles
 const phase = ref<'welcome' | 'wizard' | 'saved'>(entry === 'welcome' ? 'welcome' : 'wizard')
 
 const goals = computed(() => [
@@ -76,8 +89,8 @@ const header = computed(() => {
   return {
     heading: headings[step.value],
     description: ai.value.aiSetupProgress({
-      current: AI_SETUP_STEPS.indexOf(step.value) + 1,
-      total: AI_SETUP_STEPS.length
+      current: steps.value.indexOf(step.value) + 1,
+      total: steps.value.length
     })
   }
 })
@@ -136,7 +149,7 @@ async function finish(): Promise<void> {
       </section>
 
       <template v-else-if="phase === 'saved'">
-        <AISetupReview :plan="plan" :goals="answers.goals" />
+        <AISetupReview :plan="plan" />
       </template>
 
       <template v-else-if="step === 'goals'">
@@ -177,12 +190,12 @@ async function finish(): Promise<void> {
           :description="ai.aiSetupNothingDescription"
         />
         <AppAlert
-          v-else-if="!plan.connections.length"
+          v-else-if="!recommended.connections.length"
           tone="success"
           :heading="ai.aiSetupAlreadyConnected"
         />
         <AISetupConnection
-          v-for="providerID in plan.connections"
+          v-for="providerID in recommended.connections"
           :key="providerID"
           :provider-i-d="providerID"
           :state="onboarding.connection(providerID)"
@@ -195,12 +208,19 @@ async function finish(): Promise<void> {
           @sign-in="signIn(providerID)"
           @reopen-sign-in="onboarding.reopenSignIn(providerID)"
           @cancel-sign-in="onboarding.cancelSignIn(providerID)"
+          @sign-out="onboarding.signOut(providerID)"
         />
       </template>
 
       <template v-else>
-        <p :class="styles.help()">{{ ai.aiSetupReviewDescription }}</p>
-        <AISetupReview :plan="plan" :goals="answers.goals" />
+        <p :class="styles.help()">{{ ai.aiSetupRolesDescription }}</p>
+        <AISetupRoles
+          :plan="plan"
+          :options="roles.options"
+          :is-recommended="isRecommended"
+          @choose="roles.choose"
+          @use-recommended="roles.useRecommended"
+        />
         <SettingsSaveFeedback
           :result="saveResult"
           :error="saveResult === 'saved' ? null : saveResult"

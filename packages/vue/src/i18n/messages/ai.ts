@@ -211,8 +211,6 @@ export const aiMessageDefaults = {
   aiSetupMeteredNote:
     'OpenRouter gives you models from several vendors with one account and one key.',
   aiSetupReviewTitle: 'Review your setup',
-  aiSetupReviewDescription:
-    'These models are saved to your AI settings. Anything else you configured stays as it is.',
   aiSetupAgentModel: 'Model chosen by the agent',
   aiSetupFinish: 'Finish setup',
   aiSetupSavedTitle: 'AI is ready',
@@ -231,7 +229,15 @@ export const aiMessageDefaults = {
   aiSetupOpenRouterExpired: 'Sign-in took too long. Try again.',
   aiSetupOpenRouterFailed: 'Couldn’t sign in to OpenRouter. Try again or paste an API key.',
   aiSetupOpenRouterSignedInTitle: 'Signed in to OpenRouter',
-  aiSetupOpenRouterSignedInMessage: 'You can close this tab and return to OpenPencil.'
+  aiSetupOpenRouterSignedInMessage: 'You can close this tab and return to OpenPencil.',
+  aiSetupOpenRouterKeyLabel: params('· key “{label}”'),
+  aiSetupOpenRouterVerifying: 'Checking your OpenRouter key…',
+  aiSetupOpenRouterNoCredits:
+    'This OpenRouter account has no credits yet. Add credits on OpenRouter to use paid models such as the recommended one.',
+  aiSetupOpenRouterChange: 'Use a different account',
+  aiSetupUseRecommended: 'Use recommended setup',
+  aiSetupRolesDescription:
+    'Choose a model for each kind of work. We picked recommended ones from what you connected; anything else you configured stays as it is.'
 } as const
 
 export const aiMessages = i18n('ai', aiMessageDefaults)
