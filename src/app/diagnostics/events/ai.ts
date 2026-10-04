@@ -1,8 +1,10 @@
+import { pick } from 'es-toolkit'
 import * as v from 'valibot'
 
+import { describeDiagnosticError, diagnosticErrorDetails, isInternalError } from '../error'
 import { recordDiagnostic } from '../recorder'
 import { isUsageEnabled } from '../settings'
-import type { DiagnosticEvent, DiagnosticValue } from '../types'
+import type { DiagnosticEvent, DiagnosticLevel, DiagnosticValue } from '../types'
 
 const modelStepSchema = v.object({
   provider: v.string(),
@@ -24,7 +26,10 @@ const toolCompletedSchema = v.object({
   tool: v.string(),
   durationMs: v.number(),
   mutates: v.boolean(),
-  failed: v.boolean()
+  failed: v.boolean(),
+  errorName: v.optional(v.string()),
+  message: v.optional(v.nullable(v.string())),
+  stack: v.optional(v.nullable(v.string()))
 })
 
 export type AIDiagnosticContext = Pick<DiagnosticEvent, 'sessionId' | 'runId'>
@@ -33,7 +38,8 @@ function recordAIEvent(
   name: 'model.step.completed' | 'chat.completed' | 'chat.failed' | 'tool.completed',
   attributes: Record<string, DiagnosticValue>,
   schema: v.GenericSchema,
-  context: AIDiagnosticContext = {}
+  context: AIDiagnosticContext = {},
+  level: DiagnosticLevel = name === 'chat.failed' ? 'error' : 'info'
 ): void {
   const parsed = v.safeParse(schema, attributes)
   if (!parsed.success) {
@@ -45,7 +51,7 @@ function recordAIEvent(
   recordDiagnostic({
     ...context,
     category: 'ai',
-    level: name === 'chat.failed' ? 'error' : 'info',
+    level,
     name,
     attributes: output
   } satisfies Omit<DiagnosticEvent, 'id' | 'timestamp'>)
@@ -72,9 +78,26 @@ export function recordChatFailed(
   recordAIEvent('chat.failed', input, chatFailedSchema, context)
 }
 
+/**
+ * A failed tool is a warning, since models often call one wrongly. When the engine itself
+ * broke, it is an error with the message and stack; otherwise only the error's name is kept.
+ */
 export function recordToolCompleted(
-  input: v.InferOutput<typeof toolCompletedSchema>,
-  context?: AIDiagnosticContext
+  input: Omit<v.InferOutput<typeof toolCompletedSchema>, 'errorName' | 'message' | 'stack'>,
+  context?: AIDiagnosticContext,
+  cause?: unknown
 ): void {
-  recordAIEvent('tool.completed', input, toolCompletedSchema, context)
+  const record = (attributes: Record<string, DiagnosticValue>, level: DiagnosticLevel) =>
+    recordAIEvent(
+      'tool.completed',
+      { ...input, ...attributes },
+      toolCompletedSchema,
+      context,
+      level
+    )
+  if (!input.failed) return record({}, 'info')
+  if (isInternalError(cause)) {
+    return record(pick(diagnosticErrorDetails(cause), ['errorName', 'message', 'stack']), 'error')
+  }
+  record(cause === undefined ? {} : pick(describeDiagnosticError(cause), ['errorName']), 'warning')
 }

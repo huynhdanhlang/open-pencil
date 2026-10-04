@@ -59,6 +59,16 @@ function mayQuoteContent(error: Error): boolean {
 }
 
 /**
+ * Errors the engine raises on its own bugs, such as `x.map is not a function`. Their messages
+ * name code, not content, unlike the errors a tool throws on purpose, which quote its input.
+ */
+export function isInternalError(error: unknown): error is Error {
+  return (
+    error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError
+  )
+}
+
+/**
  * The metadata of `describeDiagnosticError`, plus the message and stack of a runtime failure,
  * scrubbed of URL queries, key-like strings, and home folder names and bounded in length.
  * A provider error keeps its stack but not its message, which can quote user content.

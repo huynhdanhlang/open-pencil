@@ -40,6 +40,22 @@ describe('diagnostic event summaries', () => {
     ],
     [
       {
+        name: 'tool.completed',
+        level: 'error' as const,
+        attributes: {
+          tool: 'render',
+          durationMs: 3,
+          mutates: true,
+          failed: true,
+          errorName: 'TypeError',
+          message: 'stops.map is not a function'
+        }
+      },
+      'Tool failed: render',
+      'TypeError: stops.map is not a function'
+    ],
+    [
+      {
         name: 'model.step.completed',
         attributes: { model: 'claude', inputTokens: 120, outputTokens: 30 }
       },

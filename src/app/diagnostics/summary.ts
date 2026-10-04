@@ -57,7 +57,8 @@ function describe(event: DiagnosticEvent, labels: DiagnosticLabels): [string, st
       const label =
         attributes.failed === true ? labels.toolFailed({ tool }) : labels.toolCompleted({ tool })
       const ms = attributes.durationMs
-      return [label, typeof ms === 'number' ? labels.durationMs({ ms: Math.round(ms) }) : null]
+      const duration = typeof ms === 'number' ? labels.durationMs({ ms: Math.round(ms) }) : null
+      return [label, text(attributes.message) ? errorDetail(attributes) : duration]
     }
     case 'chat.completed':
       return [labels.chatCompleted, text(attributes.finishReason)]

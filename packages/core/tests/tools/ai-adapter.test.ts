@@ -4,7 +4,7 @@ import { toolModelMessageSchema } from 'ai'
 import * as v from 'valibot'
 
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { defineTool, toolsToAI } from '@open-pencil/core/tools'
+import { defineTool, toolsToAI, type ToolLogEntry } from '@open-pencil/core/tools'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 type ToolFactory = Parameters<typeof toolsToAI>[2]['tool']
@@ -74,5 +74,47 @@ describe('AI adapter model output', () => {
   test('keeps non-image results as JSON', () => {
     const output = { mimeType: 'application/pdf', base64: 'AAAA' }
     expect(adapt(output).toModelOutput({ output })).toEqual({ type: 'json', value: output })
+  })
+})
+
+type ExecutableTool = {
+  execute(args: Record<string, unknown>, options: { toolCallId: string }): Promise<unknown>
+}
+
+function hasExecute(value: unknown): value is ExecutableTool {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'execute' in value &&
+    typeof value.execute === 'function'
+  )
+}
+
+describe('AI adapter tool log', () => {
+  test('gives the model the message and the log what was thrown', async () => {
+    const thrown = new TypeError('stops.map is not a function')
+    const def = defineTool({
+      name: 'broken_tool',
+      description: 'Throws',
+      execution: { kind: 'sync', mutation: 'none' },
+      input: v.object({}),
+      execute: () => {
+        throw thrown
+      }
+    })
+    const figma = new FigmaAPI(new SceneGraph())
+    const entries: ToolLogEntry[] = []
+    const tools = toolsToAI(
+      [def],
+      { getFigma: () => figma, onToolLog: (entry) => entries.push(entry) },
+      { tool }
+    )
+    const adapted: unknown = tools.broken_tool
+    if (!hasExecute(adapted)) throw new Error('broken_tool has no execute')
+
+    expect(await adapted.execute({}, { toolCallId: 'call' })).toEqual({
+      error: 'stops.map is not a function'
+    })
+    expect(entries).toMatchObject([{ error: 'stops.map is not a function', cause: thrown }])
   })
 })
