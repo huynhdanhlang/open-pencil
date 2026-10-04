@@ -2,16 +2,15 @@
 import { useObjectUrl } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { tv } from 'tailwind-variants'
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
 import type { ToolChange } from '@/app/ai/tools/changes/types'
+import CodeViewer from '@/components/code-editor/LazyCodeViewer.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import { chatToolTheme } from '@/theme/chat/tool'
 import splitterTheme from '@/theme/splitter'
-
-const CodeViewer = defineAsyncComponent(() => import('@/components/code-editor/CodeViewer.vue'))
 
 const { change } = defineProps<{ change: ToolChange }>()
 const { ai } = useI18n()
