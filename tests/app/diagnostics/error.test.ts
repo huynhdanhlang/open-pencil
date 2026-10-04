@@ -35,6 +35,13 @@ describe('diagnostic error details', () => {
     expect(details.stack).toContain('/Users/~/Projects/app/src/x.ts:1:1')
   })
 
+  test('scrubs a query on a bare path but keeps ordinary question marks', () => {
+    const details = diagnosticErrorDetails(
+      errorWith('Failed to load /Users/jane/Designs/app.fig?token=abc123. Retry? Maybe', '')
+    )
+    expect(details.message).toBe('Failed to load /Users/~/Designs/app.fig Retry? Maybe')
+  })
+
   test('drops the message of an AI SDK error, which can quote the prompt', () => {
     const error = errorWith(
       'Invalid prompt: the user asked for a "secret plan"',

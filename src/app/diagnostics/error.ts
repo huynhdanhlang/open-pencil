@@ -33,6 +33,8 @@ const MAX_STACK_LENGTH = 4000
 const SCRUBBERS: [RegExp, string][] = [
   // Query strings and fragments can carry keys, tokens, and document names.
   [/\b((?:https?|tauri|file):\/\/[^\s?#'")]*)[?#][^\s'")]*/g, '$1'],
+  // So can a query on a bare path or file name, such as `/Designs/app.fig?token=…`.
+  [/([^\s?'"(]*[/.][^\s?#'")]*)\?[^\s'")]+/g, '$1'],
   [/\bBearer\s+\S+/gi, 'Bearer [redacted]'],
   [/\b(?:sk|pk|rk|key|token|secret)[-_][A-Za-z0-9_-]{8,}/gi, '[redacted]'],
   // Long unbroken runs are keys or encoded content, not code locations.
