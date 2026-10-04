@@ -17,10 +17,17 @@ export function loadTypeScriptDependencies(): void {
         return nextLoad(url, context)
       }
       const source = readFileSync(fileURLToPath(url), 'utf8')
-      return {
-        format: 'module',
-        source: stripTypeScriptTypes(source, { mode: 'transform' }),
-        shortCircuit: true
+      // The first call announces the experimental API on stderr, which reads as a problem in hosts.
+      const emitWarning = process.emitWarning.bind(process)
+      process.emitWarning = () => undefined
+      try {
+        return {
+          format: 'module',
+          source: stripTypeScriptTypes(source, { mode: 'transform' }),
+          shortCircuit: true
+        }
+      } finally {
+        process.emitWarning = emitWarning
       }
     }
   })

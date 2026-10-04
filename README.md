@@ -178,7 +178,7 @@ Not every provider works in the browser, and not every model streams tool calls 
 
 Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent connects to the editor's MCP server and uses all 100+ design tools. Requires the desktop app and the agent CLI installed locally.
 
-Pi is also available as an optional AI SDK Harness provider. Install its companion CLI with `npm install -g @open-pencil/harness`, then add a **Pi** model profile in **Settings → AI & agents**. The companion is installed separately so OpenPencil does not bundle a JavaScript runtime for users who do not enable Harness providers.
+Pi runs through an optional Harness companion and uses the providers you signed in to in Pi, with Pi's default model. Choose Pi in guided setup (**Settings → AI & agents → Run guided setup**), which installs the companion with one click, or install it with `npm install -g @open-pencil/harness`. It needs Node.js 22.15 or later. The companion is installed separately so OpenPencil does not bundle a JavaScript runtime for users who do not use Pi. See [Coding agents](packages/docs/programmable/coding-agents.md#pi).
 
 **Setup (Claude Code):**
 
