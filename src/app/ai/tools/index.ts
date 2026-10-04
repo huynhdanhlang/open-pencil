@@ -30,7 +30,15 @@ import {
   stepBudget
 } from './run'
 
-export { didHitStepLimit, endRun, recordStep, runPageId, runUndoEntries, startRun } from './run'
+export {
+  didHitStepLimit,
+  endRun,
+  recordStep,
+  runAgentId,
+  runPageId,
+  runUndoEntries,
+  startRun
+} from './run'
 
 export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnosticContext) {
   const acquireMutation = createMutex()
