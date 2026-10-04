@@ -144,6 +144,12 @@ function emitToolLog(
   })
 }
 
+/** Most tools report a failure by returning `{ error }` rather than throwing. */
+function returnedError(result: unknown): string | undefined {
+  if (typeof result !== 'object' || result === null || !('error' in result)) return undefined
+  return typeof result.error === 'string' ? result.error : undefined
+}
+
 function isImageOutput(
   output: unknown
 ): output is { base64: string; mimeType: string; [key: string]: unknown } {
@@ -188,7 +194,17 @@ export function toolsToAI(
             const ids = extractNodeIds(execResult)
             if (ids.length > 0) options.onFlashNodes(ids)
           }
-          emitToolLog(options, def, args, startTime, figma, nodeBefore, execResult)
+          const error = returnedError(execResult)
+          emitToolLog(
+            options,
+            def,
+            args,
+            startTime,
+            figma,
+            nodeBefore,
+            execResult,
+            error === undefined ? undefined : { error, cause: undefined }
+          )
           if (options.getStepBudget) {
             execResult = appendStepWarning(execResult, options.getStepBudget())
           }
