@@ -46,6 +46,7 @@
 
 ### Fixed
 
+- Read `repeat()` and `minmax()` in design JSX grid tracks, such as `columns="repeat(7, 1fr)"`, which collapsed the grid to near-zero columns. A track the grid cannot express sizes to its content instead of to 0.
 - Lay out text set to fill its container the way Figma does: fill text in an auto-layout row now shares the free space with its siblings instead of keeping its old width and overflowing the row.
 - Open Figma files that use slots with each instance's own slot content instead of its component's default, keep slot properties, their settings, and instance content when saving back to `.fig`, and keep an instance's slot content when you switch its variant.
 - Stop showing a “signal is aborted without reason” error when you switch pages again before the previous page has finished loading.
