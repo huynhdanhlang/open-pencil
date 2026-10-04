@@ -183,18 +183,46 @@ const PROPERTY_REFERENCE_FIELDS: Partial<Record<ComponentPropertyReferenceField,
   INSTANCE_SWAP: 'componentId'
 }
 
-/** The nearest enclosing instance that assigns `propertyId`, if any does. */
-function hasEnclosingAssignment(graph: SceneGraph, node: SceneNode, propertyId: string): boolean {
+/** What the nearest enclosing instance assigns `propertyId`, if any does. */
+function enclosingAssignment(
+  graph: SceneGraph,
+  node: SceneNode,
+  propertyId: string
+): string | undefined {
   let current: SceneNode | undefined = node
   while (current) {
     if (
       current.type === 'INSTANCE' &&
       Object.hasOwn(current.componentPropertyAssignments, propertyId)
     )
-      return true
+      return current.componentPropertyAssignments[propertyId]
     current = current.parentId ? graph.nodes.get(current.parentId) : undefined
   }
-  return false
+  return undefined
+}
+
+function hasEnclosingAssignment(graph: SceneGraph, node: SceneNode, propertyId: string): boolean {
+  return enclosingAssignment(graph, node, propertyId) !== undefined
+}
+
+/**
+ * A component can gain a property-driven layer after an instance of it exists. Pass 4 leaves a
+ * driven field alone, so the fresh clone has to take the enclosing instance's assignment here or
+ * it keeps the component's default while every other instance layer shows the assigned value.
+ */
+function applyEnclosingAssignments(graph: SceneGraph, clone: SceneNode): void {
+  for (const reference of clone.componentPropertyReferences) {
+    const field = PROPERTY_REFERENCE_FIELDS[reference.field]
+    if (!field) continue
+    const value = enclosingAssignment(graph, clone, reference.propertyId)
+    if (value === undefined) continue
+    if (field === 'visible') graph.updateNode(clone.id, { visible: value === 'true' })
+    else if (field === 'text') graph.updateNode(clone.id, { text: value })
+    else if (field === 'componentId' && clone.type === 'INSTANCE' && graph.nodes.has(value)) {
+      graph.swapInstanceComponent(clone.id, value)
+    }
+  }
+  for (const child of graph.getChildren(clone.id)) applyEnclosingAssignments(graph, child)
 }
 
 /**
@@ -395,6 +423,7 @@ export function syncChildren(
       if (src.childIds.length > 0) {
         cloneChildrenWithMapping(graph, compChildId, clone.id)
       }
+      applyEnclosingAssignments(graph, clone)
       instChildMap.set(compChildId, clone)
       usedInstChildIds.add(clone.id)
     }
