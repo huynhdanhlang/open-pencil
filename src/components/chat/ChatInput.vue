@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useTemplateRef } from 'vue'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 import { useI18n, useSelectionState } from '@open-pencil/vue'
@@ -50,6 +50,9 @@ const {
   takeSubmission
 } = attachments
 
+const composer = useTemplateRef<{ restoreDraft: (text: string) => void }>('composer')
+defineExpose({ restoreDraft: (text: string) => composer.value?.restoreDraft(text) })
+
 const isStreaming = computed(() => disabled || status === 'streaming' || status === 'submitted')
 const isAgentProvider = computed(
   () => providerID.value.startsWith('acp:') || providerID.value === 'harness:pi'
@@ -81,6 +84,7 @@ const selectedProfileName = computed(
 
 <template>
   <ChatComposer
+    ref="composer"
     :status="status"
     :disabled="disabled"
     @submit="emit('submit', takeSubmission($event))"

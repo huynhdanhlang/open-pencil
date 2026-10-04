@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { Chat } from '@ai-sdk/vue'
 import type { UIMessage } from 'ai'
-import { computed, shallowRef, watch } from 'vue'
+import { computed, shallowRef, useTemplateRef, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
 import { chatDocumentId } from '@/app/ai/chat/history/document'
+import type { ChatSubmission } from '@/app/ai/chat/submission/types'
 import { useChatSubmission } from '@/app/ai/chat/submission/use'
 import { useAIChat } from '@/app/ai/chat/use'
 import { openAISetup } from '@/app/ai/models/settings/onboarding/dialog'
@@ -47,6 +48,11 @@ const submission = useChatSubmission({
   openModelSettings: () => openSettingsDialog('ai'),
   openSetup: () => openAISetup()
 })
+
+const chatInput = useTemplateRef<{ restoreDraft: (text: string) => void }>('chatInput')
+async function submitMessage(message: ChatSubmission) {
+  if (!(await submission.submit(message))) chatInput.value?.restoreDraft(message.displayText)
+}
 
 let viewGeneration = 0
 // Restoring local history must not open a provider connection or read credentials.
@@ -218,9 +224,10 @@ function handleStop() {
       </p>
       <ChatInput
         v-if="isConfigured && !agentHistoryReadOnly && !history.readOnly.value"
+        ref="chatInput"
         :status="status"
         :disabled="submission.busy.value || history.busy.value"
-        @submit="submission.submit"
+        @submit="submitMessage"
         @stop="handleStop"
         @error="toast.error"
       />

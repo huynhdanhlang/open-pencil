@@ -123,12 +123,13 @@ export function useChatSubmission(options: SubmissionOptions) {
     options.reportError(options.messages.value.requestFailed)
   }
 
-  async function submit(submission: ChatSubmission): Promise<void> {
+  /** Resolves to false when the message never reached the chat, so the composer can keep it. */
+  async function submit(submission: ChatSubmission): Promise<boolean> {
     const status = options.chat.value?.status ?? 'ready'
     if (status === 'streaming' || status === 'submitted' || isPreparingAttachments.value) {
       for (const image of submission.images) revokeImagePreviewURL(image.previewURL)
       if (submission.images.length > 0) options.reportError(options.messages.value.requestFailed)
-      return
+      return false
     }
 
     const version = ++operationVersion
@@ -140,15 +141,17 @@ export function useChatSubmission(options: SubmissionOptions) {
       if (!currentChat || version !== operationVersion) {
         for (const image of submission.images) revokeImagePreviewURL(image.previewURL)
         if (submission.images.length > 0) options.reportError(options.messages.value.requestFailed)
-        return
+        return false
       }
       if (submission.images.length === 0 && submission.nodes.length === 0) {
         await sendText(currentChat, submission)
       } else {
         await sendAttachments(currentChat, submission, version)
       }
+      return true
     } catch (error) {
       reportSubmissionError(error)
+      return false
     } finally {
       await options.flush?.().catch(() => undefined)
       if (version === operationVersion) isPreparingAttachments.value = false
