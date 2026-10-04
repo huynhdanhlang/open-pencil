@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
-async function openModels(page: import('@playwright/test').Page) {
+async function openModels(page: Page) {
   await page.goto('/?test')
   await new CanvasHelper(page).waitForInit()
   await page.getByTestId('app-settings-trigger').click()
