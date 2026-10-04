@@ -11,6 +11,7 @@ import {
 } from '@/app/ai/models'
 import type { SettingsSaveResult } from '@/app/settings/save-result'
 
+import { useOnboardingAgents } from './agents'
 import { applyOnboardingPlan } from './apply'
 import { existingOnboardingConnection, useOnboardingConnections } from './connections'
 import { currentOnboardingModels } from './current'
@@ -77,6 +78,7 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
   const connections = useOnboardingConnections({ plannedModel })
   const { connection, ready, markKeySaved } = connections
   const signIn = useOnboardingSignIn(connections)
+  const agents = useOnboardingAgents()
 
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0
@@ -158,6 +160,7 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
     plannedModel,
     ...connections,
     ...signIn,
+    ...agents,
     next,
     back,
     apply

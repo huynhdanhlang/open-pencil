@@ -215,5 +215,15 @@
   "aiSetupServerVision": "Эта модель умеет читать изображения",
   "aiSetupGapCoveredByOpenRouter": "OpenRouter возьмёт на себя то, что не покрывает остальной выбор, с оплатой за каждый запрос.",
   "aiSetupAccessMore": "Другие провайдеры",
-  "aiSetupServerOther": "Другой сервер"
+  "aiSetupServerOther": "Другой сервер",
+  "aiSetupAgentChecking": "Проверяем этот компьютер…",
+  "aiSetupAgentInstalled": "установлен",
+  "aiSetupAgentNotFound": "не найден",
+  "aiSetupAgentMCP": "MCP-сервер OpenPencil",
+  "aiSetupAgentMCPInstall": "Агенты для программирования работают с холстом через MCP-сервер OpenPencil. Установите его командой:",
+  "aiSetupAgentPromptHint": "Уже пользуетесь {agent} или другим агентом для программирования? Скопируйте промпт настройки и вставьте его туда — он установит всё нужное OpenPencil.",
+  "aiSetupAgentCopyPrompt": "Скопировать промпт настройки",
+  "aiSetupAgentCheckAgain": "Проверить снова",
+  "aiSetupAgentGuide": "Руководство по настройке",
+  "aiSetupGetDesktop": "Скачать настольное приложение"
 }

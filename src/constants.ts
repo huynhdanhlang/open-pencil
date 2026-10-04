@@ -70,6 +70,8 @@ export const ROOM_ID_LENGTH = 32
 export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
 
 export const WEB_APP_ORIGIN = 'https://app.openpencil.dev'
+/** Latest desktop release, for features that need the desktop app. */
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/open-pencil/open-pencil/releases/latest'
 
 export function getShareURL(roomId: string): string {
   const base = IS_TAURI || !IS_BROWSER ? WEB_APP_ORIGIN : window.location.origin

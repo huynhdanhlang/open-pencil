@@ -215,5 +215,15 @@
   "aiSetupServerVision": "Questo modello può leggere immagini",
   "aiSetupGapCoveredByOpenRouter": "OpenRouter coprirà ciò che le altre scelte non coprono, con addebito per richiesta.",
   "aiSetupAccessMore": "Altri fornitori",
-  "aiSetupServerOther": "Altro server"
+  "aiSetupServerOther": "Altro server",
+  "aiSetupAgentChecking": "Controllo di questo computer…",
+  "aiSetupAgentInstalled": "installato",
+  "aiSetupAgentNotFound": "non trovato",
+  "aiSetupAgentMCP": "Server MCP di OpenPencil",
+  "aiSetupAgentMCPInstall": "Gli agenti di programmazione accedono alla tela tramite il server MCP di OpenPencil. Installalo con:",
+  "aiSetupAgentPromptHint": "Usi già {agent} o un altro agente di programmazione? Copia il prompt di configurazione e incollalo lì: installerà ciò che serve a OpenPencil.",
+  "aiSetupAgentCopyPrompt": "Copia il prompt di configurazione",
+  "aiSetupAgentCheckAgain": "Controlla di nuovo",
+  "aiSetupAgentGuide": "Guida alla configurazione",
+  "aiSetupGetDesktop": "Scarica l’app desktop"
 }

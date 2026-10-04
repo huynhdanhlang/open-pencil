@@ -215,5 +215,15 @@
   "aiSetupServerVision": "此模型可以读取图片",
   "aiSetupGapCoveredByOpenRouter": "OpenRouter 会覆盖你其他选择无法完成的部分，按请求计费。",
   "aiSetupAccessMore": "更多服务商",
-  "aiSetupServerOther": "其他服务器"
+  "aiSetupServerOther": "其他服务器",
+  "aiSetupAgentChecking": "正在检查这台电脑…",
+  "aiSetupAgentInstalled": "已安装",
+  "aiSetupAgentNotFound": "未找到",
+  "aiSetupAgentMCP": "OpenPencil MCP 服务器",
+  "aiSetupAgentMCPInstall": "编程智能体通过 OpenPencil 的 MCP 服务器操作画布。使用以下命令安装：",
+  "aiSetupAgentPromptHint": "已经在用 {agent} 或其他编程智能体？复制设置提示词并粘贴进去，它会安装 OpenPencil 所需的内容。",
+  "aiSetupAgentCopyPrompt": "复制设置提示词",
+  "aiSetupAgentCheckAgain": "重新检查",
+  "aiSetupAgentGuide": "设置指南",
+  "aiSetupGetDesktop": "获取桌面应用"
 }

@@ -204,6 +204,19 @@ export const aiMessageDefaults = {
     'OpenPencil starts {agent} when you send a message. Sign in with its own command-line tool first.'
   ),
   aiSetupAgentInstall: 'If it is not installed yet, run:',
+  aiSetupAgentChecking: 'Checking this computer…',
+  aiSetupAgentInstalled: 'installed',
+  aiSetupAgentNotFound: 'not found',
+  aiSetupAgentMCP: 'OpenPencil MCP server',
+  aiSetupAgentMCPInstall:
+    'Coding agents reach the canvas through OpenPencil’s MCP server. Install it with:',
+  aiSetupAgentPromptHint: params(
+    'Already using {agent} or another coding agent? Copy the setup prompt and paste it there; it installs what OpenPencil needs.'
+  ),
+  aiSetupAgentCopyPrompt: 'Copy setup prompt',
+  aiSetupAgentCheckAgain: 'Check again',
+  aiSetupAgentGuide: 'Setup guide',
+  aiSetupGetDesktop: 'Get the desktop app',
   aiSetupMeteredNote:
     'OpenRouter gives you models from several vendors with one account and one key.',
   aiSetupReviewTitle: 'Review your setup',

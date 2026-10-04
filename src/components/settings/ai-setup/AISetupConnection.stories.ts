@@ -4,9 +4,10 @@ import { expect, within } from 'storybook/test'
 import AISetupConnection from './AISetupConnection.vue'
 
 interface Args {
-  providerID: 'openrouter' | 'anthropic' | 'openai-compatible' | 'acp:claude-code'
+  providerID: 'openrouter' | 'anthropic' | 'openai-compatible' | 'acp:claude-code' | 'acp:codex'
   signInStatus: 'idle' | 'waiting' | 'verifying' | 'blocked' | 'cancelled' | 'expired' | 'failed'
   account: { label: string; freeTier: boolean } | null
+  agentStatus: 'checking' | 'unknown' | { agent: boolean; automation: boolean }
   hasSavedKey: boolean
   recommended: boolean
 }
@@ -18,7 +19,8 @@ const meta = {
     signInStatus: 'idle',
     hasSavedKey: false,
     recommended: true,
-    account: null
+    account: null,
+    agentStatus: 'unknown'
   },
   render: (args) => ({
     components: { AISetupConnection },
@@ -79,3 +81,35 @@ export const SavedAPIKey: Story = {
 }
 export const LocalServer: Story = { args: { providerID: 'openai-compatible', recommended: false } }
 export const CodingAgent: Story = { args: { providerID: 'acp:claude-code', recommended: false } }
+export const CodingAgentChecking: Story = {
+  args: { providerID: 'acp:codex', recommended: false, agentStatus: 'checking' }
+}
+export const CodingAgentInstalled: Story = {
+  args: {
+    providerID: 'acp:claude-code',
+    recommended: false,
+    agentStatus: { agent: true, automation: true }
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByText('npm i -g @agentclientprotocol/claude-agent-acp')).toBeNull()
+    await expect(canvas.getByRole('button', { name: 'Check again' })).toBeVisible()
+  }
+}
+export const CodingAgentNotInstalled: Story = {
+  args: {
+    providerID: 'acp:codex',
+    recommended: false,
+    agentStatus: { agent: false, automation: false }
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByText('npm i -g @zed-industries/codex-acp')).toBeVisible()
+    await expect(canvas.getByText(/npm i -g @open-pencil\/mcp@/)).toBeVisible()
+    await expect(canvas.getByRole('button', { name: 'Copy setup prompt' })).toBeVisible()
+    await expect(canvas.getByRole('link', { name: /Setup guide/ })).toHaveAttribute(
+      'href',
+      'https://openpencil.dev/programmable/coding-agents#codex'
+    )
+  }
+}

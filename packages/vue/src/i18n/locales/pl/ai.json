@@ -215,5 +215,15 @@
   "aiSetupServerVision": "Ten model potrafi odczytywać obrazy",
   "aiSetupGapCoveredByOpenRouter": "OpenRouter obsłuży to, czego nie obejmują pozostałe wybory, z opłatą za każde zapytanie.",
   "aiSetupAccessMore": "Więcej dostawców",
-  "aiSetupServerOther": "Inny serwer"
+  "aiSetupServerOther": "Inny serwer",
+  "aiSetupAgentChecking": "Sprawdzanie tego komputera…",
+  "aiSetupAgentInstalled": "zainstalowany",
+  "aiSetupAgentNotFound": "nie znaleziono",
+  "aiSetupAgentMCP": "Serwer MCP OpenPencil",
+  "aiSetupAgentMCPInstall": "Agenci programistyczni korzystają z płótna przez serwer MCP OpenPencil. Zainstaluj go poleceniem:",
+  "aiSetupAgentPromptHint": "Korzystasz już z {agent} lub innego agenta programistycznego? Skopiuj prompt konfiguracji i wklej go tam — zainstaluje to, czego potrzebuje OpenPencil.",
+  "aiSetupAgentCopyPrompt": "Kopiuj prompt konfiguracji",
+  "aiSetupAgentCheckAgain": "Sprawdź ponownie",
+  "aiSetupAgentGuide": "Przewodnik konfiguracji",
+  "aiSetupGetDesktop": "Pobierz aplikację na komputer"
 }

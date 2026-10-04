@@ -215,5 +215,15 @@
   "aiSetupServerVision": "このモデルは画像を読み取れます",
   "aiSetupGapCoveredByOpenRouter": "ほかの選択で対応できない部分は OpenRouter が担当し、リクエストごとに課金されます。",
   "aiSetupAccessMore": "その他のプロバイダー",
-  "aiSetupServerOther": "その他のサーバー"
+  "aiSetupServerOther": "その他のサーバー",
+  "aiSetupAgentChecking": "このコンピューターを確認しています…",
+  "aiSetupAgentInstalled": "インストール済み",
+  "aiSetupAgentNotFound": "見つかりません",
+  "aiSetupAgentMCP": "OpenPencil MCP サーバー",
+  "aiSetupAgentMCPInstall": "コーディングエージェントは OpenPencil の MCP サーバー経由でキャンバスを操作します。次のコマンドでインストールしてください：",
+  "aiSetupAgentPromptHint": "{agent} などのコーディングエージェントをすでに使っていますか？セットアップ用プロンプトをコピーして貼り付けると、OpenPencil に必要なものをインストールします。",
+  "aiSetupAgentCopyPrompt": "セットアップ用プロンプトをコピー",
+  "aiSetupAgentCheckAgain": "もう一度確認",
+  "aiSetupAgentGuide": "セットアップガイド",
+  "aiSetupGetDesktop": "デスクトップアプリを入手"
 }

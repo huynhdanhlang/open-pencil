@@ -12,10 +12,12 @@ import {
   ONBOARDING_SERVER_PROVIDER,
   type OnboardingAccess
 } from '@/app/ai/models/settings/onboarding/plan'
+import SettingsLink from '@/components/settings/layout/SettingsLink.vue'
 import ProviderLogo from '@/components/settings/provider/ProviderLogo.vue'
 import AppCollapsible from '@/components/ui/collapsible/AppCollapsible.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
+import { DESKTOP_DOWNLOAD_URL } from '@/constants'
 import theme from '@/theme/settings/ai-setup/flow'
 
 import SetupChoice from './SetupChoice.vue'
@@ -53,7 +55,11 @@ function toggle(providerID: OnboardingAccess, checked: boolean): void {
         <template #icon><ProviderLogo :provider="agent" /></template>
       </SetupChoice>
     </template>
-    <AppAlert v-else :heading="ai.aiSetupAccessAgentsDesktop" />
+    <AppAlert v-else :heading="ai.aiSetupAccessAgentsDesktop">
+      <template #actions>
+        <SettingsLink :href="DESKTOP_DOWNLOAD_URL">{{ ai.aiSetupGetDesktop }}</SettingsLink>
+      </template>
+    </AppAlert>
   </section>
   <section :class="styles.group()">
     <h3 :class="styles.groupHeading()">{{ ai.aiSetupAccessAPI }}</h3>

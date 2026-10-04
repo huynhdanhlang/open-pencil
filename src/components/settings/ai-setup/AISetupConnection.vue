@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useClipboard } from '@vueuse/core'
 import { tv } from 'tailwind-variants'
 import { computed } from 'vue'
 
@@ -7,6 +6,7 @@ import { ACP_AGENTS, AI_PROVIDERS } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
+import type { AgentInstallStatus } from '@/app/ai/models/settings/onboarding/agents'
 import {
   ONBOARDING_SERVER_PRESETS,
   type OnboardingConnectionPatch,
@@ -29,12 +29,14 @@ import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 import theme from '@/theme/settings/ai-setup/flow'
 
+import AISetupAgent from './AISetupAgent.vue'
 import SetupChoice from './SetupChoice.vue'
 
 const {
   providerID,
   state,
   hasSavedKey = false,
+  agentStatus = 'unknown',
   serverVision = false,
   signInStatus = 'idle',
   recommended = false,
@@ -44,6 +46,8 @@ const {
   state: OnboardingConnectionState
   /** A key saved for the connection that matches what is entered now. */
   hasSavedKey?: boolean
+  /** Whether a coding agent and the MCP server it needs are installed. */
+  agentStatus?: AgentInstallStatus
   /** The person says the server's model can read images. */
   serverVision?: boolean
   /** Progress of signing in with the provider, for providers that support it. */
@@ -60,10 +64,10 @@ const emit = defineEmits<{
   cancelSignIn: []
   signOut: []
   serverVision: [value: boolean]
+  checkAgent: []
 }>()
 const { ai, common, credentials } = useI18n()
 const styles = tv(theme)()
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 
 const name = computed(() =>
   providerID === ONBOARDING_SERVER_PROVIDER
@@ -113,18 +117,7 @@ const keyHint = computed(() => {
       {{ name }}
     </h3>
 
-    <template v-if="agent">
-      <p :class="styles.help()">{{ ai.aiSetupAgentDescription({ agent: agent.name }) }}</p>
-      <template v-if="agent.installCommand">
-        <p :class="styles.help()">{{ ai.aiSetupAgentInstall }}</p>
-        <div :class="styles.command()">
-          <code>{{ agent.installCommand }}</code>
-          <AppButton size="xs" @click="copy(agent.installCommand)">
-            {{ copied ? common.copied : common.copy }}
-          </AppButton>
-        </div>
-      </template>
-    </template>
+    <AISetupAgent v-if="agent" :agent="agent" :status="agentStatus" @check="emit('checkAgent')" />
 
     <template v-else>
       <p v-if="recommended" :class="styles.help()">{{ ai.aiSetupMeteredNote }}</p>
