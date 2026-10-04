@@ -195,5 +195,16 @@
   "aiSetupSavedDescription": "Du kannst Modelle und Rollen jederzeit in den Einstellungen ändern.",
   "aiSetupRun": "Geführte Einrichtung starten",
   "aiSetupServerKeyHint": "Wenn dein Server keine Schlüssel prüft, gib einen beliebigen Wert ein.",
-  "aiSetupAlreadyConnected": "Alles, was du ausgewählt hast, ist bereits verbunden."
+  "aiSetupAlreadyConnected": "Alles, was du ausgewählt hast, ist bereits verbunden.",
+  "aiSetupOpenRouterSignIn": "Mit OpenRouter anmelden",
+  "aiSetupOpenRouterWaiting": "Schließe die Anmeldung bei OpenRouter in deinem Browser ab.",
+  "aiSetupOpenRouterReopen": "Erneut öffnen",
+  "aiSetupOpenRouterOrKey": "Oder einen API-Schlüssel einfügen",
+  "aiSetupOpenRouterBlocked": "Dein Browser hat das Anmeldefenster blockiert. Erlaube Pop-ups für OpenPencil und versuche es erneut.",
+  "aiSetupOpenRouterCancelled": "Die Anmeldung wurde abgebrochen.",
+  "aiSetupOpenRouterExpired": "Die Anmeldung hat zu lange gedauert. Versuche es erneut.",
+  "aiSetupOpenRouterFailed": "Die Anmeldung bei OpenRouter ist fehlgeschlagen. Versuche es erneut oder füge einen API-Schlüssel ein.",
+  "aiSetupOpenRouterSignedInTitle": "Bei OpenRouter angemeldet",
+  "aiSetupOpenRouterSignedInMessage": "Du kannst diesen Tab schließen und zu OpenPencil zurückkehren.",
+  "aiSetupSavedKeyHint": "Leer lassen, um den gespeicherten Schlüssel zu behalten."
 }

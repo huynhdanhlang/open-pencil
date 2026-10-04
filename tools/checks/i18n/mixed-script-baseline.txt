@@ -8,6 +8,13 @@ ja:ai.aiSetupGoalVisionDescription
 ja:ai.aiSetupGoalsTitle
 ja:ai.aiSetupMeteredNote
 ja:ai.aiSetupNothingDescription
+ja:ai.aiSetupOpenRouterBlocked
+ja:ai.aiSetupOpenRouterFailed
+ja:ai.aiSetupOpenRouterOrKey
+ja:ai.aiSetupOpenRouterSignIn
+ja:ai.aiSetupOpenRouterSignedInMessage
+ja:ai.aiSetupOpenRouterSignedInTitle
+ja:ai.aiSetupOpenRouterWaiting
 ja:ai.aiSetupReviewDescription
 ja:ai.aiSetupSavedTitle
 ja:ai.aiSetupSpendingDescription
@@ -161,6 +168,13 @@ zh-cn:ai.aiSetupGoalVisionDescription
 zh-cn:ai.aiSetupGoalsTitle
 zh-cn:ai.aiSetupMeteredNote
 zh-cn:ai.aiSetupNothingDescription
+zh-cn:ai.aiSetupOpenRouterBlocked
+zh-cn:ai.aiSetupOpenRouterFailed
+zh-cn:ai.aiSetupOpenRouterOrKey
+zh-cn:ai.aiSetupOpenRouterSignIn
+zh-cn:ai.aiSetupOpenRouterSignedInMessage
+zh-cn:ai.aiSetupOpenRouterSignedInTitle
+zh-cn:ai.aiSetupOpenRouterWaiting
 zh-cn:ai.aiSetupReviewDescription
 zh-cn:ai.aiSetupSavedTitle
 zh-cn:ai.aiSetupSpendingDescription

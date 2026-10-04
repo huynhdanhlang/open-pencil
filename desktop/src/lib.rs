@@ -5,12 +5,13 @@ mod fonts;
 mod http;
 mod menu;
 mod menu_events;
+mod oauth;
 #[cfg(target_os = "macos")]
 mod window;
 
 use credentials::{
-    credential_access_paused, credential_retry_access, credential_read, credential_remove, credential_status, credential_store_availability,
-    credential_write,
+    credential_access_paused, credential_read, credential_remove, credential_retry_access,
+    credential_status, credential_store_availability, credential_write,
 };
 use deep_link::path_matches_suffix;
 use fig_container::build_fig_file;
@@ -293,6 +294,7 @@ pub fn run() {
 
     builder
         .manage(PendingOpen(Mutex::new(Vec::new())))
+        .manage(oauth::OAuthLoopbacks::default())
         .invoke_handler(tauri::generate_handler![
             build_fig_file,
             credential_read,
@@ -309,6 +311,9 @@ pub fn run() {
             proxy_http_request,
             set_recent_files,
             native_menu_checked,
+            oauth::oauth_loopback_cancel,
+            oauth::oauth_loopback_start,
+            oauth::oauth_loopback_wait,
             set_native_menu_checked,
             take_pending_open,
             webview_version

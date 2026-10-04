@@ -93,6 +93,17 @@ function updateConnection(providerID: OnboardingAccess, patch: OnboardingConnect
   onboarding.resetTest(providerID)
 }
 
+/** Runs in the click handler, so the browser allows the sign-in popup. */
+function signIn(providerID: OnboardingAccess): void {
+  onboarding.signIn(providerID, {
+    keyLabel: 'OpenPencil',
+    page: {
+      title: ai.value.aiSetupOpenRouterSignedInTitle,
+      message: ai.value.aiSetupOpenRouterSignedInMessage
+    }
+  })
+}
+
 function back(): void {
   if (onboarding.back()) return
   if (entry === 'welcome') phase.value = 'welcome'
@@ -176,10 +187,14 @@ async function finish(): Promise<void> {
           :provider-i-d="providerID"
           :state="onboarding.connection(providerID)"
           :has-saved-key="onboarding.hasSavedKey(providerID)"
+          :sign-in-status="onboarding.signInStatus(providerID)"
           :recommended="!answers.access.includes(providerID)"
           :disabled="busy"
           @update="updateConnection(providerID, $event)"
           @test="onboarding.testConnection(providerID)"
+          @sign-in="signIn(providerID)"
+          @reopen-sign-in="onboarding.reopenSignIn(providerID)"
+          @cancel-sign-in="onboarding.cancelSignIn(providerID)"
         />
       </template>
 

@@ -16,17 +16,20 @@ import {
   ONBOARDING_SERVER_PROVIDER,
   type OnboardingAccess
 } from '@/app/ai/models/settings/onboarding/plan'
+import type { OnboardingSignInStatus } from '@/app/ai/models/settings/onboarding/sign-in'
 import ProviderConnectionTestButton from '@/components/chat/ProviderConnectionTestButton.vue'
 import ProviderSettingsField from '@/components/settings/provider/ProviderSettingsField.vue'
 import ProviderSettingsInput from '@/components/settings/provider/ProviderSettingsInput.vue'
 import ProviderSettingsKeyField from '@/components/settings/provider/ProviderSettingsKeyField.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import theme from '@/theme/settings/ai-setup/flow'
 
 const {
   providerID,
   state,
   hasSavedKey = false,
+  signInStatus = 'idle',
   recommended = false,
   disabled = false
 } = defineProps<{
@@ -34,12 +37,20 @@ const {
   state: OnboardingConnectionState
   /** A key saved for the connection that matches what is entered now. */
   hasSavedKey?: boolean
+  /** Progress of signing in with the provider, for providers that support it. */
+  signInStatus?: OnboardingSignInStatus
   /** Suggested for pay-as-you-go rather than chosen by the person. */
   recommended?: boolean
   disabled?: boolean
 }>()
-const emit = defineEmits<{ update: [patch: OnboardingConnectionPatch]; test: [] }>()
-const { ai, common, credentials, settings } = useI18n()
+const emit = defineEmits<{
+  update: [patch: OnboardingConnectionPatch]
+  test: []
+  signIn: []
+  reopenSignIn: []
+  cancelSignIn: []
+}>()
+const { ai, common, credentials } = useI18n()
 const styles = tv(theme)()
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 
@@ -55,8 +66,16 @@ const agent = computed(() =>
 )
 const provider = computed(() => AI_PROVIDERS.find((candidate) => candidate.id === providerID))
 const server = computed(() => providerID === ONBOARDING_SERVER_PROVIDER)
+const supportsSignIn = computed(() => providerID === 'openrouter')
+const signInFailure = computed(() => {
+  if (signInStatus === 'blocked') return ai.value.aiSetupOpenRouterBlocked
+  if (signInStatus === 'cancelled') return ai.value.aiSetupOpenRouterCancelled
+  if (signInStatus === 'expired') return ai.value.aiSetupOpenRouterExpired
+  if (signInStatus === 'failed') return ai.value.aiSetupOpenRouterFailed
+  return null
+})
 const keyHint = computed(() => {
-  if (hasSavedKey) return settings.value.savedCredentialHint
+  if (hasSavedKey) return ai.value.aiSetupSavedKeyHint
   return server.value ? ai.value.aiSetupServerKeyHint : undefined
 })
 </script>
@@ -80,6 +99,32 @@ const keyHint = computed(() => {
 
     <template v-else>
       <p v-if="recommended" :class="styles.help()">{{ ai.aiSetupMeteredNote }}</p>
+      <template v-if="supportsSignIn">
+        <div v-if="signInStatus === 'waiting'" :class="styles.signIn()">
+          <p role="status" :class="styles.signInStatus()">
+            <icon-lucide-loader-2 :class="styles.spinner()" aria-hidden="true" />
+            {{ ai.aiSetupOpenRouterWaiting }}
+          </p>
+          <div :class="styles.signInActions()">
+            <AppButton size="xs" variant="outline" @click="emit('reopenSignIn')">
+              {{ ai.aiSetupOpenRouterReopen }}
+            </AppButton>
+            <AppButton size="xs" @click="emit('cancelSignIn')">{{ common.cancel }}</AppButton>
+          </div>
+        </div>
+        <AppButton
+          v-else
+          class="self-start"
+          color="primary"
+          variant="solid"
+          :disabled="disabled"
+          @click="emit('signIn')"
+        >
+          {{ ai.aiSetupOpenRouterSignIn }}
+        </AppButton>
+        <AppAlert v-if="signInFailure" tone="warning" :heading="signInFailure" />
+        <p :class="styles.groupHeading()">{{ ai.aiSetupOpenRouterOrKey }}</p>
+      </template>
       <template v-if="server">
         <ProviderSettingsField v-slot="{ control }" :label="ai.baseURL">
           <ProviderSettingsInput
@@ -102,7 +147,7 @@ const keyHint = computed(() => {
       <ProviderSettingsKeyField
         :model-value="state.apiKey"
         :label="ai.apiKey"
-        :saved="hasSavedKey"
+        :saved="false"
         :hint="keyHint"
         kind="api"
         :placeholder="hasSavedKey ? credentials.savedReplace : (provider?.keyPlaceholder ?? '')"

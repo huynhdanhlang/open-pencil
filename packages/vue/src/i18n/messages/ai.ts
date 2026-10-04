@@ -219,7 +219,19 @@ export const aiMessageDefaults = {
   aiSetupSavedDescription: 'You can change models and roles anytime in Settings.',
   aiSetupRun: 'Run guided setup',
   aiSetupServerKeyHint: 'If your server does not check keys, enter any value.',
-  aiSetupAlreadyConnected: 'Everything you selected is already connected.'
+  aiSetupSavedKeyHint: 'Leave blank to keep the saved key.',
+  aiSetupAlreadyConnected: 'Everything you selected is already connected.',
+  aiSetupOpenRouterSignIn: 'Sign in with OpenRouter',
+  aiSetupOpenRouterWaiting: 'Finish signing in to OpenRouter in your browser.',
+  aiSetupOpenRouterReopen: 'Open again',
+  aiSetupOpenRouterOrKey: 'Or paste an API key',
+  aiSetupOpenRouterBlocked:
+    'Your browser blocked the sign-in window. Allow pop-ups for OpenPencil and try again.',
+  aiSetupOpenRouterCancelled: 'Sign-in was cancelled.',
+  aiSetupOpenRouterExpired: 'Sign-in took too long. Try again.',
+  aiSetupOpenRouterFailed: 'Couldn’t sign in to OpenRouter. Try again or paste an API key.',
+  aiSetupOpenRouterSignedInTitle: 'Signed in to OpenRouter',
+  aiSetupOpenRouterSignedInMessage: 'You can close this tab and return to OpenPencil.'
 } as const
 
 export const aiMessages = i18n('ai', aiMessageDefaults)

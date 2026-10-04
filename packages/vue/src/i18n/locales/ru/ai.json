@@ -195,5 +195,16 @@
   "aiSetupSavedDescription": "Модели и роли можно изменить в любой момент в настройках.",
   "aiSetupRun": "Пройти пошаговую настройку",
   "aiSetupServerKeyHint": "Если сервер не проверяет ключи, введите любое значение.",
-  "aiSetupAlreadyConnected": "Всё выбранное уже подключено."
+  "aiSetupAlreadyConnected": "Всё выбранное уже подключено.",
+  "aiSetupOpenRouterSignIn": "Войти через OpenRouter",
+  "aiSetupOpenRouterWaiting": "Завершите вход в OpenRouter в браузере.",
+  "aiSetupOpenRouterReopen": "Открыть снова",
+  "aiSetupOpenRouterOrKey": "Или вставьте ключ API",
+  "aiSetupOpenRouterBlocked": "Браузер заблокировал окно входа. Разрешите всплывающие окна для OpenPencil и попробуйте снова.",
+  "aiSetupOpenRouterCancelled": "Вход отменён.",
+  "aiSetupOpenRouterExpired": "Вход занял слишком много времени. Попробуйте снова.",
+  "aiSetupOpenRouterFailed": "Не удалось войти в OpenRouter. Попробуйте снова или вставьте ключ API.",
+  "aiSetupOpenRouterSignedInTitle": "Вход в OpenRouter выполнен",
+  "aiSetupOpenRouterSignedInMessage": "Можно закрыть эту вкладку и вернуться в OpenPencil.",
+  "aiSetupSavedKeyHint": "Оставьте поле пустым, чтобы использовать сохранённый ключ."
 }

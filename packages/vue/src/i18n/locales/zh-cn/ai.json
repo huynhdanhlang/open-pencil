@@ -195,5 +195,16 @@
   "aiSetupSavedDescription": "你可以随时在设置中更改模型和角色。",
   "aiSetupRun": "运行引导式设置",
   "aiSetupServerKeyHint": "如果你的服务器不校验密钥，可以输入任意值。",
-  "aiSetupAlreadyConnected": "你选择的服务都已连接。"
+  "aiSetupAlreadyConnected": "你选择的服务都已连接。",
+  "aiSetupOpenRouterSignIn": "使用 OpenRouter 登录",
+  "aiSetupOpenRouterWaiting": "请在浏览器中完成 OpenRouter 登录。",
+  "aiSetupOpenRouterReopen": "再次打开",
+  "aiSetupOpenRouterOrKey": "或粘贴 API 密钥",
+  "aiSetupOpenRouterBlocked": "浏览器拦截了登录窗口。请允许 OpenPencil 弹出窗口后重试。",
+  "aiSetupOpenRouterCancelled": "登录已取消。",
+  "aiSetupOpenRouterExpired": "登录耗时过长，请重试。",
+  "aiSetupOpenRouterFailed": "无法登录 OpenRouter。请重试或粘贴 API 密钥。",
+  "aiSetupOpenRouterSignedInTitle": "已登录 OpenRouter",
+  "aiSetupOpenRouterSignedInMessage": "你可以关闭此标签页并返回 OpenPencil。",
+  "aiSetupSavedKeyHint": "留空即可继续使用已保存的密钥。"
 }

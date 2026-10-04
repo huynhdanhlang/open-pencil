@@ -126,6 +126,7 @@ export const RecommendOpenRouter: Story = {
         'OpenRouter gives you models from several vendors with one account and one key.'
       )
     ).toBeVisible()
+    await expect(page().getByRole('button', { name: 'Sign in with OpenRouter' })).toBeVisible()
     await expect(page().getByRole('button', { name: 'Continue' })).toBeDisabled()
   }
 }

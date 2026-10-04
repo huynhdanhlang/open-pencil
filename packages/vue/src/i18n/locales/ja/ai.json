@@ -195,5 +195,16 @@
   "aiSetupSavedDescription": "モデルと役割はいつでも設定で変更できます。",
   "aiSetupRun": "ガイド付き設定を開始",
   "aiSetupServerKeyHint": "サーバーがキーを確認しない場合は、任意の値を入力してください。",
-  "aiSetupAlreadyConnected": "選んだものはすべて接続済みです。"
+  "aiSetupAlreadyConnected": "選んだものはすべて接続済みです。",
+  "aiSetupOpenRouterSignIn": "OpenRouter でサインイン",
+  "aiSetupOpenRouterWaiting": "ブラウザで OpenRouter へのサインインを完了してください。",
+  "aiSetupOpenRouterReopen": "もう一度開く",
+  "aiSetupOpenRouterOrKey": "または API キーを貼り付け",
+  "aiSetupOpenRouterBlocked": "ブラウザがサインイン用のウィンドウをブロックしました。OpenPencil のポップアップを許可してから、もう一度お試しください。",
+  "aiSetupOpenRouterCancelled": "サインインはキャンセルされました。",
+  "aiSetupOpenRouterExpired": "サインインに時間がかかりすぎました。もう一度お試しください。",
+  "aiSetupOpenRouterFailed": "OpenRouter にサインインできませんでした。もう一度試すか、API キーを貼り付けてください。",
+  "aiSetupOpenRouterSignedInTitle": "OpenRouter にサインインしました",
+  "aiSetupOpenRouterSignedInMessage": "このタブを閉じて OpenPencil に戻ってください。",
+  "aiSetupSavedKeyHint": "保存済みのキーを使う場合は空欄のままにしてください。"
 }

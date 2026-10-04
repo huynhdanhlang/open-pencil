@@ -24,6 +24,7 @@ import {
   type OnboardingAnswers,
   type PlannedModel
 } from './plan'
+import { useOnboardingSignIn } from './sign-in'
 
 export const AI_SETUP_STEPS = ['goals', 'access', 'spending', 'connect', 'review'] as const
 export type AISetupStep = (typeof AI_SETUP_STEPS)[number]
@@ -89,6 +90,7 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
 
   const connections = useOnboardingConnections({ plannedModel })
   const { connection, ready, markKeySaved } = connections
+  const signIn = useOnboardingSignIn(connections)
 
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0
@@ -165,6 +167,7 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
     canContinue,
     plannedModel,
     ...connections,
+    ...signIn,
     next,
     back,
     apply
