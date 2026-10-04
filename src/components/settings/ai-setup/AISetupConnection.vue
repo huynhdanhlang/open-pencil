@@ -23,12 +23,16 @@ import ProviderSettingsInput from '@/components/settings/provider/ProviderSettin
 import ProviderSettingsKeyField from '@/components/settings/provider/ProviderSettingsKeyField.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
+import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 import theme from '@/theme/settings/ai-setup/flow'
+
+import SetupChoice from './SetupChoice.vue'
 
 const {
   providerID,
   state,
   hasSavedKey = false,
+  serverVision = false,
   signInStatus = 'idle',
   recommended = false,
   disabled = false
@@ -37,6 +41,8 @@ const {
   state: OnboardingConnectionState
   /** A key saved for the connection that matches what is entered now. */
   hasSavedKey?: boolean
+  /** The person says the server's model can read images. */
+  serverVision?: boolean
   /** Progress of signing in with the provider, for providers that support it. */
   signInStatus?: OnboardingSignInStatus
   /** Suggested for pay-as-you-go rather than chosen by the person. */
@@ -50,6 +56,7 @@ const emit = defineEmits<{
   reopenSignIn: []
   cancelSignIn: []
   signOut: []
+  serverVision: [value: boolean]
 }>()
 const { ai, common, credentials } = useI18n()
 const styles = tv(theme)()
@@ -173,6 +180,13 @@ const keyHint = computed(() => {
             @update:model-value="emit('update', { customModelID: String($event) })"
           />
         </ProviderSettingsField>
+        <SetupChoice :label="ai.aiSetupServerVision">
+          <AppCheckbox
+            :model-value="serverVision"
+            :ariaLabel="ai.aiSetupServerVision"
+            @update:model-value="emit('serverVision', $event)"
+          />
+        </SetupChoice>
       </template>
       <ProviderSettingsKeyField
         v-if="!state.account"

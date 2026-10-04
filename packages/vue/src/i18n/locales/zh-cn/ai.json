@@ -177,12 +177,7 @@
   "aiSetupAccessAPI": "API 账户",
   "aiSetupAccessServer": "本地模型或公司服务器",
   "aiSetupAccessServerDescription": "任何兼容 OpenAI API 的服务器，例如 Ollama 或 LM Studio。",
-  "aiSetupSpendingTitle": "允许按量付费的模型吗？",
-  "aiSetupSpendingDescription": "按量付费的模型会按每次请求向 API 账户计费，与任何订阅分开结算。",
-  "aiSetupSpendingExisting": "只使用我已有的服务",
-  "aiSetupSpendingMetered": "需要时推荐按量付费的模型",
   "aiSetupConnectTitle": "连接你的 AI",
-  "aiSetupNothingTitle": "你选择的服务无法完成这些任务",
   "aiSetupNothingDescription": "返回选择其他服务，或在高级设置中配置 AI。",
   "aiSetupAgentDescription": "发送消息时，OpenPencil 会启动 {agent}。请先使用它自带的命令行工具登录。",
   "aiSetupAgentInstall": "如果尚未安装，请运行：",
@@ -211,5 +206,12 @@
   "aiSetupOpenRouterNoCredits": "这个 OpenRouter 账户还没有额度。请在 OpenRouter 充值后再使用推荐模型等付费模型。",
   "aiSetupOpenRouterChange": "使用其他账户",
   "aiSetupUseRecommended": "使用推荐设置",
-  "aiSetupRolesDescription": "为每类工作选择模型。我们已从你连接的服务中选好推荐模型，其他已配置的内容保持不变。"
+  "aiSetupRolesDescription": "为每类工作选择模型。我们已从你连接的服务中选好推荐模型，其他已配置的内容保持不变。",
+  "aiSetupGapDesign": "你选择的服务都无法创建和编辑设计。",
+  "aiSetupGapVision": "你选择的服务都无法查看图片，因此可视化审查将保持关闭。",
+  "aiSetupGapContinue": "你可以先继续，之后在设置中添加。",
+  "aiSetupGapAddOpenRouter": "添加 OpenRouter（按量付费）",
+  "aiSetupGapRemoveOpenRouter": "不使用 OpenRouter",
+  "aiSetupServerVision": "此模型可以读取图片",
+  "aiSetupGapCoveredByOpenRouter": "OpenRouter 会覆盖你其他选择无法完成的部分，按请求计费。"
 }

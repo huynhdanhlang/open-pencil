@@ -177,12 +177,7 @@
   "aiSetupAccessAPI": "Konta API",
   "aiSetupAccessServer": "Model lokalny lub serwer firmowy",
   "aiSetupAccessServerDescription": "Dowolny serwer zgodny z API OpenAI, np. Ollama lub LM Studio.",
-  "aiSetupSpendingTitle": "Zezwolić na modele płatne za użycie?",
-  "aiSetupSpendingDescription": "Modele płatne za użycie obciążają konto API za każde zapytanie, niezależnie od subskrypcji.",
-  "aiSetupSpendingExisting": "Używaj tylko tego, co już mam",
-  "aiSetupSpendingMetered": "W razie potrzeby poleć model płatny za użycie",
   "aiSetupConnectTitle": "Połącz AI",
-  "aiSetupNothingTitle": "Żadna z wybranych opcji nie obejmuje tych zadań",
   "aiSetupNothingDescription": "Wróć, aby wybrać inny dostęp, albo skonfiguruj AI w ustawieniach zaawansowanych.",
   "aiSetupAgentDescription": "OpenPencil uruchamia {agent}, gdy wyślesz wiadomość. Najpierw zaloguj się za pomocą jego narzędzia wiersza poleceń.",
   "aiSetupAgentInstall": "Jeśli nie jest jeszcze zainstalowany, uruchom:",
@@ -211,5 +206,12 @@
   "aiSetupOpenRouterNoCredits": "To konto OpenRouter nie ma jeszcze środków. Doładuj je w OpenRouter, aby korzystać z płatnych modeli, takich jak polecany.",
   "aiSetupOpenRouterChange": "Użyj innego konta",
   "aiSetupUseRecommended": "Użyj polecanej konfiguracji",
-  "aiSetupRolesDescription": "Wybierz model dla każdego rodzaju pracy. Spośród połączonych usług wybraliśmy polecane; pozostała konfiguracja się nie zmieni."
+  "aiSetupRolesDescription": "Wybierz model dla każdego rodzaju pracy. Spośród połączonych usług wybraliśmy polecane; pozostała konfiguracja się nie zmieni.",
+  "aiSetupGapDesign": "Żadna z wybranych opcji nie tworzy ani nie edytuje projektów.",
+  "aiSetupGapVision": "Żadna z wybranych opcji nie analizuje obrazów, więc przegląd wizualny pozostanie wyłączony.",
+  "aiSetupGapContinue": "Możesz kontynuować bez tego i dodać to później w ustawieniach.",
+  "aiSetupGapAddOpenRouter": "Dodaj OpenRouter (płatność za użycie)",
+  "aiSetupGapRemoveOpenRouter": "Nie używaj OpenRouter",
+  "aiSetupServerVision": "Ten model potrafi odczytywać obrazy",
+  "aiSetupGapCoveredByOpenRouter": "OpenRouter obsłuży to, czego nie obejmują pozostałe wybory, z opłatą za każde zapytanie."
 }

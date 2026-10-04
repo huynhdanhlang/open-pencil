@@ -177,12 +177,7 @@
   "aiSetupAccessAPI": "API アカウント",
   "aiSetupAccessServer": "ローカルモデルまたは社内サーバー",
   "aiSetupAccessServerDescription": "Ollama や LM Studio など、OpenAI API 互換のサーバー。",
-  "aiSetupSpendingTitle": "従量課金のモデルを使いますか？",
-  "aiSetupSpendingDescription": "従量課金のモデルは、サブスクリプションとは別に、リクエストごとに API アカウントへ課金されます。",
-  "aiSetupSpendingExisting": "手持ちのものだけを使う",
-  "aiSetupSpendingMetered": "必要なら従量課金のモデルを提案する",
   "aiSetupConnectTitle": "AI を接続",
-  "aiSetupNothingTitle": "選んだものではこの作業に対応できません",
   "aiSetupNothingDescription": "戻って別のものを選ぶか、詳細設定で AI を設定してください。",
   "aiSetupAgentDescription": "メッセージを送ると OpenPencil が {agent} を起動します。先にエージェント自身のコマンドラインツールでサインインしてください。",
   "aiSetupAgentInstall": "まだインストールしていない場合は、次を実行してください：",
@@ -211,5 +206,12 @@
   "aiSetupOpenRouterNoCredits": "この OpenRouter アカウントにはまだクレジットがありません。推奨モデルなどの有料モデルを使うには、OpenRouter でクレジットを追加してください。",
   "aiSetupOpenRouterChange": "別のアカウントを使う",
   "aiSetupUseRecommended": "推奨の設定を使う",
-  "aiSetupRolesDescription": "作業の種類ごとにモデルを選んでください。接続したものから推奨モデルを選んであります。ほかに設定した内容はそのまま残ります。"
+  "aiSetupRolesDescription": "作業の種類ごとにモデルを選んでください。接続したものから推奨モデルを選んであります。ほかに設定した内容はそのまま残ります。",
+  "aiSetupGapDesign": "選んだものではデザインの作成と編集ができません。",
+  "aiSetupGapVision": "選んだものでは画像を確認できないため、ビジュアルレビューはオフのままになります。",
+  "aiSetupGapContinue": "このまま続けて、あとから設定で追加することもできます。",
+  "aiSetupGapAddOpenRouter": "OpenRouter を追加（従量課金）",
+  "aiSetupGapRemoveOpenRouter": "OpenRouter を使わない",
+  "aiSetupServerVision": "このモデルは画像を読み取れます",
+  "aiSetupGapCoveredByOpenRouter": "ほかの選択で対応できない部分は OpenRouter が担当し、リクエストごとに課金されます。"
 }

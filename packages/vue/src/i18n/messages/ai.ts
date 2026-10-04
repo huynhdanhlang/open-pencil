@@ -196,13 +196,7 @@ export const aiMessageDefaults = {
   aiSetupAccessServer: 'Local model or company server',
   aiSetupAccessServerDescription:
     'Any server that speaks the OpenAI API, such as Ollama or LM Studio.',
-  aiSetupSpendingTitle: 'Allow pay-as-you-go models?',
-  aiSetupSpendingDescription:
-    'Pay-as-you-go models bill an API account for each request, separately from any subscription.',
-  aiSetupSpendingExisting: 'Only use what I already have',
-  aiSetupSpendingMetered: 'Recommend a pay-as-you-go model when needed',
   aiSetupConnectTitle: 'Connect your AI',
-  aiSetupNothingTitle: 'Nothing you selected covers these tasks',
   aiSetupNothingDescription: 'Go back to choose other access, or set up AI in advanced settings.',
   aiSetupAgentDescription: params(
     'OpenPencil starts {agent} when you send a message. Sign in with its own command-line tool first.'
@@ -217,6 +211,14 @@ export const aiMessageDefaults = {
   aiSetupSavedDescription: 'You can change models and roles anytime in Settings.',
   aiSetupRun: 'Run guided setup',
   aiSetupServerKeyHint: 'If your server does not check keys, enter any value.',
+  aiSetupGapDesign: 'Nothing you selected can create and edit designs.',
+  aiSetupGapVision: 'Nothing you selected can review images, so visual review would stay off.',
+  aiSetupGapContinue: 'You can continue without it and add it later in Settings.',
+  aiSetupGapAddOpenRouter: 'Add OpenRouter (pay as you go)',
+  aiSetupGapRemoveOpenRouter: 'Don’t use OpenRouter',
+  aiSetupGapCoveredByOpenRouter:
+    'OpenRouter will cover what your other choices can’t, billed per request.',
+  aiSetupServerVision: 'This model can read images',
   aiSetupSavedKeyHint: 'Leave blank to keep the saved key.',
   aiSetupAlreadyConnected: 'Everything you selected is already connected.',
   aiSetupOpenRouterSignIn: 'Sign in with OpenRouter',

@@ -36,7 +36,10 @@ export type OnboardingSpending = 'existing' | 'metered'
 export interface OnboardingAnswers {
   goals: OnboardingGoal[]
   access: OnboardingAccess[]
+  /** `metered` lets setup add OpenRouter for goals nothing selected covers. */
   spending: OnboardingSpending
+  /** The person says their server's model can read images. */
+  serverVision?: boolean
 }
 
 export interface PlannedModel {
@@ -117,8 +120,16 @@ function fromCatalog(providerID: AIProviderID, model: ModelOption): PlannedModel
   }
 }
 
-function plannedModel(providerID: OnboardingAccess): PlannedModel {
-  if (isOnboardingAgent(providerID) || providerID === ONBOARDING_SERVER_PROVIDER) {
+function plannedModel(providerID: OnboardingAccess, serverVision = false): PlannedModel {
+  if (providerID === ONBOARDING_SERVER_PROVIDER) {
+    return {
+      providerID,
+      modelID: '',
+      name: modelProviderName(providerID),
+      capabilities: serverVision ? ['tools', 'vision'] : ['tools']
+    }
+  }
+  if (isOnboardingAgent(providerID)) {
     return { providerID, modelID: '', name: modelProviderName(providerID), capabilities: ['tools'] }
   }
   const defaultID = AI_PROVIDERS.find((definition) => definition.id === providerID)?.defaultModel
@@ -157,8 +168,8 @@ export function canFollowDesign(role: AIModelRole, design: PlannedModel | null):
 }
 
 function planDesign(
+  answers: OnboardingAnswers,
   access: OnboardingAccess[],
-  spending: OnboardingSpending,
   current: PlannedModel | null
 ) {
   if (keepable(current, access)) return current
@@ -168,24 +179,27 @@ function planDesign(
     ONBOARDING_SERVER_PROVIDER
   ]
   const existing = preferred.find((providerID) => access.includes(providerID))
-  if (existing) return plannedModel(existing)
-  return spending === 'metered' ? plannedModel(ONBOARDING_METERED_PROVIDER) : null
+  if (existing) return plannedModel(existing, answers.serverVision)
+  return answers.spending === 'metered' ? plannedModel(ONBOARDING_METERED_PROVIDER) : null
 }
 
 function planVision(
+  answers: OnboardingAnswers,
   design: PlannedModel | null,
   access: OnboardingAccess[],
-  spending: OnboardingSpending,
   current: PlannedRole
 ): PlannedRole {
   if (current !== null && current !== 'design' && keepable(current, access)) return current
   if (canFollowDesign('vision', design)) return 'design'
-  const existing = ONBOARDING_API_PROVIDERS.filter((providerID) => access.includes(providerID))
-    .map(plannedModel)
+  // A local server that reads images is preferred over a paid account.
+  const candidates: OnboardingAccess[] = [ONBOARDING_SERVER_PROVIDER, ...ONBOARDING_API_PROVIDERS]
+  const existing = candidates
+    .filter((providerID) => access.includes(providerID))
+    .map((providerID) => plannedModel(providerID, answers.serverVision))
     .find(hasVision)
   if (existing) return existing
   const metered = plannedModel(ONBOARDING_METERED_PROVIDER)
-  if (spending === 'metered' && hasVision(metered)) return metered
+  if (answers.spending === 'metered' && hasVision(metered)) return metered
   // Nothing new covers visual review, so a configured vision model stays as it is; inheriting
   // from a design model that cannot accept images is not possible.
   return current === 'design' ? null : current
@@ -247,10 +261,10 @@ export function planOnboarding(answers: OnboardingAnswers, options: PlanOptions)
   const access = availableAccess(answers, options)
   const current = options.current ?? NO_CURRENT
   const design = answers.goals.includes('design')
-    ? planDesign(access, answers.spending, current.design)
+    ? planDesign(answers, access, current.design)
     : current.design
   const vision = answers.goals.includes('vision')
-    ? planVision(design, access, answers.spending, current.vision)
+    ? planVision(answers, design, access, current.vision)
     : current.vision
   const roles = {
     design,
@@ -275,6 +289,12 @@ export function coversGoals(plan: OnboardingPlan, goals: OnboardingGoal[]): bool
   return goals.every((goal) => plan[goal] !== null)
 }
 
+/** Requested goals that the access the person selected cannot cover without OpenRouter. */
+export function uncoveredGoals(answers: OnboardingAnswers, options: PlanOptions): OnboardingGoal[] {
+  const plan = planOnboarding({ ...answers, spending: 'existing' }, options)
+  return answers.goals.filter((goal) => plan[goal] === null)
+}
+
 export const SAME_AS_DESIGN = '__design__'
 export const NO_MODEL = '__none__'
 
@@ -295,7 +315,8 @@ export function roleOptions(
   configured: PlannedModel[]
 ): PlannedRole[] {
   const needs: AIModelCapability = role === 'vision' ? 'vision' : 'tools'
-  const candidates: PlannedModel[] = [...configured]
+  // Planned models come first so a provider whose catalog lists no capabilities still offers one.
+  const candidates: PlannedModel[] = [...configured, ...roleModels(plan)]
   for (const providerID of plan.connections) {
     if (isOnboardingAgent(providerID) || providerID === ONBOARDING_SERVER_PROVIDER) {
       candidates.push(

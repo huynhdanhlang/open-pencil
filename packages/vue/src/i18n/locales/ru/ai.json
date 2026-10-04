@@ -177,12 +177,7 @@
   "aiSetupAccessAPI": "Аккаунты API",
   "aiSetupAccessServer": "Локальная модель или сервер компании",
   "aiSetupAccessServerDescription": "Любой сервер с API, совместимым с OpenAI, например Ollama или LM Studio.",
-  "aiSetupSpendingTitle": "Разрешить модели с оплатой за использование?",
-  "aiSetupSpendingDescription": "Такие модели списывают оплату с аккаунта API за каждый запрос, отдельно от подписок.",
-  "aiSetupSpendingExisting": "Использовать только то, что уже есть",
-  "aiSetupSpendingMetered": "При необходимости предложить модель с оплатой за использование",
   "aiSetupConnectTitle": "Подключите ИИ",
-  "aiSetupNothingTitle": "Выбранное не подходит для этих задач",
   "aiSetupNothingDescription": "Вернитесь и выберите другой доступ или настройте ИИ в расширенных настройках.",
   "aiSetupAgentDescription": "OpenPencil запускает {agent}, когда вы отправляете сообщение. Сначала войдите в аккаунт через его собственную консольную утилиту.",
   "aiSetupAgentInstall": "Если он ещё не установлен, выполните:",
@@ -211,5 +206,12 @@
   "aiSetupOpenRouterNoCredits": "На этом аккаунте OpenRouter пока нет кредитов. Пополните баланс в OpenRouter, чтобы пользоваться платными моделями, например рекомендованной.",
   "aiSetupOpenRouterChange": "Использовать другой аккаунт",
   "aiSetupUseRecommended": "Использовать рекомендуемую настройку",
-  "aiSetupRolesDescription": "Выберите модель для каждого вида работы. Мы подобрали рекомендуемые из подключённого; остальные ваши настройки не изменятся."
+  "aiSetupRolesDescription": "Выберите модель для каждого вида работы. Мы подобрали рекомендуемые из подключённого; остальные ваши настройки не изменятся.",
+  "aiSetupGapDesign": "Ничто из выбранного не умеет создавать и редактировать дизайн.",
+  "aiSetupGapVision": "Ничто из выбранного не умеет анализировать изображения, поэтому визуальная проверка останется выключенной.",
+  "aiSetupGapContinue": "Можно продолжить без этого и добавить позже в настройках.",
+  "aiSetupGapAddOpenRouter": "Добавить OpenRouter (оплата за использование)",
+  "aiSetupGapRemoveOpenRouter": "Не использовать OpenRouter",
+  "aiSetupServerVision": "Эта модель умеет читать изображения",
+  "aiSetupGapCoveredByOpenRouter": "OpenRouter возьмёт на себя то, что не покрывает остальной выбор, с оплатой за каждый запрос."
 }

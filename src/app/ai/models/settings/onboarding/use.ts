@@ -15,17 +15,18 @@ import { applyOnboardingPlan } from './apply'
 import { existingOnboardingConnection, useOnboardingConnections } from './connections'
 import { currentOnboardingModels } from './current'
 import {
-  coversGoals,
   isOnboardingAccess,
   planOnboarding,
   type OnboardingAccess,
   type OnboardingAnswers,
-  type PlannedModel
+  type PlannedModel,
+  uncoveredGoals
 } from './plan'
 import { useOnboardingRoles } from './roles'
 import { useOnboardingSignIn } from './sign-in'
 
-export type AISetupStep = 'goals' | 'access' | 'spending' | 'connect' | 'review'
+export const AI_SETUP_STEPS = ['goals', 'access', 'connect', 'review'] as const
+export type AISetupStep = (typeof AI_SETUP_STEPS)[number]
 
 /** Starts from what is already configured, so running setup again adjusts instead of resets. */
 function initialAnswers(): OnboardingAnswers {
@@ -58,23 +59,10 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
   const recommended = computed(() => planOnboarding(answers, { agentsAvailable, current }))
   const roles = useOnboardingRoles(recommended, configured)
   const { plan } = roles
-  const hasProposal = computed(() => coversGoals(recommended.value, answers.goals))
-
-  /** Pay-as-you-go only matters when the access already selected leaves a goal uncovered. */
-  const needsSpending = computed(
-    () =>
-      !coversGoals(
-        planOnboarding({ ...answers, spending: 'existing' }, { agentsAvailable, current }),
-        answers.goals
-      )
-  )
-  const steps = computed<AISetupStep[]>(() => [
-    'goals',
-    'access',
-    ...(needsSpending.value ? (['spending'] as const) : []),
-    'connect',
-    'review'
-  ])
+  /** Requested goals nothing selected covers; setup offers OpenRouter for them. */
+  const gaps = computed(() => uncoveredGoals(answers, { agentsAvailable, current }))
+  /** Setup can finish once there is a design model, planned or already configured. */
+  const hasDesign = computed(() => recommended.value.design !== null || current.design !== null)
 
   function plannedModel(providerID: OnboardingAccess): PlannedModel | null {
     const { design, vision, review, fast } = recommended.value
@@ -93,21 +81,23 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
   const canContinue = computed(() => {
     if (step.value === 'goals') return answers.goals.length > 0
     if (step.value === 'connect') {
-      return hasProposal.value && recommended.value.connections.every(ready)
+      return hasDesign.value && recommended.value.connections.every(ready)
     }
     return true
   })
 
   function next(): void {
-    const index = steps.value.indexOf(step.value)
-    if (canContinue.value && index < steps.value.length - 1) step.value = steps.value[index + 1]
+    const index = AI_SETUP_STEPS.indexOf(step.value)
+    if (canContinue.value && index < AI_SETUP_STEPS.length - 1) {
+      step.value = AI_SETUP_STEPS[index + 1]
+    }
   }
 
   /** Returns false on the first step, where going back leaves setup. */
   function back(): boolean {
-    const index = steps.value.indexOf(step.value)
+    const index = AI_SETUP_STEPS.indexOf(step.value)
     if (index <= 0) return false
-    step.value = steps.value[index - 1]
+    step.value = AI_SETUP_STEPS[index - 1]
     return true
   }
 
@@ -157,11 +147,11 @@ export function useAIOnboarding({ agentsAvailable = IS_TAURI }: AIOnboardingOpti
     agentsAvailable,
     answers,
     step,
-    steps,
     recommended,
     plan,
     roles,
-    hasProposal,
+    gaps,
+    hasDesign,
     busy,
     saveResult,
     canContinue,

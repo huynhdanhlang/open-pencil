@@ -177,12 +177,7 @@
   "aiSetupAccessAPI": "Account API",
   "aiSetupAccessServer": "Modello locale o server aziendale",
   "aiSetupAccessServerDescription": "Qualsiasi server compatibile con l’API di OpenAI, come Ollama o LM Studio.",
-  "aiSetupSpendingTitle": "Consentire modelli a consumo?",
-  "aiSetupSpendingDescription": "I modelli a consumo addebitano ogni richiesta su un account API, separatamente da qualsiasi abbonamento.",
-  "aiSetupSpendingExisting": "Usa solo ciò che ho già",
-  "aiSetupSpendingMetered": "Consiglia un modello a consumo quando serve",
   "aiSetupConnectTitle": "Collega la tua IA",
-  "aiSetupNothingTitle": "Nulla di ciò che hai scelto copre queste attività",
   "aiSetupNothingDescription": "Torna indietro per scegliere un altro accesso o configura l’IA nelle impostazioni avanzate.",
   "aiSetupAgentDescription": "OpenPencil avvia {agent} quando invii un messaggio. Prima accedi con il suo strumento da riga di comando.",
   "aiSetupAgentInstall": "Se non è ancora installato, esegui:",
@@ -211,5 +206,12 @@
   "aiSetupOpenRouterNoCredits": "Questo account OpenRouter non ha ancora crediti. Aggiungi crediti su OpenRouter per usare modelli a pagamento come quello consigliato.",
   "aiSetupOpenRouterChange": "Usa un altro account",
   "aiSetupUseRecommended": "Usa la configurazione consigliata",
-  "aiSetupRolesDescription": "Scegli un modello per ogni tipo di lavoro. Abbiamo scelto quelli consigliati tra ciò che hai collegato; tutto il resto che hai configurato resta invariato."
+  "aiSetupRolesDescription": "Scegli un modello per ogni tipo di lavoro. Abbiamo scelto quelli consigliati tra ciò che hai collegato; tutto il resto che hai configurato resta invariato.",
+  "aiSetupGapDesign": "Nulla di ciò che hai scelto può creare e modificare design.",
+  "aiSetupGapVision": "Nulla di ciò che hai scelto può esaminare immagini, quindi la revisione visiva resterebbe disattivata.",
+  "aiSetupGapContinue": "Puoi continuare senza e aggiungerlo in seguito nelle Impostazioni.",
+  "aiSetupGapAddOpenRouter": "Aggiungi OpenRouter (a consumo)",
+  "aiSetupGapRemoveOpenRouter": "Non usare OpenRouter",
+  "aiSetupServerVision": "Questo modello può leggere immagini",
+  "aiSetupGapCoveredByOpenRouter": "OpenRouter coprirà ciò che le altre scelte non coprono, con addebito per richiesta."
 }

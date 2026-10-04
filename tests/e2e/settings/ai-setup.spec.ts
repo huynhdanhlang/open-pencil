@@ -139,15 +139,16 @@ test('guided setup signs in with OpenRouter without pasting a key', async ({ pag
   const next = setup.getByRole('button', { name: 'Continue' })
   await next.click()
   await next.click()
-  await setup.getByRole('radio', { name: 'Recommend a pay-as-you-go model when needed' }).click()
-  await next.click()
+  await setup.getByRole('button', { name: 'Add OpenRouter (pay as you go)' }).click()
 
   await expect(next).toBeDisabled()
   const popup = page.waitForEvent('popup')
   await setup.getByRole('button', { name: 'Sign in with OpenRouter' }).click()
   await (await popup).waitForEvent('close')
   // Setup checks the key with OpenRouter itself instead of asking for a connection test.
-  await expect(setup.getByRole('status')).toContainText('Signed in to OpenRouter')
+  await expect(
+    setup.getByRole('status').filter({ hasText: 'Signed in to OpenRouter' })
+  ).toBeVisible()
   await expect(setup.getByLabel('API Key')).toHaveCount(0)
   await expect(next).toBeEnabled()
   expect(exchanges).toEqual([

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   coversGoals,
+  uncoveredGoals,
   planOnboarding,
   roleChoiceKey,
   roleOptions,
@@ -223,5 +224,47 @@ describe('coversGoals', () => {
     )
     expect(coversGoals(plan, ['design'])).toBe(true)
     expect(coversGoals(plan, ['design', 'vision'])).toBe(false)
+  })
+})
+
+describe('uncoveredGoals', () => {
+  test('lists requested goals the selected access cannot cover', () => {
+    expect(
+      uncoveredGoals(answers({ goals: ['design', 'vision'], access: ['acp:codex'] }), desktop)
+    ).toEqual(['vision'])
+    expect(uncoveredGoals(answers({ goals: ['design'] }), desktop)).toEqual(['design'])
+  })
+
+  test('ignores the pay-as-you-go choice, which is how setup offers to fill the gap', () => {
+    const metered = answers({
+      goals: ['design', 'vision'],
+      access: ['acp:codex'],
+      spending: 'metered'
+    })
+    expect(uncoveredGoals(metered, desktop)).toEqual(['vision'])
+    expect(planOnboarding(metered, desktop).vision).toMatchObject({ providerID: 'openrouter' })
+  })
+})
+
+describe('server vision', () => {
+  test('covers visual review with a server whose model reads images', () => {
+    const plan = planOnboarding(
+      answers({ goals: ['design', 'vision'], access: ['openai-compatible'], serverVision: true }),
+      desktop
+    )
+    expect(plan.design).toMatchObject({ capabilities: ['tools', 'vision'] })
+    expect(plan.vision).toBe('design')
+  })
+
+  test('prefers the local server for vision behind an agent', () => {
+    const plan = planOnboarding(
+      answers({
+        goals: ['design', 'vision'],
+        access: ['acp:codex', 'openai', 'openai-compatible'],
+        serverVision: true
+      }),
+      desktop
+    )
+    expect(plan.vision).toMatchObject({ providerID: 'openai-compatible' })
   })
 })

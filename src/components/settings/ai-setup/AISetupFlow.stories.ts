@@ -118,10 +118,7 @@ export const RecommendOpenRouter: Story = {
     await choose(/Review designs visually/)
     await next()
     await next()
-    await userEvent.click(
-      page().getByRole('radio', { name: 'Recommend a pay-as-you-go model when needed' })
-    )
-    await next()
+    await userEvent.click(page().getByRole('button', { name: 'Add OpenRouter (pay as you go)' }))
     await expect(
       page().getByText(
         'OpenRouter gives you models from several vendors with one account and one key.'
@@ -136,9 +133,13 @@ export const NothingCovered: Story = {
   play: async () => {
     await next()
     await next()
-    await next()
-    await expect(page().getByText('Nothing you selected covers these tasks')).toBeVisible()
+    await expect(
+      page().getByText('Nothing you selected can create and edit designs.')
+    ).toBeVisible()
     await expect(page().getByRole('button', { name: 'Continue' })).toBeDisabled()
+    await expect(
+      page().getByRole('button', { name: 'Add OpenRouter (pay as you go)' })
+    ).toBeVisible()
   }
 }
 
@@ -149,5 +150,19 @@ export const LocalServer: Story = {
     await next()
     await expect(page().getByRole('textbox', { name: 'Base URL' })).toBeVisible()
     await expect(page().getByRole('textbox', { name: 'Model ID' })).toBeVisible()
+  }
+}
+
+export const ServerWithoutVision: Story = {
+  play: async () => {
+    await choose(/Review designs visually/)
+    await next()
+    await choose('Local model or company server')
+    await next()
+    await expect(
+      page().getByText('Nothing you selected can review images, so visual review would stay off.')
+    ).toBeVisible()
+    await choose('This model can read images')
+    await expect(page().queryByText(/so visual review would stay off/)).toBeNull()
   }
 }

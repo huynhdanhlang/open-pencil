@@ -10,16 +10,14 @@ import type { AISetupEntry } from '@/app/ai/models/settings/onboarding/dialog'
 import {
   ONBOARDING_GOALS,
   type OnboardingAccess,
-  type OnboardingGoal,
-  type OnboardingSpending
+  type OnboardingGoal
 } from '@/app/ai/models/settings/onboarding/plan'
-import { useAIOnboarding } from '@/app/ai/models/settings/onboarding/use'
+import { AI_SETUP_STEPS, useAIOnboarding } from '@/app/ai/models/settings/onboarding/use'
 import SettingsSaveFeedback from '@/components/settings/layout/SettingsSaveFeedback.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import { AppDialogBody, AppDialogFooter, AppDialogHeader } from '@/components/ui/dialog'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
-import AppRadioGroup from '@/components/ui/toggle/AppRadioGroup.vue'
 import theme from '@/theme/settings/ai-setup/flow'
 
 import AISetupAccess from './AISetupAccess.vue'
@@ -37,18 +35,8 @@ const { ai, common } = useI18n()
 const styles = tv(theme)()
 
 const onboarding = useAIOnboarding({ agentsAvailable })
-const {
-  answers,
-  step,
-  steps,
-  recommended,
-  plan,
-  roles,
-  hasProposal,
-  busy,
-  saveResult,
-  canContinue
-} = onboarding
+const { answers, step, recommended, plan, roles, gaps, hasDesign, busy, saveResult, canContinue } =
+  onboarding
 const { isRecommended } = roles
 const phase = ref<'welcome' | 'wizard' | 'saved'>(entry === 'welcome' ? 'welcome' : 'wizard')
 
@@ -64,11 +52,6 @@ const goals = computed(() => [
     description: ai.value.aiSetupGoalVisionDescription
   }
 ])
-const spendingOptions = computed<{ value: OnboardingSpending; label: string }[]>(() => [
-  { value: 'existing', label: ai.value.aiSetupSpendingExisting },
-  { value: 'metered', label: ai.value.aiSetupSpendingMetered }
-])
-
 const header = computed(() => {
   if (phase.value === 'welcome') {
     return {
@@ -82,15 +65,14 @@ const header = computed(() => {
   const headings = {
     goals: ai.value.aiSetupGoalsTitle,
     access: ai.value.aiSetupAccessTitle,
-    spending: ai.value.aiSetupSpendingTitle,
     connect: ai.value.aiSetupConnectTitle,
     review: ai.value.aiSetupReviewTitle
   }
   return {
     heading: headings[step.value],
     description: ai.value.aiSetupProgress({
-      current: steps.value.indexOf(step.value) + 1,
-      total: steps.value.length
+      current: AI_SETUP_STEPS.indexOf(step.value) + 1,
+      total: AI_SETUP_STEPS.length
     })
   }
 })
@@ -172,25 +154,33 @@ async function finish(): Promise<void> {
         <AISetupAccess v-model="answers.access" :agents-available="agentsAvailable" />
       </template>
 
-      <template v-else-if="step === 'spending'">
-        <p :class="styles.help()">{{ ai.aiSetupSpendingDescription }}</p>
-        <AppRadioGroup
-          v-model="answers.spending"
-          :label="ai.aiSetupSpendingTitle"
-          :options="spendingOptions"
-          :ui="{ root: 'gap-3', option: styles.choice() }"
-        />
-      </template>
-
       <template v-else-if="step === 'connect'">
         <AppAlert
-          v-if="!hasProposal"
-          tone="warning"
-          :heading="ai.aiSetupNothingTitle"
-          :description="ai.aiSetupNothingDescription"
-        />
+          v-if="gaps.length && answers.spending === 'metered'"
+          :heading="ai.aiSetupGapCoveredByOpenRouter"
+          data-slot="setup-gap"
+        >
+          <template #actions>
+            <AppButton size="xs" @click="answers.spending = 'existing'">
+              {{ ai.aiSetupGapRemoveOpenRouter }}
+            </AppButton>
+          </template>
+        </AppAlert>
         <AppAlert
-          v-else-if="!recommended.connections.length"
+          v-else-if="gaps.length"
+          :tone="hasDesign ? 'info' : 'warning'"
+          :heading="gaps.includes('design') ? ai.aiSetupGapDesign : ai.aiSetupGapVision"
+          :description="hasDesign ? ai.aiSetupGapContinue : ai.aiSetupNothingDescription"
+          data-slot="setup-gap"
+        >
+          <template #actions>
+            <AppButton size="xs" variant="outline" @click="answers.spending = 'metered'">
+              {{ ai.aiSetupGapAddOpenRouter }}
+            </AppButton>
+          </template>
+        </AppAlert>
+        <AppAlert
+          v-if="hasDesign && !recommended.connections.length"
           tone="success"
           :heading="ai.aiSetupAlreadyConnected"
         />
@@ -201,6 +191,7 @@ async function finish(): Promise<void> {
           :state="onboarding.connection(providerID)"
           :has-saved-key="onboarding.hasSavedKey(providerID)"
           :sign-in-status="onboarding.signInStatus(providerID)"
+          :server-vision="answers.serverVision ?? false"
           :recommended="!answers.access.includes(providerID)"
           :disabled="busy"
           @update="updateConnection(providerID, $event)"
@@ -209,6 +200,7 @@ async function finish(): Promise<void> {
           @reopen-sign-in="onboarding.reopenSignIn(providerID)"
           @cancel-sign-in="onboarding.cancelSignIn(providerID)"
           @sign-out="onboarding.signOut(providerID)"
+          @server-vision="answers.serverVision = $event"
         />
       </template>
 
