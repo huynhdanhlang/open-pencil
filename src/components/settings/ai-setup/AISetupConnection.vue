@@ -7,9 +7,10 @@ import { ACP_AGENTS, AI_PROVIDERS } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
-import type {
-  OnboardingConnectionPatch,
-  OnboardingConnectionState
+import {
+  ONBOARDING_SERVER_PRESETS,
+  type OnboardingConnectionPatch,
+  type OnboardingConnectionState
 } from '@/app/ai/models/settings/onboarding/connections'
 import {
   isOnboardingAgent,
@@ -18,11 +19,13 @@ import {
 } from '@/app/ai/models/settings/onboarding/plan'
 import type { OnboardingSignInStatus } from '@/app/ai/models/settings/onboarding/sign-in'
 import ProviderConnectionTestButton from '@/components/chat/ProviderConnectionTestButton.vue'
+import ProviderLogo from '@/components/settings/provider/ProviderLogo.vue'
 import ProviderSettingsField from '@/components/settings/provider/ProviderSettingsField.vue'
 import ProviderSettingsInput from '@/components/settings/provider/ProviderSettingsInput.vue'
 import ProviderSettingsKeyField from '@/components/settings/provider/ProviderSettingsKeyField.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
+import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 import theme from '@/theme/settings/ai-setup/flow'
 
@@ -82,6 +85,21 @@ const signInFailure = computed(() => {
   if (signInStatus === 'failed') return ai.value.aiSetupOpenRouterFailed
   return null
 })
+const serverPreset = computed(
+  () =>
+    ONBOARDING_SERVER_PRESETS.find((preset) => preset.baseURL === state.customBaseURL.trim())?.id ??
+    'custom'
+)
+const serverPresetOptions = computed(() => [
+  ...ONBOARDING_SERVER_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
+  { value: 'custom', label: ai.value.aiSetupServerOther }
+])
+
+function choosePreset(id: string): void {
+  const preset = ONBOARDING_SERVER_PRESETS.find((candidate) => candidate.id === id)
+  emit('update', { customBaseURL: preset?.baseURL ?? '' })
+}
+
 const keyHint = computed(() => {
   if (hasSavedKey) return ai.value.aiSetupSavedKeyHint
   return server.value ? ai.value.aiSetupServerKeyHint : undefined
@@ -90,7 +108,10 @@ const keyHint = computed(() => {
 
 <template>
   <section :class="styles.connection()" :data-provider="providerID">
-    <h3 :class="styles.connectionHeading()">{{ name }}</h3>
+    <h3 :class="styles.connectionHeading()">
+      <ProviderLogo :provider="serverPreset === 'custom' ? providerID : serverPreset" />
+      {{ name }}
+    </h3>
 
     <template v-if="agent">
       <p :class="styles.help()">{{ ai.aiSetupAgentDescription({ agent: agent.name }) }}</p>
@@ -163,6 +184,19 @@ const keyHint = computed(() => {
         <p :class="styles.groupHeading()">{{ ai.aiSetupOpenRouterOrKey }}</p>
       </template>
       <template v-if="server">
+        <SegmentedControl
+          :model-value="serverPreset"
+          :options="serverPresetOptions"
+          :label="ai.aiSetupAccessServer"
+          @update:model-value="choosePreset"
+        >
+          <template #option="{ option }">
+            <span class="flex items-center gap-1.5">
+              <ProviderLogo :provider="option.value === 'custom' ? providerID : option.value" />
+              {{ option.label }}
+            </span>
+          </template>
+        </SegmentedControl>
         <ProviderSettingsField v-slot="{ control }" :label="ai.baseURL">
           <ProviderSettingsInput
             v-bind="control"

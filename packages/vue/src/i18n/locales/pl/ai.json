@@ -213,5 +213,7 @@
   "aiSetupGapAddOpenRouter": "Dodaj OpenRouter (płatność za użycie)",
   "aiSetupGapRemoveOpenRouter": "Nie używaj OpenRouter",
   "aiSetupServerVision": "Ten model potrafi odczytywać obrazy",
-  "aiSetupGapCoveredByOpenRouter": "OpenRouter obsłuży to, czego nie obejmują pozostałe wybory, z opłatą za każde zapytanie."
+  "aiSetupGapCoveredByOpenRouter": "OpenRouter obsłuży to, czego nie obejmują pozostałe wybory, z opłatą za każde zapytanie.",
+  "aiSetupAccessMore": "Więcej dostawców",
+  "aiSetupServerOther": "Inny serwer"
 }

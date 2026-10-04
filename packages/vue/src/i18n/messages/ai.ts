@@ -194,6 +194,8 @@ export const aiMessageDefaults = {
   aiSetupAccessAgentsDesktop: 'Coding agents are available in the OpenPencil desktop app.',
   aiSetupAccessAPI: 'API accounts',
   aiSetupAccessServer: 'Local model or company server',
+  aiSetupAccessMore: 'More providers',
+  aiSetupServerOther: 'Other server',
   aiSetupAccessServerDescription:
     'Any server that speaks the OpenAI API, such as Ollama or LM Studio.',
   aiSetupConnectTitle: 'Connect your AI',

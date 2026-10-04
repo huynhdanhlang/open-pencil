@@ -213,5 +213,7 @@
   "aiSetupGapAddOpenRouter": "OpenRouter を追加（従量課金）",
   "aiSetupGapRemoveOpenRouter": "OpenRouter を使わない",
   "aiSetupServerVision": "このモデルは画像を読み取れます",
-  "aiSetupGapCoveredByOpenRouter": "ほかの選択で対応できない部分は OpenRouter が担当し、リクエストごとに課金されます。"
+  "aiSetupGapCoveredByOpenRouter": "ほかの選択で対応できない部分は OpenRouter が担当し、リクエストごとに課金されます。",
+  "aiSetupAccessMore": "その他のプロバイダー",
+  "aiSetupServerOther": "その他のサーバー"
 }

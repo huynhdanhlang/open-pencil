@@ -11,6 +11,8 @@ export type OnboardingGoal = (typeof ONBOARDING_GOALS)[number]
 export const ONBOARDING_AGENTS = ['acp:claude-code', 'acp:codex', 'acp:gemini-cli'] as const
 /** API accounts, in the order onboarding prefers them when several are available. */
 export const ONBOARDING_API_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'] as const
+/** Further API accounts the catalog supports, offered behind "More providers". */
+export const ONBOARDING_MORE_API_PROVIDERS = ['deepseek', 'zai', 'minimax'] as const
 /** A local model server or a company proxy that speaks the OpenAI API. */
 export const ONBOARDING_SERVER_PROVIDER = 'openai-compatible'
 /** One account for models from several vendors, recommended when no API account exists yet. */
@@ -19,11 +21,13 @@ export const ONBOARDING_METERED_PROVIDER = 'openrouter'
 export type OnboardingAccess =
   | (typeof ONBOARDING_AGENTS)[number]
   | (typeof ONBOARDING_API_PROVIDERS)[number]
+  | (typeof ONBOARDING_MORE_API_PROVIDERS)[number]
   | typeof ONBOARDING_SERVER_PROVIDER
 
 const ONBOARDING_ACCESS = new Set<string>([
   ...ONBOARDING_AGENTS,
   ...ONBOARDING_API_PROVIDERS,
+  ...ONBOARDING_MORE_API_PROVIDERS,
   ONBOARDING_SERVER_PROVIDER
 ])
 
@@ -176,6 +180,7 @@ function planDesign(
   const preferred: OnboardingAccess[] = [
     ...ONBOARDING_AGENTS,
     ...ONBOARDING_API_PROVIDERS,
+    ...ONBOARDING_MORE_API_PROVIDERS,
     ONBOARDING_SERVER_PROVIDER
   ]
   const existing = preferred.find((providerID) => access.includes(providerID))
@@ -192,7 +197,11 @@ function planVision(
   if (current !== null && current !== 'design' && keepable(current, access)) return current
   if (canFollowDesign('vision', design)) return 'design'
   // A local server that reads images is preferred over a paid account.
-  const candidates: OnboardingAccess[] = [ONBOARDING_SERVER_PROVIDER, ...ONBOARDING_API_PROVIDERS]
+  const candidates: OnboardingAccess[] = [
+    ONBOARDING_SERVER_PROVIDER,
+    ...ONBOARDING_API_PROVIDERS,
+    ...ONBOARDING_MORE_API_PROVIDERS
+  ]
   const existing = candidates
     .filter((providerID) => access.includes(providerID))
     .map((providerID) => plannedModel(providerID, answers.serverVision))

@@ -34,6 +34,12 @@ export interface OnboardingConnectionState {
   account: OpenRouterKeyInfo | null
 }
 
+/** Local servers with a well-known OpenAI-compatible address. */
+export const ONBOARDING_SERVER_PRESETS = [
+  { id: 'ollama', name: 'Ollama', baseURL: 'http://localhost:11434/v1' },
+  { id: 'lmstudio', name: 'LM Studio', baseURL: 'http://localhost:1234/v1' }
+] as const
+
 /** Details the person edits while connecting. */
 export type OnboardingConnectionPatch = Partial<
   Pick<OnboardingConnectionState, 'apiKey' | 'customBaseURL' | 'customModelID'>

@@ -10,6 +10,7 @@ const styles = tv(theme)()
 <template>
   <label :class="styles.choice()">
     <slot />
+    <slot name="icon" />
     <span
       ><span class="font-medium">{{ label }}</span
       ><span v-if="description" class="mt-1 block text-muted">{{ description }}</span></span

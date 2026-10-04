@@ -12,7 +12,7 @@ export default {
     choice:
       'flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-3 transition-colors hover:bg-hover has-[[data-state=checked]]:border-accent has-[[data-state=checked]]:bg-accent/5 focus-within:ring-2 focus-within:ring-accent/50',
     connection: 'flex flex-col gap-3 rounded-md border border-border p-3',
-    connectionHeading: 'text-xs font-semibold text-surface',
+    connectionHeading: 'flex items-center gap-2 text-xs font-semibold text-surface',
     signIn: 'flex flex-wrap items-center justify-between gap-2 rounded bg-input px-3 py-2',
     signInStatus: 'flex items-center gap-2 text-xs text-surface',
     signInActions: 'flex items-center gap-2',

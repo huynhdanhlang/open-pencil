@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
+import { ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
@@ -7,9 +8,12 @@ import { modelProviderName } from '@/app/ai/models/provider-name'
 import {
   ONBOARDING_AGENTS,
   ONBOARDING_API_PROVIDERS,
+  ONBOARDING_MORE_API_PROVIDERS,
   ONBOARDING_SERVER_PROVIDER,
   type OnboardingAccess
 } from '@/app/ai/models/settings/onboarding/plan'
+import ProviderLogo from '@/components/settings/provider/ProviderLogo.vue'
+import AppCollapsible from '@/components/ui/collapsible/AppCollapsible.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 import theme from '@/theme/settings/ai-setup/flow'
@@ -20,6 +24,9 @@ const { agentsAvailable } = defineProps<{ agentsAvailable: boolean }>()
 const access = defineModel<OnboardingAccess[]>({ required: true })
 const { ai } = useI18n()
 const styles = tv(theme)()
+const moreOpen = ref(
+  ONBOARDING_MORE_API_PROVIDERS.some((provider) => access.value.includes(provider))
+)
 
 function toggle(providerID: OnboardingAccess, checked: boolean): void {
   access.value = checked
@@ -43,6 +50,7 @@ function toggle(providerID: OnboardingAccess, checked: boolean): void {
           :ariaLabel="modelProviderName(agent)"
           @update:model-value="toggle(agent, $event)"
         />
+        <template #icon><ProviderLogo :provider="agent" /></template>
       </SetupChoice>
     </template>
     <AppAlert v-else :heading="ai.aiSetupAccessAgentsDesktop" />
@@ -59,7 +67,24 @@ function toggle(providerID: OnboardingAccess, checked: boolean): void {
         :ariaLabel="modelProviderName(provider)"
         @update:model-value="toggle(provider, $event)"
       />
+      <template #icon><ProviderLogo :provider="provider" /></template>
     </SetupChoice>
+    <AppCollapsible v-model:open="moreOpen" :label="ai.aiSetupAccessMore">
+      <div :class="styles.group()">
+        <SetupChoice
+          v-for="provider in ONBOARDING_MORE_API_PROVIDERS"
+          :key="provider"
+          :label="modelProviderName(provider)"
+        >
+          <AppCheckbox
+            :model-value="access.includes(provider)"
+            :ariaLabel="modelProviderName(provider)"
+            @update:model-value="toggle(provider, $event)"
+          />
+          <template #icon><ProviderLogo :provider="provider" /></template>
+        </SetupChoice>
+      </div>
+    </AppCollapsible>
   </section>
   <section :class="styles.group()">
     <SetupChoice :label="ai.aiSetupAccessServer" :description="ai.aiSetupAccessServerDescription">
@@ -68,6 +93,7 @@ function toggle(providerID: OnboardingAccess, checked: boolean): void {
         :ariaLabel="ai.aiSetupAccessServer"
         @update:model-value="toggle(ONBOARDING_SERVER_PROVIDER, $event)"
       />
+      <template #icon><ProviderLogo :provider="ONBOARDING_SERVER_PROVIDER" /></template>
     </SetupChoice>
   </section>
 </template>
