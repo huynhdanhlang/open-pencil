@@ -32,6 +32,7 @@ test('records one of a burst of identical errors, and each distinct one', async 
   for (let i = 0; i < 5; i++) recordRuntimeError(error, 'window')
   recordRuntimeError(new Error('other'), 'window')
 
-  const events = await diagnostics.list()
-  expect(events.map((event) => event.attributes.message)).toEqual(['other', 'loop'])
+  // Both can share a millisecond, so their stored order is not fixed.
+  const messages = (await diagnostics.list()).map((event) => String(event.attributes.message))
+  expect(messages.toSorted()).toEqual(['loop', 'other'])
 })

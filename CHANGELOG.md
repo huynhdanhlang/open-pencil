@@ -17,6 +17,7 @@
 
 ### Added
 
+- Diagnose failures from Settings → Diagnostics: uncaught errors, unhandled rejections, component errors, and failed AI chats are recorded with their message and stack, scrubbed of URL queries, key-like strings, and home folder names, while provider errors still keep no message. Each event has a specific label, such as *Tool: render · 162 ms* or *Error: TypeError*, expands to its details, and can be filtered by level and category and paged, and copied diagnostics include the app version and browser.
 - Follow collaborators and their AI agents from the avatars in the toolbar: an avatar counts that person's agents, hovering lists what each is doing and on which page, and clicking follows. A frame in their color and a “Following …” bar show whom you follow; Escape, clicking, scrolling, zooming, or switching pages stops it. Your own avatar renames your agents and leaves the room.
 - See where the built-in AI chat is working: while it replies, a cursor whose outlined label shows a sparkle and a callsign such as *Fern* marks the layers it edits. In a shared room, collaborators see each other's agents in the color of the person running them.
 - See which pages people and AI agents are working on: the Pages panel marks those pages in their colors, the command palette names who is there, and the chat offers **Go to page** while its reply works on a page you're not viewing.

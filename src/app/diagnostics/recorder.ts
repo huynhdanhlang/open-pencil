@@ -1,5 +1,3 @@
-import { IS_TAURI } from '@/constants'
-
 import { createIDBDiagnosticsStore, type DiagnosticsStore } from './idb'
 import {
   getDiagnosticsRetention,
@@ -36,17 +34,6 @@ function getStore(): DiagnosticsStore {
     return (store = createIDBDiagnosticsStore())
   } catch {
     return (store = memoryStore)
-  }
-}
-
-/** What a copied report needs to reproduce a problem: which build, shell, and browser. */
-function diagnosticsEnvironment() {
-  return {
-    app: typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : 'unknown',
-    shell: IS_TAURI ? 'desktop' : 'browser',
-    userAgent: typeof navigator === 'undefined' ? null : navigator.userAgent,
-    language: typeof navigator === 'undefined' ? null : navigator.language,
-    exportedAt: new Date().toISOString()
   }
 }
 
@@ -87,12 +74,9 @@ export const diagnostics = {
     await pendingWrites
     return store === memoryStore ? memoryStore.list() : getStore().list()
   },
-  async export(): Promise<string> {
-    return JSON.stringify(
-      { environment: diagnosticsEnvironment(), events: await this.list() },
-      null,
-      2
-    )
+  /** The stored events, after `environment`, the context a report needs to reproduce them. */
+  async export(environment: Record<string, unknown> = {}): Promise<string> {
+    return JSON.stringify({ environment, events: await this.list() }, null, 2)
   },
   async prune(retention: DiagnosticsRetention): Promise<void> {
     memoryEvents = memoryEvents.slice(-retention)

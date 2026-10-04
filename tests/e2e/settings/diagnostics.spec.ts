@@ -21,7 +21,11 @@ test('Settings exports correlated chat telemetry without conversation content', 
   await page.getByRole('button', { name: 'Copy diagnostics', exact: true }).click()
   await expect(page.getByText('Diagnostics copied to clipboard.', { exact: true })).toBeVisible()
   const text = await page.evaluate(() => navigator.clipboard.readText())
-  const events: DiagnosticEvent[] = JSON.parse(text)
+  const { environment, events } = JSON.parse(text) as {
+    environment: { app: string; shell: string }
+    events: DiagnosticEvent[]
+  }
+  expect(environment).toMatchObject({ app: expect.any(String), shell: 'browser' })
   const completed = events.filter((event) => event.name === 'chat.completed')
   expect(completed).toHaveLength(2)
   expect(completed[0].sessionId).toEqual(expect.any(String))
@@ -81,4 +85,42 @@ test('diagnostics retention offers presets and accepts a bounded custom value', 
   await reloadAndOpenDiagnostics(page)
   await expect(retention).toHaveText('1000')
   await expect(row.getByRole('spinbutton')).toHaveCount(0)
+})
+
+test('uncaught errors are listed with their stack and can be filtered and copied', async ({
+  configuredChat: chat,
+  page,
+  context
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await chat.submit('A request that records info events')
+  await expect(chat.assistantMessage()).toBeVisible()
+  await page.evaluate(() => {
+    setTimeout(() => {
+      throw new TypeError('Attempting to define property on object that is not extensible.')
+    })
+  })
+  await openDiagnostics(page)
+
+  const events = page.locator('[data-slot="diagnostics-events"]')
+  const failure = events.getByRole('button', { name: /Error: TypeError/ })
+  await expect(failure).toContainText(
+    'Attempting to define property on object that is not extensible.'
+  )
+  await failure.click()
+  await expect(events.locator('pre')).toContainText('TypeError')
+
+  // Info events such as the completed chat drop out when only problems are shown.
+  await expect(events.getByRole('button', { name: /AI chat completed/ })).toBeVisible()
+  await events.getByRole('button', { name: 'Errors and warnings' }).click()
+  await expect(events.getByRole('button', { name: /AI chat completed/ })).toHaveCount(0)
+  await expect(failure).toBeVisible()
+
+  await page.getByRole('button', { name: 'Copy diagnostics', exact: true }).click()
+  const report = JSON.parse(await page.evaluate(() => navigator.clipboard.readText())) as {
+    events: DiagnosticEvent[]
+  }
+  const runtime = report.events.find((event) => event.name === 'runtime.error')
+  expect(runtime?.attributes).toMatchObject({ source: 'window', errorName: 'TypeError' })
+  expect(String(runtime?.attributes.stack)).toContain('TypeError')
 })
