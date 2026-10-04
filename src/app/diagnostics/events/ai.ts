@@ -4,7 +4,12 @@ import * as v from 'valibot'
 import { describeDiagnosticError, diagnosticErrorDetails, isInternalError } from '../error'
 import { recordDiagnostic } from '../recorder'
 import { isUsageEnabled } from '../settings'
-import type { DiagnosticEvent, DiagnosticLevel, DiagnosticValue } from '../types'
+import type {
+  DiagnosticEvent,
+  DiagnosticEventInput,
+  DiagnosticLevel,
+  DiagnosticValue
+} from '../types'
 
 const modelStepSchema = v.object({
   provider: v.string(),
@@ -54,7 +59,7 @@ function recordAIEvent(
     level,
     name,
     attributes: output
-  } satisfies Omit<DiagnosticEvent, 'id' | 'timestamp'>)
+  } satisfies DiagnosticEventInput)
 }
 
 export function recordModelStepCompleted(

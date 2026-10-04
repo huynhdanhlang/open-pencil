@@ -81,6 +81,31 @@ describe('diagnostic event summaries', () => {
       'Error: TypeError',
       'boom'
     ],
+    [
+      {
+        name: 'editor.preparation.finished',
+        category: 'document' as const,
+        attributes: { kind: 'page-switch', outcome: 'completed', durationBucket: '100ms-1s' }
+      },
+      'Switch page',
+      'Completed · 0.1–1 s'
+    ],
+    [
+      {
+        name: 'editor.preparation.finished',
+        category: 'document' as const,
+        level: 'error' as const,
+        attributes: {
+          kind: 'document-open',
+          outcome: 'failed',
+          failureCode: 'decode-failed',
+          durationBucket: 'over-30s'
+        }
+      },
+      'Open document',
+      'Failed: decode-failed · > 30 s'
+    ],
+    // An event an older version recorded keeps its own name.
     [{ name: 'preparation.outcome', attributes: {} }, 'preparation.outcome', null]
   ])('%#: %o', (fields, label, detail) => {
     expect(summarize(fields)).toMatchObject({ label, detail })
