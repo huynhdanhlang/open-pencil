@@ -19,6 +19,7 @@
 
 ### Added
 
+- Pass an ID generator to `new SceneGraph()` from `@open-pencil/scene-graph` to choose the IDs of the nodes, variables, collections, and default modes the graph creates; generated IDs skip any node, variable, collection, or mode ID already in the graph.
 - Import `resolvePasteTarget` from `@open-pencil/core/editor` to place ordinary pasted or dropped content in an embedding app in the same container the editor would choose. It takes the editor `createEditor` returns. Replacement paste is not covered: it inserts into the selected target's parent.
 - Import `flattenNodesToVectorProps`, `outlineStrokeNodesToVectorProps`, and the `VectorFlattenProps` type from `@open-pencil/core/canvas` to compute Flatten and Outline stroke geometry in an embedding app without going through the editor's own write path.
 - Check designs from the new Lint tab in the right panel: issues on the page, in the selection, or across the document are grouped by rule, hovering one highlights its layer on the canvas, clicking selects it and brings it into view, and one-click fixes bind colors to the variable they match and round subpixel geometry for a row or a whole group, and snap radius, spacing, and small text to the scale, convert groups to frames, and delete hidden layers one row at a time. Rules can be turned off individually or switched between the Recommended, Strict, and Accessibility presets.
