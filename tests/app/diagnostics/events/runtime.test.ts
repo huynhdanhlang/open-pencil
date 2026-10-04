@@ -36,3 +36,15 @@ test('records one of a burst of identical errors, and each distinct one', async 
   const messages = (await diagnostics.list()).map((event) => String(event.attributes.message))
   expect(messages.toSorted()).toEqual(['loop', 'other'])
 })
+
+test('records an alternating pair of repeating errors once each', async () => {
+  const first = new Error('first')
+  const second = new Error('second')
+  for (let i = 0; i < 4; i++) {
+    recordRuntimeError(first, 'window')
+    recordRuntimeError(second, 'window')
+  }
+
+  const messages = (await diagnostics.list()).map((event) => String(event.attributes.message))
+  expect(messages.toSorted()).toEqual(['first', 'second'])
+})
