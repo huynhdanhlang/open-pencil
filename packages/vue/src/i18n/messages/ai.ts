@@ -216,6 +216,8 @@ export const aiMessageDefaults = {
   aiSetupAgentNeedsAdapter: 'installed · OpenPencil adapter missing',
   aiSetupAgentInstallAdapter: 'Install adapter',
   aiSetupAgentInstallMCP: 'Install MCP server',
+  aiSetupAgentUpdateMCP: 'Update MCP server',
+  aiSetupAgentOutdated: 'update needed',
   aiSetupAgentInstalling: 'Installing…',
   aiSetupAgentGetCLI: params('Install {agent}'),
   aiSetupAgentNeedsNpm:
@@ -228,6 +230,15 @@ export const aiMessageDefaults = {
   aiSetupAgentCopyPrompt: 'Copy setup prompt',
   aiSetupAgentCheckAgain: 'Check again',
   aiSetupAgentGuide: 'Setup guide',
+  aiSetupPiDescription:
+    'OpenPencil runs Pi through its Harness companion and uses the providers you signed in to in Pi.',
+  aiSetupPiCompanion: 'Harness companion',
+  aiSetupPiInstallCompanion: 'Install companion',
+  aiSetupPiUpdateCompanion: 'Update companion',
+  aiSetupPiModel: params('Pi’s default model: {model}'),
+  aiSetupPiNoModel: 'No default model set in Pi',
+  aiSetupPiSignIn:
+    'To sign in to a provider or pick a default model, run pi in a terminal and type /login or /model.',
   aiSetupGetDesktop: 'Get the desktop app',
   aiSetupMeteredNote:
     'OpenRouter gives you models from several vendors with one account and one key.',

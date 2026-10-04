@@ -23,6 +23,17 @@ describe('planOnboarding', () => {
     expect(plan.connections).toEqual(['acp:codex'])
   })
 
+  test('runs design on Pi and takes the other roles from an API account', () => {
+    const plan = planOnboarding(
+      answers({ goals: ['design', 'vision'], access: ['harness:pi', 'openai'] }),
+      desktop
+    )
+    expect(plan.design).toMatchObject({ providerID: 'harness:pi', modelID: '' })
+    expect(plan.vision).toMatchObject({ providerID: 'openai' })
+    expect(plan.review).not.toBe('design')
+    expect(plan.connections).toEqual(['harness:pi', 'openai'])
+  })
+
   test('ignores agents outside the desktop app', () => {
     const plan = planOnboarding(answers({ access: ['acp:claude-code', 'openai'] }), browser)
     expect(plan.design).toMatchObject({ providerID: 'openai', modelID: 'gpt-5.6' })

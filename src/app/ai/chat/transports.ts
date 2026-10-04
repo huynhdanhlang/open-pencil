@@ -260,13 +260,21 @@ export function createChatSessionManager({
     await destroyAgentTransports()
     const runtime = await createAIModelRuntime('design')
     if (runtime?.kind !== 'harness') throw new Error('The Design agent is not configured for Pi')
-    const [{ HarnessChatTransport }, { buildPiMCPServers }] = await Promise.all([
+    const [{ HarnessChatTransport }, { buildPiMCPServers }, { readPiAccount }] = await Promise.all([
       import('@/app/ai/harness/transport'),
-      import('@/app/integrations/mcp')
+      import('@/app/integrations/mcp'),
+      import('@/app/ai/harness/pi-settings')
     ])
+    // A saved key is an AI Gateway key; without one, Pi uses the CLI's own sign-in.
     const apiKey = await resolveModelConnectionAPIKey(runtime.role.connection.id)
-    if (!apiKey) throw new Error('Credential is unavailable for the Pi agent')
-    const model = runtime.role.profile.customModelID || runtime.role.profile.modelID
+    const account = apiKey ? null : await readPiAccount()
+    const model =
+      runtime.role.profile.customModelID ||
+      runtime.role.profile.modelID ||
+      account?.defaultModel ||
+      ''
+    if (!apiKey && !account) throw new Error('Sign in with Pi, or add an AI Gateway key for Pi')
+    if (!model) throw new Error('Choose a model for Pi, or set a default model in Pi')
     const transport = new HarnessChatTransport(
       sessionId,
       {
@@ -282,7 +290,9 @@ export function createChatSessionManager({
         instructions: SYSTEM_PROMPT,
         mcpServers: await buildPiMCPServers()
       },
-      { OPENPENCIL_HARNESS_API_KEY: apiKey }
+      apiKey
+        ? { OPENPENCIL_HARNESS_API_KEY: apiKey }
+        : { OPENPENCIL_HARNESS_AGENT_DIR: account?.agentDir ?? '' }
     )
     harnessTransportInstance = transport
     return transport as ChatTransport<UIMessage>

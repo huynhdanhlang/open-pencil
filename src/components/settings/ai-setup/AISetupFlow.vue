@@ -193,6 +193,7 @@ async function finish(): Promise<void> {
           :sign-in-status="onboarding.signInStatus(providerID)"
           :server-vision="answers.serverVision ?? false"
           :agent-setup="onboarding.agentSetup(providerID)"
+          :pi-setup="onboarding.piSetup(providerID)"
           :recommended="!answers.access.includes(providerID)"
           :disabled="busy"
           @update="updateConnection(providerID, $event)"

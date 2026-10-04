@@ -22,6 +22,7 @@
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
+        { "path": "$HOME/.pi/agent/settings.json" },
         { "path": "$HOME/Library/Application Support/OpenPencil/mcp.json" },
         { "path": "$LOCALDATA/OpenPencil/mcp.json" },
         { "path": "$RUNTIME/openpencil/mcp.json" },
@@ -67,7 +68,7 @@
             "install",
             "--global",
             {
-              "validator": "^(@agentclientprotocol/(claude-agent-acp|codex-acp)|@open-pencil/mcp@[0-9]+\\.[0-9]+\\.[0-9]+)$"
+              "validator": "^(@agentclientprotocol/(claude-agent-acp|codex-acp)|@open-pencil/(mcp|harness)@[0-9]+\\.[0-9]+\\.[0-9]+)$"
             },
             "--registry=https://registry.npmjs.org"
           ]

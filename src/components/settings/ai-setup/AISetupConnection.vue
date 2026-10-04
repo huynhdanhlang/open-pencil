@@ -6,7 +6,7 @@ import { ACP_AGENTS, AI_PROVIDERS } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import { modelProviderName } from '@/app/ai/models/provider-name'
-import type { AgentSetupState } from '@/app/ai/models/settings/onboarding/agents'
+import type { AgentSetupState, PiSetupState } from '@/app/ai/models/settings/onboarding/agents'
 import {
   ONBOARDING_SERVER_PRESETS,
   type OnboardingConnectionPatch,
@@ -30,6 +30,7 @@ import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 import theme from '@/theme/settings/ai-setup/flow'
 
 import AISetupAgent from './AISetupAgent.vue'
+import AISetupPi from './AISetupPi.vue'
 import SetupChoice from './SetupChoice.vue'
 
 const {
@@ -37,6 +38,7 @@ const {
   state,
   hasSavedKey = false,
   agentSetup,
+  piSetup,
   serverVision = false,
   signInStatus = 'idle',
   recommended = false,
@@ -48,6 +50,8 @@ const {
   hasSavedKey?: boolean
   /** Whether a coding agent and the MCP server it needs are installed. */
   agentSetup?: AgentSetupState
+  /** Whether Pi's companion and the MCP server are installed, and Pi's default model. */
+  piSetup?: PiSetupState
   /** The person says the server's model can read images. */
   serverVision?: boolean
   /** Progress of signing in with the provider, for providers that support it. */
@@ -125,6 +129,13 @@ const keyHint = computed(() => {
       :setup="agentSetup"
       @check="emit('checkAgent')"
       @install-agent="emit('installAgent')"
+      @install-bridge="emit('installBridge')"
+    />
+    <AISetupPi
+      v-else-if="piSetup"
+      :setup="piSetup"
+      @check="emit('checkAgent')"
+      @install-companion="emit('installAgent')"
       @install-bridge="emit('installBridge')"
     />
 

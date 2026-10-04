@@ -7,7 +7,23 @@ import {
   type ACPAgentID
 } from '@open-pencil/core/constants'
 
-import { installAgentAdapter, installCanvasBridge, lookupAgents, type AgentLookup } from './native'
+import {
+  HARNESS_EXECUTABLE,
+  HARNESS_INSTALL_TARGET,
+  HARNESS_PACKAGE
+} from '@/app/ai/harness/companion'
+import { MCP_INSTALL_TARGET, MCP_PACKAGE_NAME } from '@/app/automation/mcp/failure'
+
+import { globalInstallCommand, isOutdatedCompanion } from './companions'
+import {
+  installAgentAdapter,
+  installCanvasBridge,
+  installHarnessCompanion,
+  lookupAgents,
+  type AgentLookup
+} from './native'
+
+const MCP_EXECUTABLE = 'openpencil-mcp-http'
 
 export type DetectedAgent = {
   definition: ACPAgentDef
@@ -36,19 +52,45 @@ export function createAgentDiscovery(options: {
   install: (agent: ACPAgentDef, searchPath: string) => Promise<void>
   installBridge?: (searchPath: string) => Promise<void>
   restartBridge?: () => Promise<void>
+  installHarness?: (searchPath: string) => Promise<void>
 }) {
   const snapshot = shallowRef<AgentLookup | null>(null)
   const scanning = ref(false)
-  const installing = ref<ACPAgentID | 'canvas' | null>(null)
-  const error = ref<'lookup' | 'install' | 'npm' | 'canvas-install' | 'canvas-start' | null>(null)
+  const installing = ref<ACPAgentID | 'canvas' | 'harness' | null>(null)
+  const error = ref<
+    'lookup' | 'install' | 'npm' | 'canvas-install' | 'canvas-start' | 'harness-install' | null
+  >(null)
   let pending: Promise<void> | null = null
   const agents = computed(() => (snapshot.value ? detectedAgents(snapshot.value) : []))
   const availableAgents = computed(() =>
     agents.value.filter((agent) => agent.status === 'available')
   )
   const npmAvailable = computed(() => Boolean(snapshot.value?.executables.npm))
-  const canvasBridgeAvailable = computed(() =>
-    Boolean(snapshot.value?.executables['openpencil-mcp-http'])
+  // Checks read through functions so they see the snapshot of a rescan that just finished.
+  function hasBridge(): boolean {
+    return Boolean(snapshot.value?.executables[MCP_EXECUTABLE])
+  }
+  /** An installed MCP server whose version does not match the app. */
+  function bridgeOutdated(): boolean {
+    return hasBridge() && isOutdatedCompanion(snapshot.value?.versions[MCP_PACKAGE_NAME])
+  }
+  function hasHarness(): boolean {
+    return Boolean(snapshot.value?.executables[HARNESS_EXECUTABLE])
+  }
+  function harnessOutdated(): boolean {
+    return hasHarness() && isOutdatedCompanion(snapshot.value?.versions[HARNESS_PACKAGE])
+  }
+  const canvasBridgeAvailable = computed(hasBridge)
+  const canvasBridgeOutdated = computed(bridgeOutdated)
+  /** The Harness companion that runs Pi. */
+  const harnessAvailable = computed(hasHarness)
+  const harnessOutdatedVersion = computed(harnessOutdated)
+  /** Commands to install or update a companion by hand, for the package manager that has it. */
+  const canvasBridgeCommand = computed(() =>
+    globalInstallCommand(MCP_INSTALL_TARGET, snapshot.value?.executables[MCP_EXECUTABLE])
+  )
+  const harnessCommand = computed(() =>
+    globalInstallCommand(HARNESS_INSTALL_TARGET, snapshot.value?.executables[HARNESS_EXECUTABLE])
   )
 
   function refresh(force = false): Promise<void> {
@@ -99,24 +141,46 @@ export function createAgentDiscovery(options: {
 
   async function setupCanvasBridge(): Promise<void> {
     if (!options.enabled || installing.value || !snapshot.value) return
-    if (!canvasBridgeAvailable.value && !npmAvailable.value) {
+    let installed = hasBridge() && !bridgeOutdated()
+    if (!installed && !npmAvailable.value) {
       error.value = 'npm'
       return
     }
     installing.value = 'canvas'
     error.value = null
-    let installed = canvasBridgeAvailable.value
     try {
       if (!installed) {
         if (!options.installBridge) throw new Error('Canvas bridge setup is unavailable.')
         await options.installBridge(snapshot.value.searchPath)
         await refresh(true)
-        if (!canvasBridgeAvailable.value) throw new Error('Canvas bridge was not found.')
+        if (!hasBridge() || bridgeOutdated())
+          throw new Error('A matching MCP server was not found.')
         installed = true
       }
       await options.restartBridge?.()
     } catch {
       error.value = installed ? 'canvas-start' : 'canvas-install'
+    } finally {
+      installing.value = null
+    }
+  }
+
+  async function setupHarness(): Promise<void> {
+    if (!options.enabled || installing.value || !snapshot.value) return
+    if (hasHarness() && !harnessOutdated()) return
+    if (!npmAvailable.value) {
+      error.value = 'npm'
+      return
+    }
+    installing.value = 'harness'
+    error.value = null
+    try {
+      if (!options.installHarness) throw new Error('Harness companion setup is unavailable.')
+      await options.installHarness(snapshot.value.searchPath)
+      await refresh(true)
+      if (!hasHarness() || harnessOutdated()) error.value = 'harness-install'
+    } catch {
+      error.value = 'harness-install'
     } finally {
       installing.value = null
     }
@@ -131,7 +195,13 @@ export function createAgentDiscovery(options: {
     error,
     npmAvailable,
     canvasBridgeAvailable,
+    canvasBridgeOutdated,
+    canvasBridgeCommand,
+    harnessAvailable,
+    harnessOutdated: harnessOutdatedVersion,
+    harnessCommand,
     setupCanvasBridge,
+    setupHarness,
     refresh,
     install
   }
@@ -142,6 +212,7 @@ export const agentDiscovery = createAgentDiscovery({
   lookup: lookupAgents,
   install: installAgentAdapter,
   installBridge: installCanvasBridge,
+  installHarness: installHarnessCompanion,
   async restartBridge() {
     const { restartMCPRuntime } = await import('@/app/automation/mcp/runtime')
     const result = await restartMCPRuntime()

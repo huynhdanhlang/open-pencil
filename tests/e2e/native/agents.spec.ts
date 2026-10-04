@@ -4,6 +4,7 @@ import { invokeNative } from '#tests/helpers/tauri/invoke'
 
 interface AgentLookup {
   executables: Record<string, string | null>
+  versions: Record<string, string | null>
   searchPath: string
 }
 
@@ -21,7 +22,12 @@ describe('native agent discovery', () => {
       'codex-acp',
       'gemini',
       'npm',
+      'openpencil-harness',
       'openpencil-mcp-http'
+    ])
+    assert.deepEqual(Object.keys(lookup.versions).sort(), [
+      '@open-pencil/harness',
+      '@open-pencil/mcp'
     ])
     for (const path of Object.values(lookup.executables)) {
       assert.ok(path === null || path.length > 0)

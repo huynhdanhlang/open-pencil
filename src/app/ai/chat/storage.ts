@@ -41,7 +41,8 @@ export const isAgentProvider = computed(() => isACPProvider.value || isHarnessPr
 
 export const isConfigured = computed(() => {
   if (isACPProvider.value) return IS_TAURI
-  if (isHarnessProvider.value) return IS_TAURI && apiKeyStatus.value === 'configured'
+  // Pi can use the CLI's own sign-in, so a key is optional.
+  if (isHarnessProvider.value) return IS_TAURI
   if (apiKeyStatus.value !== 'configured') return false
   const needsBaseURL =
     providerID.value === 'openai-compatible' || providerID.value === 'anthropic-compatible'

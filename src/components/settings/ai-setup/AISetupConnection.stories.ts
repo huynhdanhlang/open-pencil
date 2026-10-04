@@ -4,15 +4,22 @@ import { expect, within } from 'storybook/test'
 import { ACP_AGENTS, type ACPAgentID } from '@open-pencil/core/constants'
 
 import type { DetectedAgent } from '@/app/ai/agents/discovery'
-import type { AgentSetupState } from '@/app/ai/models/settings/onboarding/agents'
+import type { AgentSetupState, PiSetupState } from '@/app/ai/models/settings/onboarding/agents'
 
 import AISetupConnection from './AISetupConnection.vue'
 
 interface Args {
-  providerID: 'openrouter' | 'anthropic' | 'openai-compatible' | 'acp:claude-code' | 'acp:codex'
+  providerID:
+    | 'openrouter'
+    | 'anthropic'
+    | 'openai-compatible'
+    | 'acp:claude-code'
+    | 'acp:codex'
+    | 'harness:pi'
   signInStatus: 'idle' | 'waiting' | 'verifying' | 'blocked' | 'cancelled' | 'expired' | 'failed'
   account: { label: string; freeTier: boolean } | null
   agentSetup?: AgentSetupState
+  piSetup?: PiSetupState
   hasSavedKey: boolean
   recommended: boolean
 }
@@ -28,9 +35,30 @@ function agentSetup(overrides: Partial<AgentSetupState>): AgentSetupState {
     scanning: false,
     detected: null,
     bridge: false,
+    bridgeOutdated: false,
+    bridgeCommand: 'npm i -g @open-pencil/mcp@0.15.1',
     npm: true,
     installingAgent: false,
     installingBridge: false,
+    error: null,
+    ...overrides
+  }
+}
+
+function piSetup(overrides: Partial<PiSetupState>): PiSetupState {
+  return {
+    supported: true,
+    scanning: false,
+    companion: false,
+    companionOutdated: false,
+    companionCommand: 'npm i -g @open-pencil/harness@0.15.1',
+    bridge: false,
+    bridgeOutdated: false,
+    bridgeCommand: 'npm i -g @open-pencil/mcp@0.15.1',
+    npm: true,
+    installingCompanion: false,
+    installingBridge: false,
+    defaultModel: null,
     error: null,
     ...overrides
   }
@@ -153,5 +181,58 @@ export const CodingAgentNeedsNpm: Story = {
     await expect(canvas.getByText('npm i -g @agentclientprotocol/claude-agent-acp')).toBeVisible()
     await expect(canvas.queryByRole('button', { name: 'Install adapter' })).toBeNull()
     await expect(canvas.getByText(/npm i -g @open-pencil\/mcp@/)).toBeVisible()
+  }
+}
+export const PiNeedsCompanion: Story = {
+  args: {
+    providerID: 'harness:pi',
+    recommended: false,
+    piSetup: piSetup({ defaultModel: 'openai-codex/gpt-5.6' })
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('button', { name: 'Install companion' })).toBeVisible()
+    await expect(canvas.getByText(/openai-codex\/gpt-5\.6/)).toBeVisible()
+    await expect(canvas.queryByLabelText('API Key')).toBeNull()
+  }
+}
+export const PiReady: Story = {
+  args: {
+    providerID: 'harness:pi',
+    recommended: false,
+    piSetup: piSetup({ companion: true, bridge: true, defaultModel: 'openai-codex/gpt-5.6' })
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('button', { name: 'Install companion' })).toBeNull()
+    await expect(canvas.queryByText(/npm i -g/)).toBeNull()
+  }
+}
+export const PiNeedsNpm: Story = {
+  args: { providerID: 'harness:pi', recommended: false, piSetup: piSetup({ npm: false }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByText(/npm i -g @open-pencil\/harness@/)).toBeVisible()
+    await expect(canvas.getByText('No default model set in Pi')).toBeVisible()
+  }
+}
+export const PiOutdatedMCPFromBun: Story = {
+  args: {
+    providerID: 'harness:pi',
+    recommended: false,
+    piSetup: piSetup({
+      companion: true,
+      bridge: true,
+      bridgeOutdated: true,
+      bridgeCommand: 'bun add -g @open-pencil/mcp@0.15.1',
+      defaultModel: 'openai-codex/gpt-5.6',
+      error: 'canvas-install'
+    })
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByText(/OpenPencil MCP server · update needed/)).toBeVisible()
+    await expect(canvas.getByRole('button', { name: 'Update MCP server' })).toBeVisible()
+    await expect(canvas.getByText('bun add -g @open-pencil/mcp@0.15.1')).toBeVisible()
   }
 }

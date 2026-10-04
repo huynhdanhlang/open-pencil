@@ -33,6 +33,12 @@ ja:ai.aiSetupWelcomeAIDescription
 ja:ai.aiSetupWelcomeAITitle
 ja:ai.aiSetupWelcomeDescription
 ja:ai.aiSetupWelcomeTitle
+ja:ai.aiSetupPiDescription
+ja:ai.aiSetupPiCompanion
+ja:ai.aiSetupPiModel
+ja:ai.aiSetupPiNoModel
+ja:ai.aiSetupPiSignIn
+ja:ai.aiSetupAgentUpdateMCP
 ja:ai.apiKey
 ja:ai.apiType
 ja:ai.baseURL
@@ -203,6 +209,12 @@ zh-cn:ai.aiSetupWelcomeAIDescription
 zh-cn:ai.aiSetupWelcomeAITitle
 zh-cn:ai.aiSetupWelcomeDescription
 zh-cn:ai.aiSetupWelcomeTitle
+zh-cn:ai.aiSetupPiDescription
+zh-cn:ai.aiSetupPiCompanion
+zh-cn:ai.aiSetupPiModel
+zh-cn:ai.aiSetupPiNoModel
+zh-cn:ai.aiSetupPiSignIn
+zh-cn:ai.aiSetupAgentUpdateMCP
 zh-cn:ai.apiKey
 zh-cn:ai.apiType
 zh-cn:ai.baseURL

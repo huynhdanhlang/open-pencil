@@ -74,11 +74,7 @@ function isAgentConnection(
   const connection = settings.connections.find(
     (candidate) => candidate.id === profile?.connectionId
   )
-  return (
-    !connection ||
-    isOnboardingAgent(connection.providerID) ||
-    connection.providerID === 'harness:pi'
-  )
+  return !connection || isOnboardingAgent(connection.providerID)
 }
 
 /**

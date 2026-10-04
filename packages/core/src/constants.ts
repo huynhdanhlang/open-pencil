@@ -231,7 +231,7 @@ export const AI_PROVIDERS: AIProviderDef[] = [
   {
     id: HARNESS_PROVIDER_ID,
     name: 'Pi',
-    keyPlaceholder: 'Provider API key',
+    keyPlaceholder: 'AI Gateway key (optional)',
     keyURL: '',
     defaultModel: '',
     supportsCustomModel: true,

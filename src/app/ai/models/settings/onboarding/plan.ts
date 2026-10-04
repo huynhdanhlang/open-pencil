@@ -8,7 +8,12 @@ export const ONBOARDING_GOALS = ['design', 'vision'] as const
 export type OnboardingGoal = (typeof ONBOARDING_GOALS)[number]
 
 /** Coding agents that run on this computer and bring their own subscription and model. */
-export const ONBOARDING_AGENTS = ['acp:claude-code', 'acp:codex', 'acp:gemini-cli'] as const
+export const ONBOARDING_AGENTS = [
+  'acp:claude-code',
+  'acp:codex',
+  'acp:gemini-cli',
+  'harness:pi'
+] as const
 /** API accounts, in the order onboarding prefers them when several are available. */
 export const ONBOARDING_API_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'] as const
 /** Further API accounts the catalog supports, offered behind "More providers". */
@@ -101,14 +106,13 @@ const NO_CURRENT: CurrentOnboardingModels = {
   fast: null
 }
 
+/** ACP agents and Pi, which run on this computer and choose their own model. */
 export function isOnboardingAgent(providerID: string): boolean {
-  return providerID.startsWith('acp:')
+  return providerID.startsWith('acp:') || providerID === 'harness:pi'
 }
 
 function isAgentModel(model: PlannedModel | null): boolean {
-  return Boolean(
-    model && (isOnboardingAgent(model.providerID) || model.providerID === 'harness:pi')
-  )
+  return Boolean(model && isOnboardingAgent(model.providerID))
 }
 
 function catalogModels(providerID: AIProviderID): ModelOption[] {

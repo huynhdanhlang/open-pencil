@@ -2,6 +2,7 @@
 import { templateRef } from '@vueuse/core'
 import { nextTick, ref, onUnmounted } from 'vue'
 
+import { HARNESS_PROVIDER_ID } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import { openAISetup } from '@/app/ai/models/settings/onboarding/dialog'
@@ -52,8 +53,12 @@ function editModel(profileId: string): void {
 }
 
 function statusLabel(connectionId: string, providerID: string): string {
-  if (providerID.startsWith('acp:')) return ai.value.modelAgentConnection
   const status = statusByConnection.value[connectionId]
+  if (providerID.startsWith('acp:')) return ai.value.modelAgentConnection
+  // Pi uses its own sign-ins unless an AI Gateway key is saved.
+  if (providerID === HARNESS_PROVIDER_ID && status !== 'configured') {
+    return ai.value.modelAgentConnection
+  }
   if (status === 'configured') return collaboration.value.connected
   if (status === 'locked' || status === 'unavailable') return common.value.unavailable
   return ai.value.modelNeedsCredential

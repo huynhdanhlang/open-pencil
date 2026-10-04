@@ -2,11 +2,14 @@ import * as v from 'valibot'
 
 import type { ACPAgentDef } from '@open-pencil/core/constants'
 
+import { HARNESS_INSTALL_TARGET } from '@/app/ai/harness/companion'
 import { MCP_INSTALL_TARGET } from '@/app/automation/mcp/failure'
 import { resolvePlatformCommand } from '@/app/tauri/command'
 
 const lookupSchema = v.object({
   executables: v.record(v.string(), v.nullable(v.string())),
+  /** Versions of OpenPencil's own companions, keyed by package name. */
+  versions: v.record(v.string(), v.nullable(v.string())),
   searchPath: v.string()
 })
 
@@ -26,6 +29,10 @@ export async function installAgentAdapter(agent: ACPAgentDef, searchPath: string
 
 export async function installCanvasBridge(searchPath: string): Promise<void> {
   await installPackage(MCP_INSTALL_TARGET, searchPath)
+}
+
+export async function installHarnessCompanion(searchPath: string): Promise<void> {
+  await installPackage(HARNESS_INSTALL_TARGET, searchPath)
 }
 
 async function installPackage(packageName: string, searchPath: string): Promise<void> {

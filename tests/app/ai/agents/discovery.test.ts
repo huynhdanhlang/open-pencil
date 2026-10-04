@@ -7,6 +7,7 @@ import { createDeferred } from '@/app/runtime/deferred'
 function lookup(...commands: string[]): AgentLookup {
   return {
     searchPath: '/test/bin',
+    versions: {},
     executables: Object.fromEntries(commands.map((command) => [command, `/test/bin/${command}`]))
   }
 }
@@ -174,5 +175,93 @@ describe('local agent discovery', () => {
     await discovery.refresh()
     expect(discovery.error.value).toBeNull()
     expect(discovery.availableAgents.value).toHaveLength(2)
+  })
+})
+
+describe('Harness companion setup', () => {
+  test('installs the companion once and rescans', async () => {
+    let installed = false
+    const installHarness = mock(async () => {
+      installed = true
+    })
+    const discovery = createAgentDiscovery({
+      enabled: true,
+      lookup: async () => lookup('npm', ...(installed ? ['openpencil-harness'] : [])),
+      install: async () => undefined,
+      installHarness
+    })
+    await discovery.refresh()
+    expect(discovery.harnessAvailable.value).toBe(false)
+    await discovery.setupHarness()
+    expect(installHarness).toHaveBeenCalledWith('/test/bin')
+    expect(discovery.harnessAvailable.value).toBe(true)
+    expect(discovery.error.value).toBeNull()
+  })
+
+  test('updates a companion whose version does not match the app', async () => {
+    let version = '0.12.0'
+    const installHarness = mock(async () => {
+      version = '0.0.1'
+    })
+    const discovery = createAgentDiscovery({
+      enabled: true,
+      lookup: async () => ({
+        ...lookup('npm', 'openpencil-harness'),
+        versions: { '@open-pencil/harness': version }
+      }),
+      install: async () => undefined,
+      installHarness
+    })
+    await discovery.refresh()
+    expect(discovery.harnessOutdated.value).toBe(true)
+    await discovery.setupHarness()
+    expect(installHarness).toHaveBeenCalledTimes(1)
+    expect(discovery.harnessOutdated.value).toBe(false)
+    expect(discovery.error.value).toBeNull()
+  })
+
+  test('reports an update that left the old MCP server first on the path', async () => {
+    const installBridge = mock(async () => undefined)
+    const restartBridge = mock(async () => undefined)
+    const discovery = createAgentDiscovery({
+      enabled: true,
+      lookup: async () => ({
+        searchPath: '/test/bin',
+        executables: { npm: '/test/bin/npm', 'openpencil-mcp-http': '/home/me/.bun/bin/mcp' },
+        versions: { '@open-pencil/mcp': '0.12.0' }
+      }),
+      install: async () => undefined,
+      installBridge,
+      restartBridge
+    })
+    await discovery.refresh()
+    expect(discovery.canvasBridgeCommand.value).toStartWith('bun add -g @open-pencil/mcp@')
+    await discovery.setupCanvasBridge()
+    expect(installBridge).toHaveBeenCalledTimes(1)
+    expect(restartBridge).not.toHaveBeenCalled()
+    expect(discovery.error.value).toBe('canvas-install')
+  })
+
+  test('needs npm and reports a failed install without raw errors', async () => {
+    const withoutNpm = createAgentDiscovery({
+      enabled: true,
+      lookup: async () => lookup(),
+      install: async () => undefined,
+      installHarness: async () => undefined
+    })
+    await withoutNpm.refresh()
+    await withoutNpm.setupHarness()
+    expect(withoutNpm.error.value).toBe('npm')
+    const failing = createAgentDiscovery({
+      enabled: true,
+      lookup: async () => lookup('npm'),
+      install: async () => undefined,
+      installHarness: async () => {
+        throw new Error('private npm details')
+      }
+    })
+    await failing.refresh()
+    await failing.setupHarness()
+    expect(failing.error.value).toBe('harness-install')
   })
 })
