@@ -124,3 +124,40 @@ test('a nested component that defines the id keeps an outer assignment out', () 
 
   expect(label?.text).toBe('Inner default')
 })
+
+/**
+ * Only a component set's definitions reach its variants. A component nested inside an ordinary
+ * component defines its own properties, so the outer component's must still reach through it.
+ */
+test('a component nested in a component does not own the outer property', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+
+  const outer = graph.createNode('COMPONENT', page.id, {
+    name: 'Outer',
+    componentPropertyDefinitions: [
+      { id: '207:1', name: 'Label', type: 'TEXT', defaultValue: 'Default' }
+    ]
+  })
+  // A plain COMPONENT nested inside another COMPONENT, defining nothing of its own.
+  const nested = graph.createNode('COMPONENT', outer.id, { name: 'Nested' })
+  const nestedInstance = graph.createInstance(nested.id, outer.id)
+
+  const placed = graph.createInstance(outer.id, page.id)
+  graph.updateNode(placed.id, { componentPropertyAssignments: { '207:1': 'Assigned' } })
+
+  graph.createNode('TEXT', nested.id, {
+    name: 'Label',
+    text: 'Default',
+    componentPropertyReferences: [{ propertyId: '207:1', field: 'TEXT' }]
+  })
+  graph.syncInstances(nested.id)
+  graph.syncInstances(outer.id)
+
+  expect(nestedInstance).toBeDefined()
+  const placedNested = graph.getChildren(placed.id).find((child) => child.type === 'INSTANCE')
+  const label = placedNested
+    ? graph.getChildren(placedNested.id).find((child) => child.name === 'Label')
+    : undefined
+  expect(label?.text).toBe('Assigned')
+})

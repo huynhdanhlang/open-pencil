@@ -183,10 +183,22 @@ const PROPERTY_REFERENCE_FIELDS: Partial<Record<ComponentPropertyReferenceField,
   INSTANCE_SWAP: 'componentId'
 }
 
-/** Whether this instance's component, or its set, is where `propertyId` is defined. */
+/** Instance links are expected to be shallow; the cap only stops a cycle from hanging sync. */
+const INSTANCE_CHAIN_LIMIT = 16
+
+/**
+ * Whether this instance's component, or the set it is a variant of, is where `propertyId` is
+ * defined. Only a set counts: a component nested in an ordinary component defines its own
+ * properties, not the outer one's.
+ */
 function definesProperty(graph: SceneGraph, instance: SceneNode, propertyId: string): boolean {
-  const component = instance.componentId ? graph.nodes.get(instance.componentId) : undefined
-  const set = component?.parentId ? graph.nodes.get(component.parentId) : undefined
+  // An instance of an instance links through to the component, so follow the chain to it.
+  let component = instance.componentId ? graph.nodes.get(instance.componentId) : undefined
+  for (let hops = 0; component?.type === 'INSTANCE' && hops < INSTANCE_CHAIN_LIMIT; hops++) {
+    component = component.componentId ? graph.nodes.get(component.componentId) : undefined
+  }
+  const parent = component?.parentId ? graph.nodes.get(component.parentId) : undefined
+  const set = parent?.type === 'COMPONENT_SET' ? parent : undefined
   return [component, set]
     .flatMap((node) => node?.componentPropertyDefinitions ?? [])
     .some((definition) => definition.id === propertyId)
