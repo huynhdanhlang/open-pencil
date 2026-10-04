@@ -9,6 +9,9 @@ export default {
     introText: 'mt-2 text-xs leading-relaxed text-muted',
     group: 'flex flex-col gap-2',
     groupHeading: 'text-[11px] font-semibold text-muted',
+    // Reads as a group heading; the gap below lives inside the animated content.
+    moreTrigger: 'py-1.5 text-[11px] font-semibold text-muted transition-colors hover:text-surface',
+    moreGroup: 'flex flex-col gap-2 pt-1',
     choice:
       'flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-3 transition-colors hover:bg-hover has-[[data-state=checked]]:border-accent has-[[data-state=checked]]:bg-accent/5 focus-within:ring-2 focus-within:ring-accent/50',
     connection: 'flex flex-col gap-3 rounded-md border border-border p-3',

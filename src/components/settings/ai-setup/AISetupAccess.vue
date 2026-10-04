@@ -75,8 +75,12 @@ function toggle(providerID: OnboardingAccess, checked: boolean): void {
       />
       <template #icon><ProviderLogo :provider="provider" /></template>
     </SetupChoice>
-    <AppCollapsible v-model:open="moreOpen" :label="ai.aiSetupAccessMore">
-      <div :class="styles.group()">
+    <AppCollapsible
+      v-model:open="moreOpen"
+      :label="ai.aiSetupAccessMore"
+      :ui="{ trigger: styles.moreTrigger() }"
+    >
+      <div :class="styles.moreGroup()">
         <SetupChoice
           v-for="provider in ONBOARDING_MORE_API_PROVIDERS"
           :key="provider"
