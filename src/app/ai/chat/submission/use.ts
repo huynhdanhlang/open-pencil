@@ -2,6 +2,7 @@ import type { Chat } from '@ai-sdk/vue'
 import type { UIMessage } from 'ai'
 import { computed, markRaw, ref, type Ref } from 'vue'
 
+import { AgentSetupError, type AgentSetupProblem } from '@/app/ai/agents/readiness'
 import {
   analyzeAttachedImages,
   designMessageWithImageFindings,
@@ -24,6 +25,8 @@ interface SubmissionMessages {
   openSettings: string
   requestFailed: string
   visionUnavailable: string
+  runSetup: string
+  agentSetup: Record<AgentSetupProblem, string>
 }
 
 interface SubmissionOptions {
@@ -35,6 +38,7 @@ interface SubmissionOptions {
   messages: Ref<SubmissionMessages>
   reportError: (message: string, action?: { label: string; run: () => void }) => void
   openModelSettings: () => void
+  openSetup: () => void
 }
 
 export function useChatSubmission(options: SubmissionOptions) {
@@ -102,6 +106,13 @@ export function useChatSubmission(options: SubmissionOptions) {
 
   function reportSubmissionError(error: unknown): void {
     console.error('Chat error:', error)
+    if (error instanceof AgentSetupError) {
+      options.reportError(options.messages.value.agentSetup[error.problem], {
+        label: options.messages.value.runSetup,
+        run: options.openSetup
+      })
+      return
+    }
     if (error instanceof VisionModelUnavailableError) {
       options.reportError(options.messages.value.visionUnavailable, {
         label: options.messages.value.openSettings,

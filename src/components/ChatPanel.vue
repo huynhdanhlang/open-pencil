@@ -8,6 +8,7 @@ import { useI18n } from '@open-pencil/vue'
 import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { useChatSubmission } from '@/app/ai/chat/submission/use'
 import { useAIChat } from '@/app/ai/chat/use'
+import { openAISetup } from '@/app/ai/models/settings/onboarding/dialog'
 import { didHitStepLimit } from '@/app/ai/tools'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
@@ -32,10 +33,19 @@ const submission = useChatSubmission({
   messages: computed(() => ({
     openSettings: ai.value.openProviderSettingsAction,
     requestFailed: ai.value.chatRequestFailed,
-    visionUnavailable: ai.value.visionModelUnavailable
+    visionUnavailable: ai.value.visionModelUnavailable,
+    runSetup: ai.value.aiSetupRun,
+    agentSetup: {
+      'companion-missing': ai.value.chatPiCompanionMissing,
+      'companion-outdated': ai.value.chatPiCompanionOutdated,
+      'mcp-outdated': ai.value.chatMCPOutdated,
+      'pi-sign-in': ai.value.chatPiSignIn,
+      'pi-model': ai.value.chatPiModel
+    }
   })),
   reportError: toast.error,
-  openModelSettings: () => openSettingsDialog('ai')
+  openModelSettings: () => openSettingsDialog('ai'),
+  openSetup: () => openAISetup()
 })
 
 let viewGeneration = 0

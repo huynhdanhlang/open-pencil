@@ -167,6 +167,15 @@ export const aiMessageDefaults = {
   chatRequestFailed: 'The model request failed. Check the provider settings and try again.',
   openProviderSettingsAction: 'Open settings',
   visionModelUnavailable: 'Choose a Vision model in Settings before attaching images.',
+  chatPiCompanionMissing: 'Pi needs the Harness companion. Run guided setup to install it.',
+  chatPiCompanionOutdated:
+    'The Harness companion doesn’t match this version of OpenPencil. Run guided setup to update it.',
+  chatMCPOutdated:
+    'OpenPencil’s MCP server doesn’t match this version of OpenPencil. Run guided setup to update it.',
+  chatPiSignIn:
+    'Pi isn’t signed in to a provider. Run pi in a terminal and type /login, or add an AI Gateway key.',
+  chatPiModel:
+    'Pi has no model to use. Run pi in a terminal and type /model, or choose one in Settings.',
   completions: 'Completions',
   responses: 'Responses',
   aiSetupWelcomeTitle: 'Welcome to OpenPencil',
@@ -237,6 +246,7 @@ export const aiMessageDefaults = {
   aiSetupPiUpdateCompanion: 'Update companion',
   aiSetupPiModel: params('Pi’s default model: {model}'),
   aiSetupPiNoModel: 'No default model set in Pi',
+  piModelHint: 'A Pi model such as provider/model. Leave empty to use Pi’s default model.',
   aiSetupPiSignIn:
     'To sign in to a provider or pick a default model, run pi in a terminal and type /login or /model.',
   aiSetupGetDesktop: 'Get the desktop app',

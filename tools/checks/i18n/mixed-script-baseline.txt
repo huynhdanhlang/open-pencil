@@ -63,6 +63,12 @@ ja:ai.modelID
 ja:ai.modelIDPlaceholder
 ja:ai.modelRoleDesignDescription
 ja:ai.provider
+ja:ai.chatPiCompanionMissing
+ja:ai.chatPiCompanionOutdated
+ja:ai.chatMCPOutdated
+ja:ai.chatPiSignIn
+ja:ai.chatPiModel
+ja:ai.piModelHint
 ja:automation.addServerConnection
 ja:automation.aiToolAccessDescription
 ja:automation.authenticationDescription
@@ -239,6 +245,12 @@ zh-cn:ai.modelID
 zh-cn:ai.modelIDPlaceholder
 zh-cn:ai.modelRoleDesignDescription
 zh-cn:ai.provider
+zh-cn:ai.chatPiCompanionMissing
+zh-cn:ai.chatPiCompanionOutdated
+zh-cn:ai.chatMCPOutdated
+zh-cn:ai.chatPiSignIn
+zh-cn:ai.chatPiModel
+zh-cn:ai.piModelHint
 zh-cn:automation.addServerConnection
 zh-cn:automation.aiToolAccessDescription
 zh-cn:automation.authenticationDescription

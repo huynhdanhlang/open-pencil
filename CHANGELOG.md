@@ -35,7 +35,7 @@
 
 ### Changed
 
-- Run Pi with the providers you signed in to in the Pi CLI and Pi's default model; an AI Gateway key is now optional.
+- Run Pi with the providers you signed in to in the Pi CLI and Pi's default model; an AI Gateway key and a model ID are now optional. The Pi model editor shows whether the Harness companion and MCP server are installed and match the app. A Pi or coding-agent chat whose Harness companion is missing or whose companion or MCP server version doesn't match the app now says so and offers guided setup, instead of failing with a generic error.
 - Point Codex install instructions at `@agentclientprotocol/codex-acp`, which replaces `@zed-industries/codex-acp` and provides the same `codex-acp` command.
 - Show Flatten, Outline text, and Outline stroke in the canvas context menu without icons, like every other item there.
 - Keep an AI chat working on the page where it started when you switch to another page, instead of sending its next edits to whichever page is on screen. When the AI switches pages itself, your view follows.

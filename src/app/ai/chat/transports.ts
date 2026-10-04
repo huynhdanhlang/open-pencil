@@ -14,6 +14,7 @@ import { ref } from 'vue'
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 import type { ACPAgentID, AIProviderID } from '@open-pencil/core/constants'
 
+import { AgentSetupError, assertAgentReady } from '@/app/ai/agents/readiness'
 import { classifyAIChatError, type AIChatFailure } from '@/app/ai/chat/failure'
 import { resolveLanguageModelID } from '@/app/ai/chat/model'
 import { reasoningCallSettings, type AIProviderOptions } from '@/app/ai/chat/reasoning'
@@ -251,6 +252,7 @@ export function createChatSessionManager({
 
   async function createActiveACPTransport() {
     await destroyAgentTransports()
+    await assertAgentReady('acp')
     const transport = await createACPTransport(providerID.value)
     acpTransportInstance = transport
     return transport as ChatTransport<UIMessage>
@@ -260,6 +262,7 @@ export function createChatSessionManager({
     await destroyAgentTransports()
     const runtime = await createAIModelRuntime('design')
     if (runtime?.kind !== 'harness') throw new Error('The Design agent is not configured for Pi')
+    await assertAgentReady('pi')
     const [{ HarnessChatTransport }, { buildPiMCPServers }, { readPiAccount }] = await Promise.all([
       import('@/app/ai/harness/transport'),
       import('@/app/integrations/mcp'),
@@ -273,8 +276,8 @@ export function createChatSessionManager({
       runtime.role.profile.modelID ||
       account?.defaultModel ||
       ''
-    if (!apiKey && !account) throw new Error('Sign in with Pi, or add an AI Gateway key for Pi')
-    if (!model) throw new Error('Choose a model for Pi, or set a default model in Pi')
+    if (!apiKey && !account) throw new AgentSetupError('pi-sign-in')
+    if (!model) throw new AgentSetupError('pi-model')
     const transport = new HarnessChatTransport(
       sessionId,
       {
