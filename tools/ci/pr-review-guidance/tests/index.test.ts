@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
   eventContext,
   monitorPRReviewGuidance,
+  parseGitHubEvent,
   reviewGuidanceCheckName,
   reviewGuidanceChecks
 } from '../src/index'
@@ -139,5 +140,44 @@ describe('monitorPRReviewGuidance', () => {
 
     expect(requests).toEqual([])
     expect(messages).toEqual(['No action needed: event sender is contributor, not CodeRabbit.'])
+  })
+})
+
+describe('parseGitHubEvent', () => {
+  test('reads the null fields GitHub sends for absent values', () => {
+    const event = parseGitHubEvent(
+      JSON.stringify({
+        sender: { login: 'coderabbitai[bot]' },
+        review: { state: 'commented', body: null },
+        pull_request: { number: 7 },
+        issue: null,
+        comment: null
+      })
+    )
+    expect(event).toEqual({
+      sender: { login: 'coderabbitai[bot]' },
+      review: { state: 'commented', body: undefined },
+      pull_request: { number: 7 },
+      issue: undefined,
+      comment: undefined
+    })
+  })
+})
+
+describe('workflow delivery', () => {
+  // The workflow runs the script with plain Node and no installed dependencies.
+  test('runs under Node with nothing installed beside it', async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), 'open-pencil-pr-guidance-node-')))
+    const script = join(dir, 'index.ts')
+    await copyFile(new URL('../src/index.ts', import.meta.url), script)
+    const proc = Bun.spawn(['node', '--experimental-strip-types', script], {
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+      stdout: 'pipe',
+      stderr: 'pipe'
+    })
+    const stderr = await new Response(proc.stderr).text()
+    expect(await proc.exited).toBe(1)
+    expect(stderr).toContain('Missing required GitHub Actions environment')
   })
 })
