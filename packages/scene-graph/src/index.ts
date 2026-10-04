@@ -352,17 +352,18 @@ export class SceneGraph {
   }
   private generateEntityId(): string {
     let id = this.idGenerator()
-    while (
-      this.nodes.has(id) ||
-      this.variables.has(id) ||
-      this.variableCollections.has(id) ||
-      [...this.variableCollections.values()].some((collection) =>
-        collection.modes.some((mode) => mode.modeId === id)
-      )
-    ) {
-      id = this.idGenerator()
-    }
+    while (this.isEntityIdTaken(id)) id = this.idGenerator()
     return id
+  }
+  private isEntityIdTaken(id: string): boolean {
+    if (this.nodes.has(id) || this.variables.has(id) || this.variableCollections.has(id))
+      return true
+    // Callers replace collection maps and edit `modes` in place (history snapshots, transfer,
+    // undo), so an index of mode IDs would go stale; walk them without allocating instead.
+    for (const collection of this.variableCollections.values()) {
+      for (const mode of collection.modes) if (mode.modeId === id) return true
+    }
+    return false
   }
   private registerNode(node: SceneNode, parentId: string | null): SceneNode {
     node.parentId = parentId
