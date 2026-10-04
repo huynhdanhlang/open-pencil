@@ -42,8 +42,13 @@ function call(toolCallId: string): ToolExecutionOptions<unknown> {
   return { toolCallId, messages: [], context: undefined }
 }
 
-/** A chat whose every send is one agent run that resizes `nodeId` to the next width. */
-function fakeChat(nodeId: string) {
+type Tools = ReturnType<typeof createAITools>
+
+/**
+ * A chat whose every send is one agent run that resizes `nodeId` to the next width, then runs
+ * `finish`, such as a view change, before the reply ends.
+ */
+function fakeChat(nodeId: string, finish?: (tools: Tools) => Promise<unknown>) {
   const tools = createAITools(store)
   const widths = [200, 300, 400]
   let replies = 0
@@ -55,6 +60,7 @@ function fakeChat(nodeId: string) {
       const width = widths[replies] ?? 500
       replies++
       await tools.node_resize.execute?.({ id: nodeId, width, height: 60 }, call(`call-${replies}`))
+      await finish?.(tools)
       chat.messages = [
         ...chat.messages,
         { id: `reply-${replies}`, role: 'assistant', parts: [{ type: 'text', text: 'Done' }] }
@@ -90,13 +96,13 @@ function submission(chat: ReturnType<typeof fakeChat>) {
   })
 }
 
-function setup() {
+function setup(finish?: (tools: Tools) => Promise<unknown>) {
   const card = store.graph.createNode('FRAME', store.state.currentPageId, {
     name: 'Card',
     width: 100,
     height: 60
   })
-  const chat = fakeChat(card.id)
+  const chat = fakeChat(card.id, finish)
   return { card, chat, actions: submission(chat) }
 }
 
@@ -111,6 +117,18 @@ test('reverts a turn while its edits are the newest on the undo stack', async ()
   expect(revertTurn('reply-1')).toBe(true)
   expect(width(card.id)).toBe(100)
   expect(turnEdits('reply-1')).toBeNull()
+})
+
+test('a turn that ends with a view change, such as zoom to fit, stays revertable', async () => {
+  // The agent often ends a run by framing its work; that edit belongs to the turn too.
+  const { card, actions } = setup(async (tools) =>
+    tools.viewport_zoom_to_fit.execute?.({}, call('zoom'))
+  )
+  await actions.submit({ modelText: 'Wider', displayText: 'Wider', images: [], nodes: [] })
+
+  expect(turnEdits('reply-1')?.revertable).toBe(true)
+  expect(revertTurn('reply-1')).toBe(true)
+  expect(width(card.id)).toBe(100)
 })
 
 test('an edit made after the turn closes the revert, so it never undoes other work', async () => {

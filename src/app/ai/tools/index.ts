@@ -95,10 +95,12 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
               inverse: () => store.restorePageFromSnapshot(before)
             })
           }
+          // Every entry the run pushes belongs to its turn, view changes included: one left on
+          // top, such as a closing zoom to fit, would otherwise keep the turn from reverting.
+          // Atomic and snapshot edits both label their entries this way.
+          recordRunUndoEntry(store, `AI: ${def.name}`)
           // View tools (selection, viewport, pages) cannot change the document.
           if (toolChangesDocument(def)) {
-            // Atomic and snapshot edits both label their entries this way.
-            recordRunUndoEntry(store, `AI: ${def.name}`)
             try {
               recordToolChange(store, toolCallId, before, after)
             } catch (error) {
