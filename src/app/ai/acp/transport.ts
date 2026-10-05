@@ -28,6 +28,8 @@ interface ACPSession {
   onUpdate: ((params: SessionNotification) => void) | null
   dead: boolean
   supportsImages: boolean
+  permissionSignal?: AbortSignal
+  cancelPermissions?: () => void
 }
 
 function isMissingCommandError(message: string): boolean {
@@ -139,6 +141,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           let closed = false
           let settled = false
           let cancelTimer: ReturnType<typeof setTimeout> | undefined
+          const permissions = new AbortController()
+          session.permissionSignal = permissions.signal
+          session.cancelPermissions = () => permissions.abort()
 
           function finish(reason: FinishReason, errorText?: string) {
             if (closed) return
@@ -148,6 +153,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             controller.enqueue({ type: 'finish-step' })
             controller.enqueue({ type: 'finish', finishReason: reason })
             session.onUpdate = null
+            permissions.abort()
             abortSignal?.removeEventListener('abort', onAbort)
             controller.close()
           }
@@ -176,6 +182,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           cancelStream = () => {
             closed = true
             session.onUpdate = null
+            permissions.abort()
             abortSignal?.removeEventListener('abort', onAbort)
             cancelAgent()
           }
@@ -242,6 +249,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   async destroy(): Promise<void> {
     this.destroying = true
     if (this.session) {
+      this.session.cancelPermissions?.()
       await this.session.child.kill()
       this.session = null
     } else if (this.startingChild) {
@@ -283,16 +291,35 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     try {
       const stream = ndJsonStream(input, output)
       let onUpdate: ACPSession['onUpdate'] = null
+      const permissionTools = new Map<string, RequestPermissionRequest['toolCall']>()
 
       const clientImpl: Client = {
         async requestPermission(
           params: RequestPermissionRequest
         ): Promise<RequestPermissionResponse> {
-          const { requestPermissionFromUser } = await import('@/app/ai/acp/permission')
-          return requestPermissionFromUser(params)
+          const { requestPermissionFromUser, permissionWithToolContext } =
+            await import('@/app/ai/acp/permission')
+          const known = permissionTools.get(params.toolCall.toolCallId)
+          return requestPermissionFromUser(
+            permissionWithToolContext(params, known),
+            ownedSession?.permissionSignal
+          )
         },
 
         async sessionUpdate(params: SessionNotification): Promise<void> {
+          const update = params.update
+          if (update.sessionUpdate === 'tool_call') {
+            permissionTools.set(update.toolCallId, {
+              toolCallId: update.toolCallId,
+              title: update.title,
+              rawInput: update.rawInput
+            })
+          } else if (
+            update.sessionUpdate === 'tool_call_update' &&
+            (update.status === 'completed' || update.status === 'failed')
+          ) {
+            permissionTools.delete(update.toolCallId)
+          }
           onUpdate?.(params)
         }
       }

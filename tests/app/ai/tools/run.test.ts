@@ -132,10 +132,14 @@ test('a queued view command cannot switch back to the previous agent page', asyn
   await withStore(async (store, { b }) => {
     startRun(store, 10)
     const tools = createAITools(store)
-    type Execute = (input: Record<string, unknown>, options: { toolCallId: string; messages: [] }) => Promise<unknown>
+    type Execute = (
+      input: Record<string, unknown>,
+      options: { toolCallId: string; messages: [] }
+    ) => Promise<unknown>
     const rawSwitch = tools.switch_page?.execute
     const rawViewport = tools.viewport_set?.execute
-    if (typeof rawSwitch !== 'function' || typeof rawViewport !== 'function') throw new Error('View tools missing')
+    if (typeof rawSwitch !== 'function' || typeof rawViewport !== 'function')
+      throw new Error('View tools missing')
     const switchPage = asDouble<Execute>(rawSwitch)
     const viewport = asDouble<Execute>(rawViewport)
     const first = switchPage({ page: b }, { toolCallId: 'switch', messages: [] })

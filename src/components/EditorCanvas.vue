@@ -29,7 +29,7 @@ import {
 
 import { useAIChat } from '@/app/ai/chat/use'
 import { useCollabInjected } from '@/app/collab/use'
-import { useEditorStore } from '@/app/editor/active-store'
+import { getActiveEditorStore } from '@/app/editor/active-store'
 import { useCanvasCollaborationAwareness } from '@/app/editor/canvas/collaboration-awareness'
 import { createCanvasContextSelection } from '@/app/editor/canvas/context-selection'
 import { canvasOverlayObstacles } from '@/app/editor/canvas/obstacles'
@@ -50,7 +50,8 @@ const { paneId } = defineProps<{
   paneId?: string
 }>()
 
-const store = useEditorStore()
+// Canvas resources and cleanup belong to the document that mounted this canvas.
+const store = getActiveEditorStore()
 const collab = useCollabInjected()
 const sceneCanvasRef = ref<HTMLCanvasElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
