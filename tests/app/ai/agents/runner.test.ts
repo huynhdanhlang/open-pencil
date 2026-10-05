@@ -27,6 +27,7 @@ test('helper sends only its own instructions and supplied review snapshot', asyn
     trigger: 'submit-message',
     chatId: 'helper',
     messageId: undefined,
+    abortSignal: undefined,
     messages: [
       { id: 'user', role: 'user', parts: [{ type: 'text', text: 'Review selected button' }] }
     ]

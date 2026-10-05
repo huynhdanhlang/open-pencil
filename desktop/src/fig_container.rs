@@ -1,5 +1,8 @@
 use serde::Deserialize;
 use std::io::{Cursor, Write};
+use std::sync::OnceLock;
+
+static FIG_BUILD_LOCK: OnceLock<tauri::async_runtime::Mutex<()>> = OnceLock::new();
 
 #[derive(Deserialize)]
 pub struct ImageEntry {
@@ -8,7 +11,7 @@ pub struct ImageEntry {
 }
 
 #[tauri::command]
-pub fn build_fig_file(
+pub async fn build_fig_file(
     schema_deflated: Vec<u8>,
     kiwi_data: Vec<u8>,
     thumbnail_png: Vec<u8>,
@@ -16,6 +19,35 @@ pub fn build_fig_file(
     images: Option<Vec<ImageEntry>>,
     fig_kiwi_version: Option<u32>,
 ) -> Result<tauri::ipc::Response, String> {
+    let guard = FIG_BUILD_LOCK
+        .get_or_init(|| tauri::async_runtime::Mutex::new(()))
+        .try_lock()
+        .map_err(|_| "Another FIG export is in progress. Try again after it finishes.".to_string())?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        // Keep the permit in the worker even if the requesting window closes or disconnects.
+        let _guard = guard;
+        build_fig_archive(
+            schema_deflated,
+            kiwi_data,
+            thumbnail_png,
+            meta_json,
+            images,
+            fig_kiwi_version,
+        )
+    })
+    .await
+    .map_err(|error| format!("FIG export worker failed: {error}"))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+fn build_fig_archive(
+    schema_deflated: Vec<u8>,
+    kiwi_data: Vec<u8>,
+    thumbnail_png: Vec<u8>,
+    meta_json: String,
+    images: Option<Vec<ImageEntry>>,
+    fig_kiwi_version: Option<u32>,
+) -> Result<Vec<u8>, String> {
     let mut encoder = zstd::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
     encoder
         .include_contentsize(true)
@@ -63,5 +95,40 @@ pub fn build_fig_file(
     }
 
     let result = zip.finish().map_err(|e| e.to_string())?;
-    Ok(tauri::ipc::Response::new(result.into_inner()))
+    Ok(result.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn archive_preserves_version_payload_thumbnail_metadata_and_images() {
+        let payload = b"editable design data";
+        let bytes = build_fig_archive(
+            vec![1, 2, 3],
+            payload.to_vec(),
+            vec![4, 5],
+            "{\"name\":\"Design\"}".to_string(),
+            Some(vec![ImageEntry { name: "images/test".to_string(), data: vec![6, 7] }]),
+            Some(106),
+        ).unwrap();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut canvas = Vec::new();
+        archive.by_name("canvas.fig").unwrap().read_to_end(&mut canvas).unwrap();
+        assert_eq!(&canvas[..8], b"fig-kiwi");
+        assert_eq!(u32::from_le_bytes(canvas[8..12].try_into().unwrap()), 106);
+        assert_eq!(&canvas[16..19], &[1, 2, 3]);
+        assert_eq!(zstd::decode_all(Cursor::new(&canvas[23..])).unwrap(), payload);
+        for (name, expected) in [
+            ("thumbnail.png", vec![4, 5]),
+            ("meta.json", b"{\"name\":\"Design\"}".to_vec()),
+            ("images/test", vec![6, 7]),
+        ] {
+            let mut actual = Vec::new();
+            archive.by_name(name).unwrap().read_to_end(&mut actual).unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
 }

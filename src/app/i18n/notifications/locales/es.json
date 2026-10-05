@@ -27,5 +27,6 @@
   "deepLinkCancelled": "Enlace cancelado: se esperaba un archivo que terminara en «{file}».",
   "deepLinkNodeNotFound": "No se encontró la capa «{node}» en «{file}».",
   "openQueuedFilesFailed": "No se pudieron abrir los archivos entregados a OpenPencil: {error}",
-  "tokensLeftOut": "No incluido en la hoja de estilos: {names}."
+  "tokensLeftOut": "No incluido en la hoja de estilos: {names}.",
+  "savedWithoutPreview": "Diseño guardado sin una nueva vista previa porque falló el renderizador. Vuelve a abrir el editor para restaurar la visualización."
 }

@@ -98,12 +98,17 @@ export function drawDashedRRectWithSolidCorners(
     r.strokePaint
   )
 
-  r.strokePaint.setPathEffect(dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, dashPhase) : null)
-  canvas.drawLine(left + radius, top, right - radius, top, r.strokePaint)
-  canvas.drawLine(right, top + radius, right, bottom - radius, r.strokePaint)
-  canvas.drawLine(right - radius, bottom, left + radius, bottom, r.strokePaint)
-  canvas.drawLine(left, bottom - radius, left, top + radius, r.strokePaint)
-  r.strokePaint.setPathEffect(null)
+  const effect = dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, dashPhase) : null
+  r.strokePaint.setPathEffect(effect)
+  try {
+    canvas.drawLine(left + radius, top, right - radius, top, r.strokePaint)
+    canvas.drawLine(right, top + radius, right, bottom - radius, r.strokePaint)
+    canvas.drawLine(right - radius, bottom, left + radius, bottom, r.strokePaint)
+    canvas.drawLine(left, bottom - radius, left, top + radius, r.strokePaint)
+  } finally {
+    r.strokePaint.setPathEffect(null)
+    effect?.delete()
+  }
 }
 
 /**
@@ -220,9 +225,14 @@ export function drawStyledRRectStroke(
 ): void {
   const dash = normalizeDashPattern(stroke.dashPattern)
   configureStrokePaint(r, node, stroke, color)
-  r.strokePaint.setPathEffect(dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, dashPhase) : null)
-  r.drawRRectStrokeWithAlign(canvas, rrect, node, stroke)
-  r.strokePaint.setPathEffect(null)
+  const effect = dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, dashPhase) : null
+  r.strokePaint.setPathEffect(effect)
+  try {
+    r.drawRRectStrokeWithAlign(canvas, rrect, node, stroke)
+  } finally {
+    r.strokePaint.setPathEffect(null)
+    effect?.delete()
+  }
 }
 
 export function drawNodeStroke(

@@ -86,8 +86,11 @@ async function applyShapedTextData(
   nodeIdToGuid: Map<string, GUID>,
   digestMap: Map<string, Uint8Array>,
   blobs: Uint8Array[],
-  glyphBlobMap: Map<string, number>
+  glyphBlobMap: Map<string, number>,
+  options: { rendering?: 'none' } = {}
 ): Promise<void> {
+  // Imported outlines are retained; plain text and styles remain editable without shaping.
+  if (options.rendering === 'none') return
   const ck = fontManager.providerCanvasKit()
   if (!ck) return
   const byGuid = new Map<string, KiwiNodeChange>()
@@ -176,9 +179,10 @@ async function renderFigThumbnail(
   pageId: string | undefined,
   ck?: CanvasKit,
   renderer?: SkiaRenderer,
-  renderHeadless = false
+  renderHeadless = false,
+  options: { rendering?: 'none' } = {}
 ): Promise<Uint8Array> {
-  if (!pageId) return THUMBNAIL_1X1
+  if (options.rendering === 'none' || !pageId) return THUMBNAIL_1X1
   if (ck && renderer) {
     return (
       renderThumbnail(ck, renderer, graph, pageId, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT) ??
@@ -416,7 +420,8 @@ export async function exportFigFile(
   ck?: CanvasKit,
   renderer?: SkiaRenderer,
   pageId?: string,
-  renderHeadlessThumbnail = false
+  renderHeadlessThumbnail = false,
+  options: { rendering?: 'none' } = {}
 ): Promise<Uint8Array> {
   const originalArchive = await originalFigArchive(sourceGraph)
   if (originalArchive) return originalArchive.slice()
@@ -570,7 +575,15 @@ export async function exportFigFile(
     nodeChanges.push(...slotContentRecords)
   }
 
-  await applyShapedTextData(graph, nodeChanges, nodeIdToGuid, fontDigestMap, blobs, glyphBlobMap)
+  await applyShapedTextData(
+    graph,
+    nodeChanges,
+    nodeIdToGuid,
+    fontDigestMap,
+    blobs,
+    glyphBlobMap,
+    options
+  )
 
   const msg: Record<string, unknown> = {
     type: 'NODE_CHANGES',
@@ -591,7 +604,8 @@ export async function exportFigFile(
     currentPageId,
     ck,
     renderer,
-    renderHeadlessThumbnail
+    renderHeadlessThumbnail,
+    options
   )
 
   const metaJSON = JSON.stringify({

@@ -27,7 +27,10 @@ import {
   type AutomationTarget,
   type UnknownRecord
 } from '@/app/automation/bridge/target'
-import { createAutomationToolHandler } from '@/app/automation/bridge/tool-handlers'
+import {
+  createAutomationToolHandler,
+  toolPreparesShownPage
+} from '@/app/automation/bridge/tool-handlers'
 import type { EditorStore } from '@/app/editor/active-store'
 
 type FigmaFactory = (store: EditorStore, pageId?: string) => FigmaAPI
@@ -59,7 +62,11 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     command: string,
     args: UnknownRecord
   ): Promise<unknown> {
-    if (!(await target.store.preparePageNodes(target.pageId))) {
+    const viewTool = command === 'tool' && toolPreparesShownPage(args)
+    if (
+      target.store.graph.getNode(target.pageId)?.type !== 'CANVAS' ||
+      (!viewTool && !(await target.store.preparePageNodes(target.pageId)))
+    ) {
       throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
     }
     const handler = commandHandlers[command]

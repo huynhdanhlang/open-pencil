@@ -27,6 +27,8 @@ export const notificationMessageDefaults = {
   vectorizeCredentialFailed: params('{error}. Update it in Settings → Media.'),
   vectorizeFailed: params('{provider} could not vectorize this image: {error}'),
   operationFailed: params('Operation failed: {error}'),
+  savedWithoutPreview:
+    'Design saved without a new preview because the renderer failed. Reopen the editor to restore rendering.',
   storageConnected: 'Connected. Storage namespace is ready.',
   storageConnectionFailed: params('Could not connect to storage: {error}'),
   deepLinkLocateFile: params('Locate “{file}” to follow this link.'),

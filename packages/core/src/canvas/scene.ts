@@ -473,11 +473,17 @@ export function renderComponentSet(
 
   r.auxStroke.setStrokeWidth(r.COMPONENT_SET_BORDER_WIDTH / r.zoom)
   r.auxStroke.setColor(r.compColor())
-  r.auxStroke.setPathEffect(
-    r.ck.PathEffect.MakeDash([r.COMPONENT_SET_DASH / r.zoom, r.COMPONENT_SET_DASH_GAP / r.zoom], 0)
+  const effect = r.ck.PathEffect.MakeDash(
+    [r.COMPONENT_SET_DASH / r.zoom, r.COMPONENT_SET_DASH_GAP / r.zoom],
+    0
   )
-  canvas.drawRRect(rrect, r.auxStroke)
-  r.auxStroke.setPathEffect(null)
+  r.auxStroke.setPathEffect(effect)
+  try {
+    canvas.drawRRect(rrect, r.auxStroke)
+  } finally {
+    r.auxStroke.setPathEffect(null)
+    effect.delete()
+  }
 }
 
 function canRasterCacheEffects(node: SceneNode): boolean {
@@ -684,9 +690,12 @@ function drawVectorPathStrokes(
     r.strokePaint.setStrokeMiter(miterLimit)
     const effect = r.ck.PathEffect.MakeDash(dash, 0)
     r.strokePaint.setPathEffect(effect)
-    for (const vp of vectorPaths) canvas.drawPath(vp, r.strokePaint)
-    r.strokePaint.setPathEffect(null)
-    effect.delete()
+    try {
+      for (const vp of vectorPaths) canvas.drawPath(vp, r.strokePaint)
+    } finally {
+      r.strokePaint.setPathEffect(null)
+      effect.delete()
+    }
     return
   }
   const strokeOpts = {
@@ -699,15 +708,23 @@ function drawVectorPathStrokes(
   r.fillPaint.setAlphaf(stroke.opacity)
 
   let outlines = outlineCacheKey ? r.vectorStrokeOutlineCache.get(outlineCacheKey) : undefined
-  if (!outlines) {
-    outlines = []
-    for (const vp of vectorPaths) {
-      const outline = vp.makeStroked(strokeOpts)
-      if (outline) outlines.push(outline)
+  let cached = outlines !== undefined
+  outlines ??= []
+  try {
+    if (!cached) {
+      for (const vp of vectorPaths) {
+        const outline = vp.makeStroked(strokeOpts)
+        if (outline) outlines.push(outline)
+      }
+      if (outlineCacheKey) {
+        r.vectorStrokeOutlineCache.set(outlineCacheKey, outlines)
+        cached = true
+      }
     }
-    if (outlineCacheKey) r.vectorStrokeOutlineCache.set(outlineCacheKey, outlines)
+    for (const outline of outlines) canvas.drawPath(outline, r.fillPaint)
+  } finally {
+    if (!cached) for (const outline of outlines) outline.delete()
   }
-  for (const outline of outlines) canvas.drawPath(outline, r.fillPaint)
 }
 
 function drawRegularStroke(
@@ -720,16 +737,18 @@ function drawRegularStroke(
   sc: Color
 ): void {
   configureStrokePaint(r, node, stroke, sc)
-  if (stroke.dashPattern && stroke.dashPattern.length > 0) {
-    r.strokePaint.setPathEffect(r.ck.PathEffect.MakeDash(stroke.dashPattern, 0))
-  } else {
+  const dash = normalizeDashPattern(stroke.dashPattern)
+  const effect = dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, 0) : null
+  r.strokePaint.setPathEffect(effect)
+  try {
+    if (node.independentStrokeWeights && r.isRectangularType(node.type)) {
+      r.drawIndividualSideStrokes(canvas, node, stroke.align)
+    } else {
+      r.drawStrokeWithAlign(canvas, node, rect, hasRadius, stroke.align)
+    }
+  } finally {
     r.strokePaint.setPathEffect(null)
-  }
-
-  if (node.independentStrokeWeights && r.isRectangularType(node.type)) {
-    r.drawIndividualSideStrokes(canvas, node, stroke.align)
-  } else {
-    r.drawStrokeWithAlign(canvas, node, rect, hasRadius, stroke.align)
+    effect?.delete()
   }
 }
 

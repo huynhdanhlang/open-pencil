@@ -27,7 +27,7 @@ In supported browsers, OpenPencil registers the selected reviewed set of tools d
 
 Tools target the document and page active when the call starts. Switching tabs does not redirect an in-flight call. Closing the workspace unregisters the tools. Tool inputs are validated and large inspection results require a narrower query. Oversized editing results are omitted with a committed-edit notice rather than reporting a successful edit as failed.
 
-Edits to geometry, paints, layout, text, and variable bindings/values commit synchronously as individual undoable operations. Failed edits roll back, and undo targets the original document/page even after a page switch. Cancellation prevents an edit from starting; cancellation after commit does not reverse it. Font loading finishes separately without holding a mutation transaction open. Atomic editing currently requires a document with at most 10,000 nodes and variables combined; this shared limit also applies when the same editing tools run through app AI/MCP.
+Edits to geometry, paints, layout, text, and variable bindings/values commit synchronously as individual undoable operations. Failed edits roll back, and undo targets the original document/page even after a page switch. Cancellation prevents an edit from starting; cancellation after commit does not reverse it. Font loading finishes separately without holding a mutation transaction open. This fork permits at most 20,000 nodes and variables combined; the shared limit also applies when the same editing tools run through app AI/MCP. Group related edits in a bounded batch because checkpoint recovery still inspects the complete graph.
 
 This surface does **not** expose structural creation/deletion, arbitrary JavaScript/JSX execution, image loading, filesystem operations, or credentials. Those tools retain their existing AI/MCP paths. WebMCP is an evolving browser proposal, not universally available; unsupported browsers continue to use OpenPencil normally. The stdio and HTTP integrations below remain independent.
 
@@ -91,6 +91,7 @@ Add to your MCP config (for example `.cursor/mcp.json`):
 Or run from source without installing:
 
 ::: code-group
+
 ```json [Bun]
 {
   "mcpServers": {
@@ -101,6 +102,7 @@ Or run from source without installing:
   }
 }
 ```
+
 ```json [Node.js]
 {
   "mcpServers": {
@@ -111,6 +113,7 @@ Or run from source without installing:
   }
 }
 ```
+
 :::
 
 ## HTTP
@@ -171,185 +174,185 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 
 ### Document
 
-| Tool | Description |
-|------|-------------|
-| `open_file` | Open a `.fig` file for editing |
-| `close_file` | Close an open document tab; `unsaved: "save"` or `"discard"` decides what happens to unsaved changes |
-| `save_file` | Save the current document to a `.fig` file |
-| `new_document` | Create a new empty document |
-| `list_documents` | List open app documents/tabs and their pages |
-| `activate_document` | Bring a document tab to the front, optionally on a given page |
+| Tool                | Description                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `open_file`         | Open a `.fig` file for editing                                                                       |
+| `close_file`        | Close an open document tab; `unsaved: "save"` or `"discard"` decides what happens to unsaved changes |
+| `save_file`         | Save the current document to a `.fig` file                                                           |
+| `new_document`      | Create a new empty document                                                                          |
+| `list_documents`    | List open app documents/tabs and their pages                                                         |
+| `activate_document` | Bring a document tab to the front, optionally on a given page                                        |
 
 ### History
 
-| Tool | Description |
-|------|-------------|
-| `undo` | Undo the newest change made through MCP or the CLI |
+| Tool   | Description                                          |
+| ------ | ---------------------------------------------------- |
+| `undo` | Undo the newest change made through MCP or the CLI   |
 | `redo` | Redo the newest change undone through MCP or the CLI |
 
 The history is shared with the person in the editor. `undo` and `redo` refuse when the newest step was made in the editor, so an agent never reverts the user's work. Each editing tool call is one undo step. An `eval` script is recorded against its target page, so edits it makes after switching `figma.currentPage` are not undoable.
 
 ### Settings
 
-| Tool | Description |
-|------|-------------|
-| `get_settings` | Read editor settings: appearance, snapping, canvas rendering, recovery, AI chat, and design check preferences |
+| Tool              | Description                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| `get_settings`    | Read editor settings: appearance, snapping, canvas rendering, recovery, AI chat, and design check preferences |
 | `update_settings` | Change settings with a partial object shaped like `get_settings` output; invalid keys and values are rejected |
 
 Settings tools never expose credentials, AI models, MCP connections, storage, or tool access. The available keys are listed in [Controlling the App](/programmable/cli/app-control#settings).
 
 ### Read
 
-| Tool | Description |
-|------|-------------|
-| `get_selection` | Get currently selected nodes |
-| `get_page_tree` | Get the full node tree of the current page |
-| `get_current_page` | Get the current page name and ID |
-| `get_node` | Get detailed properties of a node by ID |
-| `find_nodes` | Find nodes by name pattern and/or type |
-| `get_components` | List all components in the document |
-| `list_pages` | List all pages |
-| `list_variables` | List design variables |
-| `list_collections` | List variable collections |
-| `list_fonts` | List fonts used in the current page |
-| `list_available_fonts` | List font families the current host can render |
-| `get_font_status` | Report requested faces, loaded sources, active substitutions, why an installed face could not be loaded, and affected nodes |
-| `page_bounds` | Get bounding box of all objects on the current page |
-| `node_bounds` | Get bounding box of a node |
-| `node_ancestors` | Get ancestor chain of a node |
-| `node_children` | Get direct children of a node |
-| `node_tree` | Get the subtree rooted at a node |
-| `node_bindings` | Get variable bindings on a node |
+| Tool                   | Description                                                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `get_selection`        | Get currently selected nodes                                                                                                |
+| `get_page_tree`        | Get the full node tree of the current page                                                                                  |
+| `get_current_page`     | Get the current page name and ID                                                                                            |
+| `get_node`             | Get detailed properties of a node by ID                                                                                     |
+| `find_nodes`           | Find nodes by name pattern and/or type                                                                                      |
+| `get_components`       | List all components in the document                                                                                         |
+| `list_pages`           | List all pages                                                                                                              |
+| `list_variables`       | List design variables                                                                                                       |
+| `list_collections`     | List variable collections                                                                                                   |
+| `list_fonts`           | List fonts used in the current page                                                                                         |
+| `list_available_fonts` | List font families the current host can render                                                                              |
+| `get_font_status`      | Report requested faces, loaded sources, active substitutions, why an installed face could not be loaded, and affected nodes |
+| `page_bounds`          | Get bounding box of all objects on the current page                                                                         |
+| `node_bounds`          | Get bounding box of a node                                                                                                  |
+| `node_ancestors`       | Get ancestor chain of a node                                                                                                |
+| `node_children`        | Get direct children of a node                                                                                               |
+| `node_tree`            | Get the subtree rooted at a node                                                                                            |
+| `node_bindings`        | Get variable bindings on a node                                                                                             |
 
 ### Create
 
-| Tool | Description |
-|------|-------------|
-| `create_shape` | Create a shape (`FRAME`, `RECTANGLE`, `ELLIPSE`, `TEXT`, `LINE`, `STAR`, `POLYGON`, `SECTION`) |
-| `create_vector` | Create a vector node from a path string |
-| `create_slice` | Create an export slice |
-| `create_page` | Create a new page |
-| `render` | Render JSX to design nodes — create entire component trees in one call |
-| `create_component` | Convert a frame/group into a component |
-| `create_instance` | Create an instance of a component |
-| `node_to_component` | Convert an existing node into a component in-place |
+| Tool                | Description                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| `create_shape`      | Create a shape (`FRAME`, `RECTANGLE`, `ELLIPSE`, `TEXT`, `LINE`, `STAR`, `POLYGON`, `SECTION`) |
+| `create_vector`     | Create a vector node from a path string                                                        |
+| `create_slice`      | Create an export slice                                                                         |
+| `create_page`       | Create a new page                                                                              |
+| `render`            | Render JSX to design nodes — create entire component trees in one call                         |
+| `create_component`  | Convert a frame/group into a component                                                         |
+| `create_instance`   | Create an instance of a component                                                              |
+| `node_to_component` | Convert an existing node into a component in-place                                             |
 
 ### Modify
 
-| Tool | Description |
-|------|-------------|
-| `set_fill` | Set fill color (hex) |
-| `set_stroke` | Set stroke color, weight, alignment |
-| `set_effects` | Add shadow or blur effects |
-| `update_node` | Update position, size, opacity, corner radius, text, font |
-| `set_layout` | Set auto-layout (flexbox) — direction, spacing, padding, alignment |
-| `set_constraints` | Set resize constraints |
-| `set_rotation` | Set rotation angle in degrees |
-| `set_opacity` | Set opacity (0–1) |
-| `set_radius` | Set corner radius (uniform or per-corner) |
-| `set_minmax` | Set min/max width and height constraints |
-| `set_text` | Set text content of a `TEXT` node |
-| `set_font` | Set font family and weight |
-| `set_font_range` | Set font properties on a character range |
-| `set_text_resize` | Set text auto-resize mode (fixed/auto-width/auto-height) |
-| `set_visible` | Show or hide a node |
-| `set_blend` | Set blend mode |
-| `set_locked` | Lock or unlock a node |
-| `set_stroke_align` | Set stroke alignment (inside/center/outside) |
+| Tool                  | Description                                                                |
+| --------------------- | -------------------------------------------------------------------------- |
+| `set_fill`            | Set fill color (hex)                                                       |
+| `set_stroke`          | Set stroke color, weight, alignment                                        |
+| `set_effects`         | Add shadow or blur effects                                                 |
+| `update_node`         | Update position, size, opacity, corner radius, text, font                  |
+| `set_layout`          | Set auto-layout (flexbox) — direction, spacing, padding, alignment         |
+| `set_constraints`     | Set resize constraints                                                     |
+| `set_rotation`        | Set rotation angle in degrees                                              |
+| `set_opacity`         | Set opacity (0–1)                                                          |
+| `set_radius`          | Set corner radius (uniform or per-corner)                                  |
+| `set_minmax`          | Set min/max width and height constraints                                   |
+| `set_text`            | Set text content of a `TEXT` node                                          |
+| `set_font`            | Set font family and weight                                                 |
+| `set_font_range`      | Set font properties on a character range                                   |
+| `set_text_resize`     | Set text auto-resize mode (fixed/auto-width/auto-height)                   |
+| `set_visible`         | Show or hide a node                                                        |
+| `set_blend`           | Set blend mode                                                             |
+| `set_locked`          | Lock or unlock a node                                                      |
+| `set_stroke_align`    | Set stroke alignment (inside/center/outside)                               |
 | `set_text_properties` | Set text layout: alignment, auto-resize, text case, decoration, truncation |
-| `set_layout_child` | Configure auto-layout child: sizing, grow, alignment, absolute positioning |
-| `node_move` | Move a node to a new position |
-| `node_resize` | Resize a node |
-| `node_replace_with` | Replace a node with another node |
-| `arrange` | Align or distribute selected nodes |
+| `set_layout_child`    | Configure auto-layout child: sizing, grow, alignment, absolute positioning |
+| `node_move`           | Move a node to a new position                                              |
+| `node_resize`         | Resize a node                                                              |
+| `node_replace_with`   | Replace a node with another node                                           |
+| `arrange`             | Align or distribute selected nodes                                         |
 
 ### Structure
 
-| Tool | Description |
-|------|-------------|
-| `delete_node` | Delete a node |
-| `clone_node` | Duplicate a node |
-| `rename_node` | Rename a node |
-| `reparent_node` | Move a node into a different parent |
-| `select_nodes` | Select nodes by ID |
-| `group_nodes` | Group nodes |
-| `ungroup_node` | Ungroup a group |
-| `flatten_nodes` | Flatten nodes into a single vector |
-| `boolean_union` | Boolean union of two or more nodes |
-| `boolean_subtract` | Boolean subtraction |
-| `boolean_intersect` | Boolean intersection |
-| `boolean_exclude` | Boolean exclusion |
+| Tool                | Description                         |
+| ------------------- | ----------------------------------- |
+| `delete_node`       | Delete a node                       |
+| `clone_node`        | Duplicate a node                    |
+| `rename_node`       | Rename a node                       |
+| `reparent_node`     | Move a node into a different parent |
+| `select_nodes`      | Select nodes by ID                  |
+| `group_nodes`       | Group nodes                         |
+| `ungroup_node`      | Ungroup a group                     |
+| `flatten_nodes`     | Flatten nodes into a single vector  |
+| `boolean_union`     | Boolean union of two or more nodes  |
+| `boolean_subtract`  | Boolean subtraction                 |
+| `boolean_intersect` | Boolean intersection                |
+| `boolean_exclude`   | Boolean exclusion                   |
 
 ### Vector Path
 
-| Tool | Description |
-|------|-------------|
-| `path_get` | Get the path data of a vector node |
-| `path_set` | Set the path data of a vector node |
-| `path_scale` | Scale a vector path |
-| `path_flip` | Flip a vector path horizontally or vertically |
-| `path_move` | Translate a vector path |
+| Tool         | Description                                   |
+| ------------ | --------------------------------------------- |
+| `path_get`   | Get the path data of a vector node            |
+| `path_set`   | Set the path data of a vector node            |
+| `path_scale` | Scale a vector path                           |
+| `path_flip`  | Flip a vector path horizontally or vertically |
+| `path_move`  | Translate a vector path                       |
 
 ### Export
 
-| Tool | Description |
-|------|-------------|
+| Tool           | Description                                                          |
+| -------------- | -------------------------------------------------------------------- |
 | `export_image` | Export nodes as PNG, JPG, or WEBP. Returns base64-encoded image data |
-| `export_svg` | Export nodes as SVG markup |
+| `export_svg`   | Export nodes as SVG markup                                           |
 
 ### Viewport
 
-| Tool | Description |
-|------|-------------|
-| `viewport_get` | Get current viewport position and zoom level |
-| `viewport_set` | Set viewport position and zoom |
-| `viewport_zoom_to_fit` | Zoom viewport to fit specified nodes |
+| Tool                   | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `viewport_get`         | Get current viewport position and zoom level |
+| `viewport_set`         | Set viewport position and zoom               |
+| `viewport_zoom_to_fit` | Zoom viewport to fit specified nodes         |
 
 ### Variables
 
-| Tool | Description |
-|------|-------------|
-| `get_variable` | Get a variable by ID or name |
-| `find_variables` | Find variables by name pattern or type |
-| `create_variable` | Create a new variable in a collection |
-| `set_variable` | Set a variable value in a mode |
-| `delete_variable` | Delete a variable |
-| `bind_variable` | Bind a variable to a node property |
-| `get_collection` | Get a variable collection by ID or name |
-| `create_collection` | Create a new variable collection |
-| `delete_collection` | Delete a variable collection |
+| Tool                | Description                             |
+| ------------------- | --------------------------------------- |
+| `get_variable`      | Get a variable by ID or name            |
+| `find_variables`    | Find variables by name pattern or type  |
+| `create_variable`   | Create a new variable in a collection   |
+| `set_variable`      | Set a variable value in a mode          |
+| `delete_variable`   | Delete a variable                       |
+| `bind_variable`     | Bind a variable to a node property      |
+| `get_collection`    | Get a variable collection by ID or name |
+| `create_collection` | Create a new variable collection        |
+| `delete_collection` | Delete a variable collection            |
 
 ### Analyze
 
-| Tool | Description |
-|------|-------------|
-| `analyze_colors` | Analyze color palette usage across the document |
-| `analyze_typography` | Analyze font/size/weight distribution |
-| `analyze_spacing` | Analyze gap and padding values |
-| `analyze_clusters` | Detect repeated patterns (potential components) |
-| `lint` | Check accessibility and consistency issues, with fixes and suggestions |
-| `lint_fix` | Apply safe lint fixes, and optionally the first suggestion of each finding |
+| Tool                 | Description                                                                |
+| -------------------- | -------------------------------------------------------------------------- |
+| `analyze_colors`     | Analyze color palette usage across the document                            |
+| `analyze_typography` | Analyze font/size/weight distribution                                      |
+| `analyze_spacing`    | Analyze gap and padding values                                             |
+| `analyze_clusters`   | Detect repeated patterns (potential components)                            |
+| `lint`               | Check accessibility and consistency issues, with fixes and suggestions     |
+| `lint_fix`           | Apply safe lint fixes, and optionally the first suggestion of each finding |
 
 ### Diff
 
-| Tool | Description |
-|------|-------------|
+| Tool          | Description                                                           |
+| ------------- | --------------------------------------------------------------------- |
 | `diff_create` | Patch that turns one node tree into another, as JSX attribute changes |
-| `diff_jsx` | Structural diff between two nodes as design JSX |
-| `diff_show` | Preview the patch that setting JSX attributes on a node would produce |
-| `diff_apply` | Apply a patch after checking the nodes still match its old values |
-| `diff_visual` | Pixel diff between two rendered nodes, returned as an image |
+| `diff_jsx`    | Structural diff between two nodes as design JSX                       |
+| `diff_show`   | Preview the patch that setting JSX attributes on a node would produce |
+| `diff_apply`  | Apply a patch after checking the nodes still match its old values     |
+| `diff_visual` | Pixel diff between two rendered nodes, returned as an image           |
 
 ### Navigation
 
-| Tool | Description |
-|------|-------------|
+| Tool          | Description                    |
+| ------------- | ------------------------------ |
 | `switch_page` | Switch to a page by name or ID |
 
 ### Escape Hatch
 
-| Tool | Description |
-|------|-------------|
+| Tool   | Description                                          |
+| ------ | ---------------------------------------------------- |
 | `eval` | Execute JavaScript with full Figma Plugin API access |
 
 Note: `eval` is available over stdio, but disabled in HTTP mode for security.

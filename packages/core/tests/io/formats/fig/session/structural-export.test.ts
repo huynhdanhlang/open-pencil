@@ -38,9 +38,11 @@ test('export keeps an unloaded deleted page absent while loading retained pages'
   const reopened = openReaderSession(saved.slice().buffer as ArrayBuffer, 'all')
   expect(reopened.graph.getPages().map((node) => node.name)).toEqual(['Page 1', retained.name])
   expect(
-    reopened.graph.getAllNodes().some((node) => node.name === 'Deleted unloaded component')
+    [...reopened.graph.getAllNodes()].some((node) => node.name === 'Deleted unloaded component')
   ).toBe(false)
-  expect(reopened.graph.getAllNodes().some((node) => node.text === 'Unloaded content')).toBe(true)
+  expect([...reopened.graph.getAllNodes()].some((node) => node.text === 'Unloaded content')).toBe(
+    true
+  )
 })
 
 test('loaded structural component edits can be checkpointed and exported', async () => {
@@ -55,7 +57,7 @@ test('loaded structural component edits can be checkpointed and exported', async
 for (const target of ['component', 'page'] as const) {
   test(`export preserves a deleted loaded ${target} without resuming its stale component`, async () => {
     const session = await sessionWithComponent()
-    const component = session.graph.getAllNodes().find((node) => node.name === 'Component')
+    const component = [...session.graph.getAllNodes()].find((node) => node.name === 'Component')
     if (!component) throw new Error('Missing component')
     const page = session.graph.getPages()[0]
     const retained = session.graph.addPage('Retained')
@@ -65,10 +67,10 @@ for (const target of ['component', 'page'] as const) {
     const bytes = await exportFigFile(session.graph)
     expect([...session.graph.nodes]).toEqual(before)
     const reopened = await openReaderSession(bytes.slice().buffer as ArrayBuffer, 'all')
-    expect(reopened.graph.getAllNodes().some((node) => node.name === 'Component')).toBe(false)
-    expect(reopened.graph.getAllNodes().find((node) => node.name === 'Unsaved work')?.text).toBe(
-      'Preserve me'
-    )
+    expect([...reopened.graph.getAllNodes()].some((node) => node.name === 'Component')).toBe(false)
+    expect(
+      [...reopened.graph.getAllNodes()].find((node) => node.name === 'Unsaved work')?.text
+    ).toBe('Preserve me')
     expect(reopened.graph.getPages().map((node) => node.name)).toEqual(
       session.graph.getPages().map((node) => node.name)
     )

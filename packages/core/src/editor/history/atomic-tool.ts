@@ -12,7 +12,7 @@ import type { FigmaAPI } from '#core/figma-api'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
 
 // Capture property changes across pages. Component synchronization remains editor-owned.
-const MAX_TRANSACTION_NODES = 10_000
+const MAX_TRANSACTION_NODES = 20_000
 
 type MutationEditor = Pick<Editor, 'graph' | 'runLayoutForNode' | 'requestRender' | 'pushUndoEntry'>
 type Changes<T> = {
@@ -20,6 +20,28 @@ type Changes<T> = {
   before: Partial<T>
   after: Partial<T>
   absent: Record<'before' | 'after', (keyof T)[]>
+}
+
+function* changedKeys<T extends object>(previous: T, current: T): Generator<keyof T> {
+  const keys = new Set([...Object.keys(previous), ...Object.keys(current)] as (keyof T)[])
+  for (const key of keys) {
+    if (
+      Object.hasOwn(previous, key) !== Object.hasOwn(current, key) ||
+      !isEqual(previous[key], current[key])
+    )
+      yield key
+  }
+}
+
+function changedNodeIds(before: Map<string, SceneNode>, after: Map<string, SceneNode>): string[] {
+  const ids: string[] = []
+  for (const [id, previous] of before) {
+    const current = after.get(id)
+    if (!current) throw new Error('Atomic tools must not remove nodes or variables')
+    if (!changedKeys(previous, current).next().done) ids.push(id)
+  }
+  if (before.size !== after.size) throw new Error('Atomic tools must not create nodes or variables')
+  return ids
 }
 
 function changes<T extends object>(before: Map<string, T>, after: Map<string, T>): Changes<T>[] {
@@ -30,11 +52,9 @@ function changes<T extends object>(before: Map<string, T>, after: Map<string, T>
     const inverse: Partial<T> = {}
     const forward: Partial<T> = {}
     const absent: Changes<T>['absent'] = { before: [], after: [] }
-    const keys = new Set([...Object.keys(previous), ...Object.keys(current)] as (keyof T)[])
-    for (const key of keys) {
+    for (const key of changedKeys(previous, current)) {
       const existed = Object.hasOwn(previous, key)
       const exists = Object.hasOwn(current, key)
-      if (existed === exists && isEqual(previous[key], current[key])) continue
       inverse[key] = structuredClone(previous[key])
       forward[key] = structuredClone(current[key])
       if (!existed) absent.before.push(key)
@@ -65,7 +85,9 @@ export function executeAtomicTool(
   }
   const graph = figma.graph
   if (graph.nodes.size + graph.variables.size > MAX_TRANSACTION_NODES) {
-    throw new Error('Document too large for atomic agent editing (maximum 10000 nodes)')
+    throw new Error(
+      `Document too large for atomic agent editing (maximum ${MAX_TRANSACTION_NODES} nodes and variables)`
+    )
   }
   const checkpoint = captureGraphCheckpoint(graph)
   const { nodes, variables } = checkpoint
@@ -110,13 +132,7 @@ export function executeAtomicTool(
     }
     checkpoint.assertPropertiesOnly()
     const variableChanges = changes(variables, graph.variables)
-    layout(
-      graph,
-      editor,
-      pageId,
-      variableChanges.length > 0,
-      changes(nodes, graph.nodes).map((change) => change.id)
-    )
+    layout(graph, editor, pageId, variableChanges.length > 0, changedNodeIds(nodes, graph.nodes))
     const nodeChanges = changes(nodes, graph.nodes)
     const contentChanged =
       variableChanges.length > 0 ||

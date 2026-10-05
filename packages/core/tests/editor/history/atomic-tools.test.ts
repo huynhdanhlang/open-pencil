@@ -26,6 +26,22 @@ function setup() {
 }
 
 describe('atomic agent tools', () => {
+  test('supports a large document with Undo while retaining a finite transaction limit', () => {
+    const { graph, figma, editor, undo, rectangle, tool } = setup()
+    while (graph.nodes.size < 10_001) graph.createNode('RECTANGLE', figma.currentPageId)
+    executeAtomicTool(editor, figma, tool('set_opacity'), { id: rectangle.id, value: 0.5 })
+    expect(rectangle.opacity).toBe(0.5)
+    undo.undo()
+    expect(rectangle.opacity).toBe(1)
+    undo.redo()
+    expect(rectangle.opacity).toBe(0.5)
+    while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', figma.currentPageId)
+    expect(() =>
+      executeAtomicTool(editor, figma, tool('set_opacity'), { id: rectangle.id, value: 0.25 })
+    ).toThrow('maximum 20000')
+    expect(rectangle.opacity).toBe(0.5)
+  })
+
   test('component edits and undo propagate through the editor synchronizer', async () => {
     const editor = createEditor()
     const figma = new FigmaAPI(editor.graph)

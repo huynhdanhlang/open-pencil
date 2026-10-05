@@ -6,6 +6,33 @@ import { getNodeOrThrow } from '#tests/helpers/assert'
 import { autoFrame, pageId, rect } from '#tests/helpers/layout'
 
 describe('nested auto layout', () => {
+  test('settled geometry does not invalidate nodes again, while spacing changes still propagate', () => {
+    const graph = new SceneGraph()
+    const page = pageId(graph)
+    const outer = autoFrame(graph, page, { width: 500, height: 200, itemSpacing: 10 })
+    const inner = autoFrame(graph, outer.id, {
+      primaryAxisSizing: 'HUG',
+      width: 999,
+      height: 100,
+      itemSpacing: 5
+    })
+    rect(graph, inner.id, 40, 40)
+    rect(graph, inner.id, 60, 40)
+    const sibling = rect(graph, outer.id, 80, 80)
+    computeAllLayouts(graph, page)
+    const before = structuredClone([...graph.nodes])
+    const changed: string[] = []
+    graph.onNodeEvents({ updated: (id) => changed.push(id) })
+    computeAllLayouts(graph, page)
+    expect([...graph.nodes]).toEqual(before)
+    expect(changed).toEqual([])
+    graph.updateNode(inner.id, { itemSpacing: 15 })
+    changed.length = 0
+    computeAllLayouts(graph, page)
+    expect(graph.getNode(inner.id)?.width).toBe(115)
+    expect(graph.getNode(sibling.id)?.x).toBe(125)
+    expect(changed).toContain(sibling.id)
+  })
   test('nested horizontal frames', () => {
     const graph = new SceneGraph()
     const outer = autoFrame(graph, pageId(graph), {

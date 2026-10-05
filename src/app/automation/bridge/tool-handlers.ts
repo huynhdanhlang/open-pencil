@@ -21,6 +21,14 @@ import { useLibraryService } from '@/app/libraries'
 
 type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => FigmaAPI
 
+/** View tools let switchPage prepare fonts/layout exactly once before showing their target. */
+export function toolPreparesShownPage(args: Record<string, unknown>): boolean {
+  return ALL_TOOLS.some(
+    (tool) =>
+      tool.name === args.name && isToolExposed(tool, 'mcp') && tool.execution.mutation === 'view'
+  )
+}
+
 export function createAutomationToolHandler(makeFigma: FigmaFactory) {
   async function handleToolRender(
     target: AutomationTarget,

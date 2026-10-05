@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
 import { BUILTIN_IO_FORMATS, IORegistry, parseFigFile } from '@open-pencil/core/io'
 import { SceneGraph, type Vector } from '@open-pencil/scene-graph'
@@ -51,6 +51,44 @@ function target(store: EditorStore, pageId: string): AutomationTarget {
 }
 
 describe('automation tools on a page that has not been shown', () => {
+  test('view commands prepare a newly shown page once and preserve history', async () => {
+    const { store, pageId } = await storeWithUnshownPage()
+    const prepare = spyOn(store, 'preparePageNodes')
+    const switchPage = spyOn(store, 'switchPage')
+    const stop = store.onPreparationEvent('preparation:updated', (preparation) => {
+      if (preparation.phase === 'preparing-render') {
+        store.preparationController.acknowledgePresentation(store.state.sceneVersion)
+      }
+    })
+    try {
+      await handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'viewport_set',
+        args: { x: 20, y: 10, zoom: 0.5 }
+      })
+      expect(store.graph.getChildren(pageId)).toHaveLength(1)
+      expect(store.state.currentPageId).toBe(pageId)
+      expect(switchPage).toHaveBeenCalledTimes(1)
+      expect(prepare).not.toHaveBeenCalled()
+      await handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'select_nodes',
+        args: { ids: [store.graph.getChildren(pageId)[0].id] }
+      })
+      expect(switchPage).toHaveBeenCalledTimes(1)
+      expect(prepare).not.toHaveBeenCalled()
+      expect(store.undo.canUndo).toBe(false)
+      store.graph.deleteNode(pageId)
+      await expect(
+        handleTargetCommand(target(store, pageId), 'tool', {
+          name: 'viewport_set',
+          args: { zoom: 1 }
+        })
+      ).rejects.toThrow('closed')
+    } finally {
+      stop()
+      prepare.mockRestore()
+      switchPage.mockRestore()
+    }
+  })
   test('selection reveals the scoped page and fit respects actual canvas bounds', async () => {
     const { store, pageId } = await storeWithUnshownPage()
     store.setViewportSize(800, 600)

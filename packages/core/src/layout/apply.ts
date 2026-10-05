@@ -6,6 +6,20 @@ import { usesDetachedDerivedLayout } from './derived'
 
 export type ComputeLayoutFn = (graph: SceneGraph, frameId: string) => void
 
+/** Equal computed values must not invalidate pictures, text geometry and instance sync. */
+function updateComputedGeometry(
+  graph: SceneGraph,
+  node: SceneNode,
+  computed: Partial<Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>>
+): void {
+  const updates: Partial<SceneNode> = {}
+  for (const field of ['x', 'y', 'width', 'height'] as const) {
+    const value = computed[field]
+    if (value !== undefined && value !== node[field]) updates[field] = value
+  }
+  if (Object.keys(updates).length > 0) graph.updateNode(node.id, updates)
+}
+
 function preservesImportedHugCrossSize(
   graph: SceneGraph,
   frame: SceneNode,
@@ -24,7 +38,7 @@ function preservesImportedHugCrossSize(
 function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode): void {
   if (frame.layoutMode === 'GRID') {
     if (frame.gridTemplateRows.length === 0) {
-      graph.updateNode(frame.id, { height: yogaNode.getComputedHeight() })
+      updateComputedGeometry(graph, frame, { height: yogaNode.getComputedHeight() })
     }
     return
   }
@@ -52,7 +66,7 @@ function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode)
     }
   }
 
-  graph.updateNode(frame.id, updates)
+  updateComputedGeometry(graph, frame, updates)
 }
 
 function frameSourceIsFig(graph: SceneGraph, parentId: string | null): boolean {
@@ -107,7 +121,7 @@ function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: Yog
   const preservesImportedPosition =
     preservesImportedFrameGeometry ||
     (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
-  graph.updateNode(child.id, {
+  updateComputedGeometry(graph, child, {
     x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
     y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
     width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry),

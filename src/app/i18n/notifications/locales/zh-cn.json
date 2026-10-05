@@ -27,5 +27,6 @@
   "deepLinkCancelled": "已取消链接：需要以“{file}”结尾的文件。",
   "deepLinkNodeNotFound": "在“{file}”中未找到图层“{node}”。",
   "openQueuedFilesFailed": "无法打开传递给 OpenPencil 的文件：{error}",
-  "tokensLeftOut": "未写入样式表：{names}"
+  "tokensLeftOut": "未写入样式表：{names}",
+  "savedWithoutPreview": "渲染器出错，设计已保存，但未生成新的预览。请重新打开编辑器以恢复渲染。"
 }

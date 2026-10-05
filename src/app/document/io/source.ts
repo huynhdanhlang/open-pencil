@@ -13,7 +13,9 @@ import { createDocumentSourceState } from '@/app/document/io/source-state'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
 import { createDocumentRecovery } from '@/app/document/recovery'
 import { recoveryEnabled } from '@/app/document/recovery/preferences'
+import { notificationMessages } from '@/app/i18n/notifications'
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import { toast } from '@/app/shell/ui'
 
 type DocumentSourceState = EditorState & {
   documentName: string
@@ -50,6 +52,8 @@ export function createDocumentSourceActions({
   getRenderer
 }: DocumentSourceOptions) {
   const changes = createDocumentChanges(editor)
+  let renderingFailed = false
+  let rendererIndependentVersion: number | null = null
 
   async function saveAndTrack(save: () => Promise<boolean>) {
     const revision = changes.capture()
@@ -58,13 +62,41 @@ export function createDocumentSourceActions({
     return saved
   }
 
-  function buildFigFile() {
+  async function buildFigFile() {
+    const version = state.sceneVersion
+    if (renderingFailed) return buildRendererIndependentFigFile(version)
     const renderer = getRenderer()
-    return exportFigFile(editor.graph, renderer?.ck, renderer ?? undefined, state.currentPageId)
+    try {
+      return await exportFigFile(
+        editor.graph,
+        renderer?.ck,
+        renderer ?? undefined,
+        state.currentPageId
+      )
+    } catch (error) {
+      if (
+        !(error instanceof WebAssembly.RuntimeError) ||
+        !/Aborted\(|out of memory|memory access out of bounds/i.test(error.message)
+      )
+        throw error
+      renderingFailed = true
+      console.warn(
+        '[Save] CanvasKit failed; preserving editable FIG data without a new preview',
+        error
+      )
+      return buildRendererIndependentFigFile(version)
+    }
+  }
+
+  function buildRendererIndependentFigFile(version: number) {
+    rendererIndependentVersion = version
+    return buildRecoveryFigFile()
   }
 
   function buildRecoveryFigFile() {
-    return exportFigFile(editor.graph, undefined, undefined, state.currentPageId)
+    return exportFigFile(editor.graph, undefined, undefined, state.currentPageId, false, {
+      rendering: 'none'
+    })
   }
 
   const recovery = createDocumentRecovery({
@@ -73,6 +105,14 @@ export function createDocumentSourceActions({
     buildFigFile: buildRecoveryFigFile,
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding()
   })
+
+  async function markProtectedVersion(version: number) {
+    if (rendererIndependentVersion === version) {
+      rendererIndependentVersion = null
+      toast.warning(notificationMessages.get().savedWithoutPreview)
+    }
+    await recovery.markProtectedVersion(version)
+  }
 
   const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({
     state,
@@ -91,8 +131,8 @@ export function createDocumentSourceActions({
     startWatchingFile: () => {
       void startWatchingFile()
     },
-    onWriteSuccess: (version) => recovery.markProtectedVersion(version),
-    onDownloadSuccess: (version) => recovery.markProtectedVersion(version)
+    onWriteSuccess: markProtectedVersion,
+    onDownloadSuccess: markProtectedVersion
   })
 
   const autosave = createAutosave({
