@@ -26,7 +26,8 @@ export const viewportSet = defineTool({
   }),
   execute: (figma, { x, y, zoom }) => {
     figma.viewport = { center: { x, y }, zoom }
-    return { x, y, zoom }
+    const applied = figma.viewport
+    return { x: applied.center.x, y: applied.center.y, zoom: applied.zoom }
   }
 })
 
@@ -46,6 +47,9 @@ export const viewportZoomToFit = defineTool({
     for (const id of ids) {
       const node = figma.getNodeById(id)
       if (!node) continue
+      if (!figma.graph.isDescendant(id, figma.currentPageId)) {
+        throw new Error(`Node "${id}" is outside the target page`)
+      }
       const bounds = node.absoluteBoundingBox
       minX = Math.min(minX, bounds.x)
       minY = Math.min(minY, bounds.y)
@@ -55,7 +59,9 @@ export const viewportZoomToFit = defineTool({
     if (minX === Infinity) return { error: 'No valid nodes found' }
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
-    figma.viewport = { center: { x: centerX, y: centerY }, zoom: 1 }
+    figma.viewport.scrollAndZoomIntoView([
+      { absoluteBoundingBox: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } }
+    ])
     return {
       center: { x: centerX, y: centerY },
       bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY }

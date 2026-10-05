@@ -2,6 +2,7 @@ import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
 
 import {
   buildDerivedTextData,
+  appendGlyphBlob,
   encodePathCommandsBlob,
   weightToFigmaStyle
 } from '@open-pencil/fig/node-change'
@@ -9,7 +10,11 @@ import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { normalizeFontFamily, weightToStyle } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { type GlyphOutlineMetrics, getGlyphOutlineMetricsSync } from '#core/text/opentype'
+import {
+  type GlyphOutlineMetrics,
+  getGlyphOutlineMetricsSync,
+  getGlyphOutlineByIdSync
+} from '#core/text/opentype'
 
 function computeWordWrapBreaks(
   text: string,
@@ -78,6 +83,7 @@ export interface ShapedClipboardText {
   baseline: number
   baselines?: NonNullable<NodeChange['derivedTextData']>['baselines']
   glyphs: Array<{
+    glyphId?: number
     firstCharacter: number
     x: number
     y: number
@@ -86,7 +92,53 @@ export interface ShapedClipboardText {
   logicalIndexToCharacterOffsetMap: number[]
 }
 
-type DerivedGlyphMetric = { advance: number; commands: GlyphOutlineMetrics['commands'] }
+type DerivedGlyphMetric = {
+  advance: number
+  commands: GlyphOutlineMetrics['commands']
+  shapedGlyph?: ShapedClipboardText['glyphs'][number]
+}
+
+function buildShapedGlyphs(
+  node: SceneNode,
+  shaped: ShapedClipboardText,
+  fontData?: ArrayBuffer
+): DerivedGlyphMetric[] {
+  return shaped.glyphs.map((shapedGlyph) => {
+    if (shapedGlyph.glyphId === undefined)
+      throw new Error(`Missing shaped glyph identity for ${node.id}`)
+    const metric = getGlyphOutlineByIdSync(
+      node.fontFamily,
+      weightToStyle(node.fontWeight, node.italic),
+      shapedGlyph.glyphId,
+      node.fontSize,
+      fontData
+    )
+    if (!metric)
+      throw new Error(`Cannot extract shaped glyph ${shapedGlyph.glyphId} for ${node.id}`)
+    return { commands: metric.commands, advance: shapedGlyph.advance, shapedGlyph }
+  })
+}
+
+function selectTextGlyphs(
+  node: SceneNode,
+  glyphMetrics: GlyphOutlineMetrics[],
+  fallbackAdvance: number,
+  shaped: ShapedClipboardText | null | undefined,
+  useShapedGlyphs: boolean,
+  fontData?: ArrayBuffer
+): DerivedGlyphMetric[] {
+  return shaped && useShapedGlyphs
+    ? buildShapedGlyphs(node, shaped, fontData)
+    : buildTextGlyphs(node.text, glyphMetrics, fallbackAdvance, node.fontSize)
+}
+
+function shapedGlyphPlacement(
+  glyph: DerivedGlyphMetric,
+  index: number,
+  shapedByChar: Map<number, ShapedClipboardText['glyphs'][number]>
+): ShapedClipboardText['glyphs'][number] | undefined {
+  return glyph.shapedGlyph ?? shapedByChar.get(index)
+}
 
 function buildTextGlyphs(
   text: string,
@@ -127,11 +179,35 @@ function computeLineBreaks(
   return computeFallbackBreaks(node.text, textGlyphs, fallbackAdvance, node.width)
 }
 
+function appendOutlineBlob(
+  glyph: DerivedGlyphMetric,
+  fontSize: number,
+  blobs: Uint8Array[] | undefined,
+  glyphBlobMap: Map<string, number>
+): number | undefined {
+  return blobs && glyph.commands.length > 0
+    ? appendGlyphBlob(blobs, glyphBlobMap, encodePathCommandsBlob(glyph.commands, fontSize))
+    : undefined
+}
+
+function computeFallbackAdvance(node: SceneNode): number {
+  return node.text.length > 0 ? node.width / Math.max(node.text.length, 1) : 0
+}
+
 export async function buildDerivedTextDataV4(
   node: SceneNode,
   digestMap: Map<string, Uint8Array>,
   shaped?: ShapedClipboardText | null,
-  blobs?: Uint8Array[]
+  blobs?: Uint8Array[],
+  {
+    useShapedGlyphs = false,
+    fontData,
+    glyphBlobMap = new Map<string, number>()
+  }: {
+    useShapedGlyphs?: boolean
+    fontData?: ArrayBuffer
+    glyphBlobMap?: Map<string, number>
+  } = {}
 ): Promise<NodeChange['derivedTextData']> {
   const style = weightToStyle(node.fontWeight, node.italic)
   const normalizedFamily = normalizeFontFamily(node.fontFamily)
@@ -140,19 +216,20 @@ export async function buildDerivedTextDataV4(
   const glyphMetrics =
     getGlyphOutlineMetricsSync(node.fontFamily, style, node.text, node.fontSize) ?? []
 
-  const fallbackAdvance = node.text.length > 0 ? node.width / Math.max(node.text.length, 1) : 0
-  const textGlyphs = buildTextGlyphs(node.text, glyphMetrics, fallbackAdvance, node.fontSize)
+  const fallbackAdvance = computeFallbackAdvance(node)
+  const textGlyphs = selectTextGlyphs(
+    node,
+    glyphMetrics,
+    fallbackAdvance,
+    shaped,
+    useShapedGlyphs,
+    fontData
+  )
   const lineAscent = Math.max(lineHeightFallback - node.fontSize * 0.2, 0)
   const lineBreaks = computeLineBreaks(node, glyphMetrics, textGlyphs, fallbackAdvance, shaped)
   const lineBreakSet = new Set(lineBreaks)
 
-  const shapedByChar = new Map<
-    number,
-    (typeof shaped extends null | undefined ? never : NonNullable<typeof shaped>)['glyphs'][number]
-  >()
-  if (shaped) {
-    for (const g of shaped.glyphs) shapedByChar.set(g.firstCharacter, g)
-  }
+  const shapedByChar = new Map(shaped?.glyphs.map((glyph) => [glyph.firstCharacter, glyph]))
 
   const fallbackBaselines: NonNullable<NodeChange['derivedTextData']>['baselines'] = []
   const fallbackOffsets = Array.from({ length: node.text.length + 1 }, () => 0)
@@ -161,7 +238,7 @@ export async function buildDerivedTextDataV4(
   let lineStart = 0
 
   const glyphs = textGlyphs.map((glyph, index) => {
-    const shapedGlyph = shapedByChar.get(index)
+    const shapedGlyph = shapedGlyphPlacement(glyph, index, shapedByChar)
     const fallbackGlyphAdvance = glyph.advance || fallbackAdvance
     if (!shapedGlyph && lineBreakSet.has(index)) {
       fallbackBaselines.push({
@@ -179,10 +256,7 @@ export async function buildDerivedTextDataV4(
     const glyphX = fallbackX
     fallbackOffsets[index] = glyphX
     fallbackX += fallbackGlyphAdvance
-    const commandsBlob =
-      blobs && glyph.commands.length > 0
-        ? blobs.push(encodePathCommandsBlob(glyph.commands, node.fontSize)) - 1
-        : undefined
+    const commandsBlob = appendOutlineBlob(glyph, node.fontSize, blobs, glyphBlobMap)
     return {
       commandsBlob,
       position: {

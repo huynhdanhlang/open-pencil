@@ -17,6 +17,8 @@ const TEXT_DERIVED_RAW_FIELDS = [
 const STROKE_GEOMETRY_RAW_FIELDS = ['strokeGeometry', 'vectorData'] as const
 
 const EDITED_RAW_FIELDS: Partial<Record<string, readonly string[]>> = {
+  width: ['derivedTextData', 'textUserLayoutVersion', 'textExplicitLayoutVersion'],
+  height: ['derivedTextData', 'textUserLayoutVersion', 'textExplicitLayoutVersion'],
   fillStyleId: ['styleIdForFill'],
   strokeStyleId: ['styleIdForStrokeFill'],
   textStyleId: ['styleIdForText'],

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { BUILTIN_IO_FORMATS, IORegistry, parseFigFile } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, type Vector } from '@open-pencil/scene-graph'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
@@ -51,6 +51,110 @@ function target(store: EditorStore, pageId: string): AutomationTarget {
 }
 
 describe('automation tools on a page that has not been shown', () => {
+  test('selection reveals the scoped page and fit respects actual canvas bounds', async () => {
+    const { store, pageId } = await storeWithUnshownPage()
+    store.setViewportSize(800, 600)
+    const nodes = store.graph.getChildren(pageId)
+    expect(nodes).toHaveLength(0)
+    await store.preparePageNodes(pageId)
+    const frame = store.graph.getChildren(pageId)[0]
+    store.graph.updateNode(frame.id, { width: 900, height: 600 })
+    // Engine coverage supplies the presentation receipt; the native probe verifies the real view.
+    const stop = store.onPreparationEvent('preparation:updated', (preparation) => {
+      if (preparation.phase === 'preparing-render') {
+        store.preparationController.acknowledgePresentation(store.state.sceneVersion)
+      }
+    })
+    try {
+      await handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'select_nodes',
+        args: { ids: [frame.id] }
+      })
+    } finally {
+      stop()
+    }
+    expect(store.state.currentPageId).toBe(pageId)
+    expect([...store.state.selectedIds]).toEqual([frame.id])
+    await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'viewport_zoom_to_fit',
+      args: { ids: [frame.id] }
+    })
+    const read = (await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'viewport_get',
+      args: {}
+    })) as { result: { center: Vector; zoom: number } }
+    expect(read.result.center).toEqual({ x: 450, y: 300 })
+    expect(read.result.zoom).toBeCloseTo(800 / 1060)
+    expect(store.undo.canUndo).toBe(false)
+  })
+  test('selection writes reach the editor and the next scoped read', async () => {
+    const store = createEditorStore()
+    stores.push(store)
+    const pageId = store.state.currentPageId
+    const frame = store.graph.createNode('FRAME', pageId)
+    await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'select_nodes',
+      args: { ids: [frame.id] }
+    })
+    expect([...store.state.selectedIds]).toEqual([frame.id])
+    const read = (await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'get_selection',
+      args: {}
+    })) as { result: { selection: Array<{ id: string }> } }
+    expect(read.result.selection.map((node) => node.id)).toEqual([frame.id])
+    expect(store.undo.canUndo).toBe(false)
+  })
+
+  test('viewport writes use the canvas size and survive the next scoped read', async () => {
+    const store = createEditorStore()
+    stores.push(store)
+    store.setViewportSize(800, 600)
+    const pageId = store.state.currentPageId
+    await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'viewport_set',
+      args: { x: 500, y: 300, zoom: 0.5 }
+    })
+    expect(store.state.zoom).toBe(0.5)
+    expect(store.state.panX).toBe(150)
+    expect(store.state.panY).toBe(150)
+    const read = (await handleTargetCommand(target(store, pageId), 'tool', {
+      name: 'viewport_get',
+      args: {}
+    })) as { result: { center: Vector; zoom: number } }
+    expect(read.result.center).toEqual({ x: 500, y: 300 })
+    expect(read.result.zoom).toBe(0.5)
+    expect(store.undo.canUndo).toBe(false)
+    for (const [requested, actual] of [
+      [0.01, 0.02],
+      [1000, 256]
+    ]) {
+      const response = (await handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'viewport_set',
+        args: { x: 500, y: 300, zoom: requested }
+      })) as { result: { zoom: number } }
+      expect(response.result.zoom).toBe(actual)
+      expect(store.state.zoom).toBe(actual)
+    }
+  })
+
+  test('view commands reject node IDs belonging to another page', async () => {
+    const store = createEditorStore()
+    stores.push(store)
+    const pageId = store.state.currentPageId
+    const other = store.graph.addPage('Other')
+    const node = store.graph.createNode('FRAME', other.id)
+    for (const name of ['select_nodes', 'viewport_zoom_to_fit']) {
+      await expect(
+        handleTargetCommand(target(store, pageId), 'tool', {
+          name,
+          args: { ids: [node.id] }
+        })
+      ).rejects.toThrow('outside the target page')
+    }
+    expect(store.state.currentPageId).toBe(pageId)
+    expect([...store.state.selectedIds]).toEqual([])
+    expect(store.undo.canUndo).toBe(false)
+  })
   test('find_nodes sees the layers of the target page', async () => {
     const { store, pageId } = await storeWithUnshownPage()
     const shown = store.state.currentPageId

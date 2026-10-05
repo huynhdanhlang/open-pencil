@@ -23,6 +23,7 @@ interface OutlineGlyph {
 }
 
 interface OutlineFont {
+  glyphs: { get(index: number): OutlineGlyph | undefined }
   unitsPerEm: number
   ascender: number
   descender: number
@@ -58,9 +59,12 @@ interface ParsedFontCacheEntry {
 
 const parsedFontCache = new Map<string, ParsedFontCacheEntry>()
 
-function getParsedFont(family: string, style: string): OutlineFont | null {
+function getParsedFont(
+  family: string,
+  style: string,
+  bytes = fontManager.loadedData(family, style)
+): OutlineFont | null {
   const key = `${family}|${style}`
-  const bytes = fontManager.loadedData(family, style)
   if (!bytes) return null
   const cached = parsedFontCache.get(key)
   if (cached?.bytes === bytes) return cached.font
@@ -124,6 +128,24 @@ export interface GlyphOutlineMetrics {
   commands: OutlineCommand[]
   x: number
   advance: number
+}
+
+/** Extract the exact glyph selected by the renderer without reshaping its source cluster. */
+export function getGlyphOutlineByIdSync(
+  family: string,
+  style: string,
+  glyphId: number,
+  fontSize: number,
+  fontData?: ArrayBuffer
+): GlyphOutlineMetrics | null {
+  const font = getParsedFont(family, style, fontData)
+  const glyph = font?.glyphs.get(glyphId)
+  if (!font || !glyph) return null
+  return {
+    commands: glyph.getPath(0, 0, fontSize).commands,
+    x: 0,
+    advance: glyphAdvanceWidth(font, glyph, fontSize)
+  }
 }
 
 export type FontGlyphCoverage = 'has' | 'missing' | 'unknown'

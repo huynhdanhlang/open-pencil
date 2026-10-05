@@ -49,7 +49,7 @@ function textLines(text: string): NonNullable<NodeChange['textData']>['lines'] {
   return Array.from({ length: lineCount }, () => ({ lineType: 'PLAIN' }))
 }
 
-function appendGlyphBlob(
+export function appendGlyphBlob(
   blobs: Uint8Array[],
   glyphBlobMap: Map<string, number>,
   blob: Uint8Array

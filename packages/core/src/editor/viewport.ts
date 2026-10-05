@@ -14,6 +14,14 @@ export function createViewportActions(ctx: EditorContext) {
     return { panX: ctx.state.panX, panY: ctx.state.panY, zoom: ctx.state.zoom }
   }
 
+  function getViewport() {
+    const { width, height } = ctx.getViewportSize()
+    return {
+      center: screenToCanvas(width / 2, height / 2),
+      zoom: ctx.state.zoom
+    }
+  }
+
   function emitViewportChanged(previous: ReturnType<typeof currentViewport>) {
     const next = currentViewport()
     if (next.panX !== previous.panX || next.panY !== previous.panY || next.zoom !== previous.zoom) {
@@ -159,6 +167,7 @@ export function createViewportActions(ctx: EditorContext) {
   }
 
   return {
+    getViewport,
     revealNodes,
     screenToCanvas,
     setZoomAroundPoint,

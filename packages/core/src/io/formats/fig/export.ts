@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- FIG export orchestration keeps shared GUID state in one pipeline */
-import type { CanvasKit } from 'canvaskit-wasm'
+import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 import { deflateSync, inflateSync } from 'fflate'
 import { toUint8Array } from 'js-base64'
 
@@ -14,10 +14,16 @@ import {
 import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
-import { ownsSlotContent, type SceneGraph } from '@open-pencil/scene-graph'
+import {
+  ownsSlotContent,
+  type SceneGraph,
+  type SceneNode,
+  weightToStyle
+} from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
+import { shapeTextForClipboard } from '#core/canvas/text/clipboard'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-metadata'
 import { findFigThumbnailPageId } from '#core/io/formats/fig/thumbnail-page'
@@ -32,6 +38,10 @@ import {
 import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
 import { populateReaderExport } from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
+import { buildDerivedTextDataV4 } from '#core/text/derived-text/clipboard'
+import { fontManager } from '#core/text/fonts'
+import { fontHasGlyphSync } from '#core/text/opentype'
+import { getTextOutlineSupport } from '#core/text/outlines'
 
 import {
   appendVariableNodeChanges,
@@ -47,6 +57,102 @@ const THUMBNAIL_1X1 = toUint8Array(
 
 type KiwiNodeChange = NodeChange & Record<string, unknown>
 type FigExportPage = ReturnType<SceneGraph['getPages']>[number]
+
+function canShapeSavedText(node: SceneNode): boolean {
+  if (
+    node.type !== 'TEXT' ||
+    node.derivedTextGlyphs?.length ||
+    node.styleRuns.length > 0 ||
+    node.textCase !== 'ORIGINAL' ||
+    node.textAutoResize === 'TRUNCATE' ||
+    node.textTruncation === 'ENDING' ||
+    node.maxLines !== null ||
+    node.textPathData !== null ||
+    node.fontVariations.length > 0 ||
+    node.textDecoration !== 'NONE' ||
+    !getTextOutlineSupport(node).supported
+  )
+    return false
+  const style = weightToStyle(node.fontWeight, node.italic)
+  if (fontManager.namedInstanceVariations(node.fontFamily, style)?.length) return false
+  return Array.from(node.text).every(
+    (character) => character === '\n' || fontHasGlyphSync(node.fontFamily, style, character)
+  )
+}
+
+async function applyShapedTextData(
+  graph: SceneGraph,
+  changes: KiwiNodeChange[],
+  nodeIdToGuid: Map<string, GUID>,
+  digestMap: Map<string, Uint8Array>,
+  blobs: Uint8Array[],
+  glyphBlobMap: Map<string, number>
+): Promise<void> {
+  const ck = fontManager.providerCanvasKit()
+  if (!ck) return
+  const byGuid = new Map<string, KiwiNodeChange>()
+  for (const change of changes) {
+    if (change.type === 'TEXT' && change.guid) {
+      byGuid.set(`${change.guid.sessionID}:${change.guid.localID}`, change)
+    }
+  }
+  const providers = new Map<ArrayBuffer, Map<string, TypefaceFontProvider>>()
+  try {
+    for (const node of graph.getAllNodes()) {
+      // Imported/path geometry remains authoritative until a real layout edit invalidates it.
+      if (!canShapeSavedText(node)) continue
+      const guid = nodeIdToGuid.get(node.id)
+      const change = guid && byGuid.get(`${guid.sessionID}:${guid.localID}`)
+      if (!change) continue
+      await applyShapedNodeTextData(ck, providers, node, change, digestMap, blobs, glyphBlobMap)
+    }
+  } finally {
+    for (const families of providers.values()) {
+      for (const provider of families.values()) provider.delete()
+    }
+  }
+}
+
+async function applyShapedNodeTextData(
+  ck: CanvasKit,
+  providers: Map<ArrayBuffer, Map<string, TypefaceFontProvider>>,
+  node: SceneNode,
+  change: KiwiNodeChange,
+  digestMap: Map<string, Uint8Array>,
+  blobs: Uint8Array[],
+  glyphBlobMap: Map<string, number>
+): Promise<void> {
+  const fontData = fontManager.loadedData(
+    node.fontFamily,
+    weightToStyle(node.fontWeight, node.italic)
+  )
+  if (!fontData) return
+  let families = providers.get(fontData)
+  if (!families) {
+    families = new Map()
+    providers.set(fontData, families)
+  }
+  let fontProvider = families.get(node.fontFamily)
+  if (!fontProvider) {
+    fontProvider = ck.TypefaceFontProvider.Make()
+    families.set(node.fontFamily, fontProvider)
+    // Shared providers can retain earlier Google font shards with unrelated glyph IDs.
+    // Shape and outline against this exact buffer, without mutating the renderer's provider.
+    fontProvider.registerFont(fontData, node.fontFamily)
+  }
+  const shaped = await shapeTextForClipboard(node, {
+    halfLeading: true,
+    alignVertical: true,
+    fontProvider,
+    canvasKit: ck
+  })
+  if (!shaped) return
+  change.derivedTextData = await buildDerivedTextDataV4(node, digestMap, shaped, blobs, {
+    useShapedGlyphs: true,
+    fontData,
+    glyphBlobMap
+  })
+}
 
 interface CanvasExportEntry {
   page: FigExportPage
@@ -463,6 +569,8 @@ export async function exportFigFile(
     placeSlotContent(slotContentRecords, internalCanvasGuid, first, fractionalPosition)
     nodeChanges.push(...slotContentRecords)
   }
+
+  await applyShapedTextData(graph, nodeChanges, nodeIdToGuid, fontDigestMap, blobs, glyphBlobMap)
 
   const msg: Record<string, unknown> = {
     type: 'NODE_CHANGES',

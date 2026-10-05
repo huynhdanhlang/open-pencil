@@ -10,6 +10,23 @@ Without it, headless XPath queries fail with
 The focused regression checks the built export under Node and Bun without
 depending on Git LFS fixtures.
 
+FIG saving now records CanvasKit's shaped line positions for newly authored or
+layout-edited plain text. Width/height edits invalidate stale imported glyph
+layout; glyph cluster offsets are mapped to JavaScript character indices and
+shaping uses the CanvasKit instance that owns its font provider. The bounded
+path requires a loaded face covering the text, original case, uniform styling,
+no variation axes, named-instance axes, truncation, path text or text decoration.
+Saving shapes and extracts outlines from the same pinned font buffer, using an
+isolated provider so earlier Google font shards cannot mix glyph identities.
+This includes imported LIGA/CALT defaults. Providers are reused within an
+export and disposed afterward; glyph blobs reuse the existing deduplication map.
+Imported glyph geometry stays authoritative until a layout edit.
+
+MCP selection and viewport tools now update the actual editor through its
+canonical actions. View reads use the canvas dimensions, zoom reports the
+applied value, and fitting rejects node IDs from another page. View commands
+avoid document layout/font loading and Undo snapshots.
+
 ## Build
 
 Install the native prerequisites from upstream's development instructions.
@@ -20,6 +37,8 @@ From the repository root:
 bun install --frozen-lockfile
 bun run tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
 bun test packages/cli/tests/commands/query.test.ts
+bun test packages/core/tests/io/formats/fig/export/text-wrap-export.test.ts packages/fig/tests/source-metadata.test.ts
+bun test tests/app/automation/bridge/tool-page.test.ts
 ```
 
 Keep development test features disabled in the application used for design.
@@ -63,6 +82,14 @@ An archived document also survived a FIG roundtrip with matching page/node
 counts. These checks do not prove complete graph equivalence or smooth physical
 pan/zoom interactions.
 
-Archived headless exports differ from the installed release in typography and
-checkmark glyphs. This remains unresolved. The XPath patch does not fix those
-differences or establish that all navigation/performance bugs are resolved.
+Real CanvasKit regressions cover Vietnamese wrapping and explicit newlines with
+ligatures in both the native and full headless runtimes. A private copy of the
+actual design retains editable text, declared fonts/widths and wrapped lines
+after FIG save/reopen. This does not establish Figma interoperability: a live
+Figma roundtrip has not been performed.
+
+Paragraph and saved-outline renders still differ at pixel level: the existing
+saved-glyph renderer snaps baselines and uses different antialiasing rules.
+Mixed styles, variable axes, fallback fonts, complex scripts and path
+text retain the prior serialization path. These patches do not establish that
+all typography, icon or navigation/performance bugs are resolved.

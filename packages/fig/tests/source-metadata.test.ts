@@ -5,6 +5,17 @@ import { effectiveFigmaRawNodeFields, effectiveFigmaSourcePayload } from '#fig/s
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 describe('@open-pencil/fig source metadata policy', () => {
+  test('text box edits invalidate baked layout without deleting text or provenance', () => {
+    const graph = new SceneGraph()
+    const node = graph.createNode('TEXT', graph.getPages()[0].id, { width: 399, height: 54 })
+    const textData = { characters: 'Editable text' }
+    const derivedTextData = { layoutSize: { x: 399, y: 54 } }
+    node.source.fig.rawNodeFields = { textData, derivedTextData, textUserLayoutVersion: 4 }
+    graph.updateNode(node.id, { width: 200 })
+    expect(effectiveFigmaRawNodeFields(node)).toEqual({ textData })
+    expect(node.source.fig.rawNodeFields.derivedTextData).toBe(derivedTextData)
+  })
+
   test('filters only raw fields made stale by normalized edits', () => {
     const graph = new SceneGraph()
     const node = graph.createNode('RECTANGLE', graph.getPages()[0].id)

@@ -53,6 +53,7 @@ export class FontManager {
   private blockedNodeIds = new Set<string>()
   private fontProvider: TypefaceFontProvider | null = null
   private fontProviders = new Set<TypefaceFontProvider>()
+  private providerCanvasKits = new WeakMap<TypefaceFontProvider, CanvasKit>()
   private registrationGeneration = 0
   private providerRegistrations = new WeakMap<TypefaceFontProvider, Map<string, Set<ArrayBuffer>>>()
   private localFonts: FontInfo[] | null = null
@@ -66,9 +67,10 @@ export class FontManager {
   private arabicFallbackFamilies: string[] = []
   private arabicFallbackPromise: Promise<string[]> | null = null
 
-  attachProvider(_canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
+  attachProvider(canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
     this.fontProviders.add(provider)
     this.fontProvider = provider
+    this.providerCanvasKits.set(provider, canvasKit)
     this.providerRegistrations.set(provider, new Map())
     this.registrationGeneration++
     for (const [cacheKey, data] of this.loadedFamilies) {
@@ -85,10 +87,12 @@ export class FontManager {
     if (!provider) {
       this.fontProviders.clear()
       this.fontProvider = null
+      this.providerCanvasKits = new WeakMap()
       this.providerRegistrations = new WeakMap()
       return
     }
     this.fontProviders.delete(provider)
+    this.providerCanvasKits.delete(provider)
     this.providerRegistrations.delete(provider)
     if (this.fontProvider === provider) {
       this.fontProvider = Array.from(this.fontProviders).at(-1) ?? null
@@ -97,6 +101,10 @@ export class FontManager {
 
   provider(): TypefaceFontProvider | null {
     return this.fontProvider
+  }
+
+  providerCanvasKit(): CanvasKit | null {
+    return this.fontProvider ? (this.providerCanvasKits.get(this.fontProvider) ?? null) : null
   }
 
   generation(): number {

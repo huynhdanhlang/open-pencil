@@ -68,9 +68,21 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const libraryService = useLibraryService()
     libraryService.bindEditor(store)
     registerComponentCatalog(store.graph, libraryService)
+    if (def.execution.mutation === 'view' && store.state.currentPageId !== target.pageId) {
+      await store.switchPage(target.pageId)
+    }
     const figma = makeFigma(store, target.pageId)
     let result: unknown
-    if (isAtomicTool(def)) {
+    if (def.execution.mutation === 'view') {
+      const initialPageId = figma.currentPageId
+      result = await def.execute(figma, toolArgs)
+      if (figma.currentPageId !== initialPageId) {
+        if (store.state.currentPageId !== initialPageId) {
+          throw new Error('The shown page changed while the automation view command was running')
+        }
+        await store.switchPage(figma.currentPageId)
+      }
+    } else if (isAtomicTool(def)) {
       result = await executeAtomicEditorTool(store, figma, def, toolArgs, {
         label: AUTOMATION_UNDO_LABEL
       })
@@ -93,7 +105,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       result = await def.execute(figma, toolArgs)
     }
 
-    if (def.mutates) {
+    if (def.mutates && def.execution.mutation !== 'view') {
       store.requestRender()
       store.flashNodes(extractNodeIds(result))
     }
