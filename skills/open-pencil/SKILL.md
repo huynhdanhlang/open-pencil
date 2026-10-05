@@ -22,6 +22,10 @@ openpencil tree design.fig
 
 Use `openpencil --help`, per-command help, and the connected MCP server’s tool schemas to check the installed version’s capabilities. See the [CLI reference](https://openpencil.dev/reference/cli) and [MCP guide](https://openpencil.dev/programmable/mcp-server) for current documentation.
 
+Reuse the configured local installation and discover its live schemas first. Preserve authentication, filesystem scope, model assignments and disabled scripting. Never reinstall/upgrade, enable `eval`, or widen the root merely to bypass a missing capability. Report the exact limitation. Prefer MCP for supported operations; use the installed CLI only when it targets the same artifact under the same permissions.
+
+For visual prototypes/references, use Image Gen when that is the user's workflow; translate the accepted direction into editable OpenPencil components, tokens, layouts and typography. Generated images are references, not editable design or runtime acceptance.
+
 ## Requirements
 
 ```bash
@@ -252,7 +256,13 @@ The CLI defaults the filesystem root to the home directory on Windows and the cu
 4. **Modify** — `render`, `batch_update`, `update_node`, `set_fill`, `set_layout`, `create_shape`, `import_svg`, etc.
 5. **Navigate** — after creating or editing visible canvas content, call `select_nodes` and `viewport_zoom_to_fit { id }` (or `node_bounds` + `viewport_set`) so the user can see the result in the running editor.
 6. **Save/export** — `save_file`, `export_image`, `export_svg`, `export_pdf`, or CLI `export`.
-7. **Close** — `close_file { document_id, unsaved }` closes a document tab after the workflow. With unsaved changes it fails unless `unsaved` is `"save"` or `"discard"`; automation never prompts in the app.
+7. **Preserve** — keep the canonical working document open. Close only an owned disposable tab or one the user asked to close. `close_file { document_id, unsaved }` fails on unsaved changes by default; save through the canonical owner when appropriate. Never discard unrelated work.
+
+Use bounded queries for only the needed nodes. Author a coherent frame/subtree in one bounded `render` and group property edits with `batch_update`. Structural calls snapshot the affected page for Undo; long per-layer creation loops amplify CPU and retained history memory. Export only the affected frame, inspect the actual render, show it in the editor, then save through the canonical file owner.
+
+### Optional design review helper
+
+For a substantial independent analysis/review, discover `agent_dispatch`, `agent_status` and `agent_cancel`. These are optional native fork capabilities, not universal upstream tools. Read [Agent tasks](references/agent-tasks.md) before dispatching. At most one snapshot-only Codex helper runs; the main agent checks the advice and alone applies canvas changes. Small edits stay with the main agent. Never emulate missing dispatch through `eval` or confuse internal Codex subagents with OpenPencil MCP dispatch.
 
 Use `undo` / `redo { document_id }` to step back your own changes. They refuse when the newest step was made by the user in the editor; never work around that. `get_settings` and `update_settings { settings }` read and change editor preferences such as theme, language, and snapping; they never expose credentials, models, or tool access.
 
@@ -283,6 +293,7 @@ Discover available tools and their arguments from the connected server or browse
 - **`get_codegen_prompt`** — retrieve OpenPencil's current JSX/codegen guidance.
 - **`undo` / `redo`** — revert or reapply your newest change; they refuse to touch the user's edits.
 - **`list_documents` / `activate_document`** — discover open tabs and show the one you worked on.
+- **`agent_dispatch` / `agent_status` / `agent_cancel`** — optional bounded, read-only Codex design review with durable receipts and feedback through a linked new task.
 
 ## JSX Rendering
 
@@ -293,13 +304,13 @@ Use the `render` tool for JSX strings. Use only the APIs exposed by the installe
 ## Tips
 
 - Omit the file path to work with the document open in the running OpenPencil editor.
-- Start with `info` or `get_page_tree` to understand the document.
+- Start with `list_documents`; resolve the exact document path, page and relevant selection before any edit. Pass `document_id` and `page_id` explicitly where supported, then inspect only the needed subtree.
 - Use `tree --depth 2` or `query_nodes` to avoid overwhelming output on large files.
 - Export specific nodes with `--node` for faster visual checks.
 - Use `export_image` after changes to verify visual quality.
 - After creating a visible design, select it and zoom the editor to it: `select_nodes { ids: [id] }` then `viewport_zoom_to_fit { id }`.
 - If zoom-to-fit is unavailable in a client, use `node_bounds` to calculate the center and call `viewport_set { x, y, zoom }`.
 - Use `analyze colors --similar` to find near-duplicate colors.
-- Use `openpencil tool call` for MCP tools without a dedicated CLI command, and `eval` for Figma Plugin API operations not covered by any tool.
+- Use `openpencil tool call` for MCP tools without a dedicated CLI command. Scripting requires an already enabled, authorized capability; keep disabled `eval` disabled.
 - Use `--json` when piping CLI output to scripts.
 - In app mode, `eval` and MCP modifications are reflected live in the editor.

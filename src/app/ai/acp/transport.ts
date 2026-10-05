@@ -10,6 +10,7 @@ import type { ChatTransport, FinishReason, UIMessage, UIMessageChunk } from 'ai'
 
 import type { ACPAgentDef } from '@open-pencil/core/constants'
 
+import { assertSnapshotHelperHandshake } from '@/app/ai/agents/policy'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt'
 import { createMutex } from '@/app/ai/tools/mutex'
 import { describeDiagnosticError, recordACPTransportFailure } from '@/app/diagnostics'
@@ -30,6 +31,7 @@ interface ACPSession {
   supportsImages: boolean
   permissionSignal?: AbortSignal
   cancelPermissions?: () => void
+  modelId?: string | null
 }
 
 function isMissingCommandError(message: string): boolean {
@@ -90,10 +92,71 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private destroying = false
   private acquireRequest = createMutex()
   private startingChild: TauriChild | null = null
+  private readonly mode: 'chat' | 'snapshot-helper'
+  private readonly instructions: string
+  private readonly expectedModel: string | null
+  private readonly expectedEffort: string | null
 
-  constructor(options: { agentDef: ACPAgentDef; cwd?: string }) {
+  constructor(options: {
+    agentDef: ACPAgentDef
+    cwd?: string
+    mode?: 'chat' | 'snapshot-helper'
+    instructions?: string
+    expectedModel?: string | null
+    expectedEffort?: string | null
+  }) {
     this.agentDef = options.agentDef
     this.cwd = options.cwd ?? '.'
+    this.mode = options.mode ?? 'chat'
+    this.instructions = options.instructions ?? SYSTEM_PROMPT
+    this.expectedModel = options.expectedModel ?? null
+    this.expectedEffort =
+      options.expectedEffort ?? options.expectedModel?.match(/\[([^\]]+)\]$/)?.[1] ?? null
+  }
+
+  getAgentIdentity(): { model: string | null; effort: string | null } {
+    const model = this.session?.modelId ?? null
+    return { model, effort: model?.match(/\[([^\]]+)\]$/)?.[1] ?? null }
+  }
+
+  private processArgs(): string[] {
+    return this.mode === 'snapshot-helper'
+      ? [
+          '--openpencil-snapshot-helper',
+          JSON.stringify({ model: this.expectedModel, effort: this.expectedEffort }),
+          ...this.agentDef.args
+        ]
+      : this.agentDef.args
+  }
+
+  private async mcpServers() {
+    if (this.mode === 'snapshot-helper') return []
+    const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
+    return buildACPMCPServers({ authorizationToken: await getAutomationAuthToken() })
+  }
+
+  private checkHelperSession(
+    session: Awaited<ReturnType<ClientSideConnection['newSession']>>
+  ): void {
+    if (this.mode !== 'snapshot-helper') return
+    if (session.modes?.currentModeId !== 'read-only')
+      throw new Error('unsupported_helper_boundary: helper must remain read-only')
+    if (
+      this.expectedModel &&
+      this.expectedModel !== 'default' &&
+      session.models?.currentModelId.split('[')[0] !== this.expectedModel.split('[')[0]
+    ) {
+      throw new Error(
+        'configured_model_mismatch: helper adapter selected a different configured model'
+      )
+    }
+    if (
+      this.expectedEffort &&
+      session.models?.currentModelId.match(/\[([^\]]+)\]$/)?.[1] !== this.expectedEffort
+    )
+      throw new Error(
+        'configured_effort_mismatch: helper adapter selected a different reasoning effort'
+      )
   }
 
   private assertOpen(): void {
@@ -127,7 +190,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       const prompt = buildACPPrompt(
         lastUserMessage,
         this.session.supportsImages,
-        this.sentContext ? undefined : SYSTEM_PROMPT
+        this.sentContext ? undefined : this.instructions
       )
 
       const { connection, sessionId } = this.session
@@ -272,7 +335,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     try {
       process = await spawnACPProcess({
         command: this.agentDef.command,
-        args: this.agentDef.args,
+        args: this.processArgs(),
         logId: this.agentDef.id,
         destroying: () => this.destroying,
         onUnexpectedClose: () => this.processClosed(ownedSession)
@@ -295,11 +358,13 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       const stream = ndJsonStream(input, output)
       let onUpdate: ACPSession['onUpdate'] = null
       const permissionTools = new Map<string, RequestPermissionRequest['toolCall']>()
+      const snapshotHelper = this.mode === 'snapshot-helper'
 
       const clientImpl: Client = {
         async requestPermission(
           params: RequestPermissionRequest
         ): Promise<RequestPermissionResponse> {
+          if (snapshotHelper) return { outcome: { outcome: 'cancelled' } }
           const { requestPermissionFromUser, permissionWithToolContext } =
             await import('@/app/ai/acp/permission')
           const known = permissionTools.get(params.toolCall.toolCallId)
@@ -328,20 +393,19 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       }
 
       const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
-      const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
-      const automationAuthToken = await getAutomationAuthToken()
-
       let supportsImages = false
       const initialized = await connection.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: {}
       })
+      if (snapshotHelper) assertSnapshotHelperHandshake(initialized)
       supportsImages = initialized.agentCapabilities?.promptCapabilities?.image ?? false
 
       const sessionResult = await connection.newSession({
         cwd: this.cwd,
-        mcpServers: await buildACPMCPServers({ authorizationToken: automationAuthToken })
+        mcpServers: await this.mcpServers()
       })
+      this.checkHelperSession(sessionResult)
 
       const session: ACPSession = {
         connection,
@@ -349,6 +413,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         child,
         dead: false,
         supportsImages,
+        modelId: sessionResult.models?.currentModelId ?? null,
         get onUpdate() {
           return onUpdate
         },

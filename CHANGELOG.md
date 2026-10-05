@@ -25,6 +25,8 @@
 
 ### Added
 
+- Add optional native MCP `agent_dispatch`, `agent_status` and `agent_cancel` for one bounded read-only Codex design reviewer, with durable replay/conflict handling, cancellation/restart recovery, configured model/reasoning receipts and linked feedback tasks. The main agent remains the sole canvas writer.
+
 - Pass an ID generator to `new SceneGraph()` from `@open-pencil/scene-graph` to choose the IDs of the nodes, variables, collections, and modes the graph creates, including modes added later with `createMode`; generated IDs skip any node, variable, collection, or mode ID already in the graph, and an exhausted generator throws instead of hanging. `createComponentPropertyId` gives new component properties the `prop:` IDs the editor, plugin API, and design JSX share.
 - Diagnose failures from Settings → Diagnostics. Uncaught errors, unhandled rejections, component errors, failed AI chats, and AI tool calls that broke inside OpenPencil are recorded with their message and stack, and other failed tool calls as warnings. Messages and stacks are scrubbed of URL queries and credentials, API keys and tokens, email addresses, and home folder names, and provider errors keep no message. Each event has a specific label, such as *Tool: render · 162 ms* or *Error: TypeError*, expands to its details, and can be filtered by level and category and paged; copied diagnostics include the app version and browser.
 - Import `resolvePasteTarget` from `@open-pencil/core/editor` to place ordinary pasted or dropped content in an embedding app in the same container the editor would choose. It takes the editor `createEditor` returns. Replacement paste is not covered: it inserts into the selected target's parent.

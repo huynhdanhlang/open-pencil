@@ -1,4 +1,5 @@
 export { executeRPCCommand, ALL_RPC_COMMANDS } from './commands'
+export * from './agent-tasks'
 export type {
   InfoResult,
   PageItem,

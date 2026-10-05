@@ -1,5 +1,6 @@
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 
+import { handleAgentCommand } from '@/app/automation/bridge/agent-handlers'
 import {
   handleActivateDocument,
   handleGetSettings,
@@ -73,6 +74,8 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     command: string,
     args: unknown
   ): Promise<unknown> {
+    if (command === 'agent_dispatch' || command === 'agent_status' || command === 'agent_cancel')
+      return handleAgentCommand(store, command, args)
     if (command === 'list_documents') {
       return { ok: true, result: { documents: listAutomationDocuments(store) } }
     }

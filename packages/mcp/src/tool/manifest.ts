@@ -39,6 +39,33 @@ export function createToolDescriptors(filesystemEnabled: boolean): ToolDescripto
   const descriptors = getMCPToolDefinitions().map(coreToolDescriptor)
   descriptors.push(
     {
+      name: 'agent_dispatch',
+      description:
+        'Dispatch one read-only Codex helper to review an explicitly selected design snapshot. Returns task_id promptly. Use a unique request_id; reuse it only for an identical retry. Optional previous_task_id links corrective feedback to a completed review. Native verified helper installation required; the main agent alone applies edits.',
+      effect: 'write',
+      availability: 'default',
+      capabilities: ['document:read', 'network:access'],
+      enabled: true
+    },
+    {
+      name: 'agent_status',
+      description:
+        'Read a dispatched helper task by task_id, including status, captured snapshot identity and completed advisory result. Does not activate a document or repeat inference.',
+      effect: 'read',
+      availability: 'default',
+      capabilities: [],
+      enabled: true
+    },
+    {
+      name: 'agent_cancel',
+      description:
+        'Cancel only the dispatched helper identified by task_id. Repeated cancellation is idempotent; completed tasks keep their result. Does not modify the canvas.',
+      effect: 'write',
+      availability: 'default',
+      capabilities: [],
+      enabled: true
+    },
+    {
       name: 'list_documents',
       description:
         'List open OpenPencil documents/tabs with their IDs, file paths, current pages, and pages.',

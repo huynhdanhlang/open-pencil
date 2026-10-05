@@ -6,6 +6,7 @@ import type { McpServer, ToolCallback, ToolAnnotations } from '@modelcontextprot
 import { toStandardJsonSchema as toStandardJSONSchema } from '@valibot/to-json-schema'
 import * as v from 'valibot'
 
+import { agentDispatchSchema, agentTaskIdSchema, parseAgentDispatch } from '@open-pencil/core/rpc'
 import { CODEGEN_PROMPT } from '@open-pencil/core/tools'
 
 import type { RPCJSONObject } from '#mcp/json'
@@ -146,6 +147,25 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
         }
       }
     )
+  }
+
+  register('agent_dispatch', { inputSchema: agentDispatchSchema }, async (args) => {
+    try {
+      return ok(
+        (await sendCommand(sendRPC, 'agent_dispatch', parseAgentDispatch(args))).result ?? {}
+      )
+    } catch (error) {
+      return fail(error)
+    }
+  })
+  for (const command of ['agent_status', 'agent_cancel'] as const) {
+    register(command, { inputSchema: agentTaskIdSchema }, async (args) => {
+      try {
+        return ok((await sendCommand(sendRPC, command, args)).result ?? {})
+      } catch (error) {
+        return fail(error)
+      }
+    })
   }
 
   register(
