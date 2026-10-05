@@ -147,6 +147,38 @@ describe('tool call display', () => {
   })
 })
 
+test('restored consecutive reasoning fragments display once without changing saved history', () => {
+  const first: ChatMessagePart = { type: 'reasoning', text: 'First. ', state: 'done' }
+  const second: ChatMessagePart = { type: 'reasoning', text: 'Second.', state: 'streaming' }
+  const parts: ChatMessagePart[] = [first, second, { type: 'text', text: 'Reply' }]
+  expect(groupMessageParts(parts)).toEqual([
+    {
+      kind: 'part',
+      index: 0,
+      part: { type: 'reasoning', text: 'First. Second.', state: 'streaming' }
+    },
+    { kind: 'part', index: 2, part: { type: 'text', text: 'Reply' } }
+  ])
+  expect(first.text).toBe('First. ')
+  expect(first.state).toBe('done')
+  expect(second.text).toBe('Second.')
+})
+
+test('reasoning display retains intervening tool calls and reply order', () => {
+  const parts: ChatMessagePart[] = [
+    { type: 'reasoning', text: 'Before', state: 'done' },
+    call({ type: 'tool-get_selection' }),
+    { type: 'reasoning', text: 'After', state: 'done' },
+    { type: 'text', text: 'Reply' }
+  ]
+  expect(groupMessageParts(parts).map((group) => group.kind)).toEqual([
+    'part',
+    'tools',
+    'part',
+    'part'
+  ])
+})
+
 describe('toolHasInput', () => {
   test('counts source or any argument as input', () => {
     expect(toolHasInput(call({ type: 'tool-render', input: { jsx: '<Frame />' } }))).toBe(true)

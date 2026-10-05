@@ -130,17 +130,25 @@ export type MessagePartGroup =
   | { kind: 'part'; part: ChatMessagePart; index: number }
   | { kind: 'tools'; parts: { part: ToolCallPart; index: number }[] }
 
-/** Consecutive tool calls form one group, so a long run can collapse into a single row. */
+/** Group calls and legacy reasoning fragments without mutating the saved message. */
 export function groupMessageParts(parts: readonly ChatMessagePart[]): MessagePartGroup[] {
   const groups: MessagePartGroup[] = []
   parts.forEach((part, index) => {
     // Step boundaries are not rendered, so they must not split a run of calls.
     if (part.type === 'step-start') return
+    const last = groups.at(-1)
+    if (part.type === 'reasoning' && last?.kind === 'part' && last.part.type === 'reasoning') {
+      last.part = {
+        ...last.part,
+        text: last.part.text + part.text,
+        state: part.state ?? last.part.state
+      }
+      return
+    }
     if (!isToolUIPart(part)) {
       groups.push({ kind: 'part', part, index })
       return
     }
-    const last = groups.at(-1)
     if (last?.kind === 'tools') last.parts.push({ part, index })
     else groups.push({ kind: 'tools', parts: [{ part, index }] })
   })

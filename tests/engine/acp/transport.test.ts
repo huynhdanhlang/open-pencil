@@ -182,20 +182,19 @@ describe('mapUpdate', () => {
     expect(result.chunks).toEqual([{ type: 'text-delta', id: TEXT_ID, delta: 'world' }])
   })
 
-  test('agent_thought_chunk emits reasoning start/delta/end', () => {
+  test('agent_thought_chunk starts reasoning without finishing a streamed thought', () => {
     const update: SessionUpdate = {
       sessionUpdate: 'agent_thought_chunk',
       content: { type: 'text', text: 'thinking...' }
     }
     const result = mapUpdate(update, TEXT_ID, false)
-    expect(result.chunks).toHaveLength(3)
+    expect(result.chunks).toHaveLength(2)
     expect(result.chunks[0].type).toBe('reasoning-start')
     expect(result.chunks[1]).toEqual({
       type: 'reasoning-delta',
-      id: `reasoning-${TEXT_ID}`,
+      id: `reasoning-${TEXT_ID}-0`,
       delta: 'thinking...'
     })
-    expect(result.chunks[2].type).toBe('reasoning-end')
   })
 
   test('tool_call emits tool-input-start', () => {

@@ -8,19 +8,79 @@ export interface MapResult {
   textStarted: boolean
 }
 
-export function mapUpdate(update: SessionUpdate, textId: string, textStarted: boolean): MapResult {
+export interface ACPStreamState {
+  active: boolean
+  segment: number
+  textSegment?: number
+}
+
+export function textPartId(textId: string, state: ACPStreamState): string {
+  return state.textSegment ? `${textId}-${state.textSegment}` : textId
+}
+
+function interruptsText(update: SessionUpdate): boolean {
+  if (update.sessionUpdate === 'tool_call') return true
+  return (
+    update.sessionUpdate === 'agent_thought_chunk' &&
+    update.content.type === 'text' &&
+    Boolean(update.content.text)
+  )
+}
+
+function closeInterruptedText(
+  update: SessionUpdate,
+  textId: string,
+  started: boolean,
+  state: ACPStreamState
+): UIMessageChunk[] {
+  if (!started || !interruptsText(update)) return []
+  const id = textPartId(textId, state)
+  state.textSegment = (state.textSegment ?? 0) + 1
+  return [{ type: 'text-end', id }]
+}
+
+export function endReasoning(textId: string, state: ACPStreamState): UIMessageChunk[] {
+  if (!state.active) return []
+  state.active = false
+  return [{ type: 'reasoning-end', id: `reasoning-${textId}-${state.segment++}` }]
+}
+
+function thoughtChunks(
+  update: Extract<SessionUpdate, { sessionUpdate: 'agent_thought_chunk' }>,
+  textId: string,
+  state: ACPStreamState
+): UIMessageChunk[] {
+  if (update.content.type !== 'text' || !update.content.text) return []
+  const id = `reasoning-${textId}-${state.segment}`
   const chunks: UIMessageChunk[] = []
+  if (!state.active) {
+    chunks.push({ type: 'reasoning-start', id })
+    state.active = true
+  }
+  chunks.push({ type: 'reasoning-delta', id, delta: update.content.text })
+  return chunks
+}
+
+export function mapUpdate(
+  update: SessionUpdate,
+  textId: string,
+  textStarted: boolean,
+  reasoning: ACPStreamState = { active: false, segment: 0 }
+): MapResult {
+  const chunks = closeInterruptedText(update, textId, textStarted, reasoning)
+  if (chunks.length > 0) textStarted = false
 
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
       if (update.content.type === 'text' && update.content.text) {
+        chunks.push(...endReasoning(textId, reasoning))
         if (!textStarted) {
-          chunks.push({ type: 'text-start', id: textId })
+          chunks.push({ type: 'text-start', id: textPartId(textId, reasoning) })
           textStarted = true
         }
         chunks.push({
           type: 'text-delta',
-          id: textId,
+          id: textPartId(textId, reasoning),
           delta: update.content.text
         })
       } else if (update.content.type !== 'text') {
@@ -29,19 +89,11 @@ export function mapUpdate(update: SessionUpdate, textId: string, textStarted: bo
       break
     }
     case 'agent_thought_chunk': {
-      if (update.content.type === 'text') {
-        const rid = `reasoning-${textId}`
-        chunks.push({ type: 'reasoning-start', id: rid })
-        chunks.push({
-          type: 'reasoning-delta',
-          id: rid,
-          delta: update.content.text
-        })
-        chunks.push({ type: 'reasoning-end', id: rid })
-      }
+      chunks.push(...thoughtChunks(update, textId, reasoning))
       break
     }
     case 'tool_call': {
+      chunks.push(...endReasoning(textId, reasoning))
       if (!update.title) {
         console.warn('[ACP] Tool call without title:', update.toolCallId)
       }

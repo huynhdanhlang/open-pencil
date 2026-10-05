@@ -15,7 +15,7 @@ import { createMutex } from '@/app/ai/tools/mutex'
 import { describeDiagnosticError, recordACPTransportFailure } from '@/app/diagnostics'
 import { buildACPMCPServers } from '@/app/integrations/mcp'
 
-import { mapUpdate } from './map-update'
+import { endReasoning, mapUpdate, textPartId } from './map-update'
 import { spawnACPProcess } from './process'
 import { buildACPPrompt } from './prompt'
 
@@ -138,6 +138,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         start: (controller) => {
           const textId = `text-${Date.now()}`
           let textStarted = false
+          const reasoning = { active: false, segment: 0 }
           let closed = false
           let settled = false
           let cancelTimer: ReturnType<typeof setTimeout> | undefined
@@ -149,7 +150,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             if (closed) return
             closed = true
             if (errorText) controller.enqueue({ type: 'error', errorText })
-            if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+            for (const chunk of endReasoning(textId, reasoning)) controller.enqueue(chunk)
+            if (textStarted)
+              controller.enqueue({ type: 'text-end', id: textPartId(textId, reasoning) })
             controller.enqueue({ type: 'finish-step' })
             controller.enqueue({ type: 'finish', finishReason: reason })
             session.onUpdate = null
@@ -189,7 +192,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
           session.onUpdate = (params) => {
             if (closed) return
-            const result = mapUpdate(params.update, textId, textStarted)
+            const result = mapUpdate(params.update, textId, textStarted, reasoning)
             for (const chunk of result.chunks) {
               controller.enqueue(chunk)
             }
