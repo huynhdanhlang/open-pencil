@@ -4,6 +4,7 @@
 
 ### Breaking changes
 
+- `SceneNode.booleanOperation` is a required key whose value may be `undefined`, like every other scene node field, so code that builds `SceneNode` objects itself must include it.
 - `sceneNodeToDesignDocument` from `@open-pencil/dom-css` takes an options object, `{ includeSourceIds, tokens }`, instead of a boolean third argument; `tokens: false` writes literal values instead of variable references.
 - `randomHex`, `randomInt`, and `randomIndex` moved from `@open-pencil/core/random` and the `@open-pencil/core` barrel to `@open-pencil/scene-graph/random`.
 - `Stroke` from `@open-pencil/scene-graph` extends `Fill`, so every stroke states a paint `type` that code constructing one must set to `'SOLID'`, and `copyStroke` deep-copies the paint fields a fill already copied.
@@ -81,6 +82,9 @@
 
 ### Fixed
 
+- Start Pi chats with OpenPencil's MCP tools when the Harness companion runs on Node 22.15 or later; the companion now installs the dependency Pi's MCP adapter needs and loads its TypeScript sources. A reopened Pi session starts fresh instead of failing to resume its in-memory sandbox, and npm output from Pi no longer mixes into the companion's protocol.
+- Import HTML and CSS with the right shadow and border colors. A shadow whose color follows its lengths, as CSS usually writes it, and a `border` with a color function such as `rgb(226, 232, 240)` came in black. Every layer of a `box-shadow` list now imports, `inset` ones as inner shadows, and lengths in `%`, `em`, or `vh` are no longer read as pixels.
+- Accept a CSS `box-shadow` list in design JSX's `shadow` prop: the color may come first, a fourth length sets the spread, several layers add several shadows, and `inset` makes an inner shadow. A color before the lengths or a spread made the shadow black.
 - Read `repeat()` and `minmax()` in design JSX grid tracks, such as `columns="repeat(7, 1fr)"`, which collapsed the grid to near-zero columns. A track the grid cannot express sizes to its content instead of to 0.
 - Lay out text set to fill its container the way Figma does: fill text in an auto-layout row now shares the free space with its siblings instead of keeping its old width and overflowing the row.
 - Report what `linearGradient`, `radialGradient`, `angularGradient`, and `diamondGradient` expect when design JSX passes them something other than an array of stops, such as `linearGradient('#3b82f6')`, instead of failing with `stops.map is not a function`, so an AI agent can correct the call.
@@ -144,6 +148,7 @@
 
 ### Performance
 
+- Open large `.fig` files with less memory in the macOS desktop app and Safari: imported layers now share one object layout in JavaScriptCore instead of each being stored as a slower, larger dictionary.
 - Open multi-page `.fig` documents faster: the archive is indexed once rather than once for every page, each page resolves only the layers it adds instead of rescanning the whole document, placing an instance no longer re-synchronises every other instance of its component, and archive records are copied directly rather than through `structuredClone`. A 33-page file loads about a fifth quicker, and a page of repeated components opens three to four times faster once a document is already open.
 
 ### Security
