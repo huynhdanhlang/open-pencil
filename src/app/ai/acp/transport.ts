@@ -6,16 +6,18 @@ import type {
   RequestPermissionRequest,
   RequestPermissionResponse
 } from '@agentclientprotocol/sdk'
-import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+import type { ChatTransport, FinishReason, UIMessage, UIMessageChunk } from 'ai'
 
 import type { ACPAgentDef } from '@open-pencil/core/constants'
 
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt'
+import { createMutex } from '@/app/ai/tools/mutex'
 import { describeDiagnosticError, recordACPTransportFailure } from '@/app/diagnostics'
 import { buildACPMCPServers } from '@/app/integrations/mcp'
 
 import { mapUpdate } from './map-update'
 import { spawnACPProcess } from './process'
+import { buildACPPrompt } from './prompt'
 
 type TauriChild = Awaited<ReturnType<typeof spawnACPProcess>>['child']
 
@@ -25,6 +27,7 @@ interface ACPSession {
   child: TauriChild
   onUpdate: ((params: SessionNotification) => void) | null
   dead: boolean
+  supportsImages: boolean
 }
 
 function isMissingCommandError(message: string): boolean {
@@ -83,10 +86,16 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private cwd: string
   private sentContext = false
   private destroying = false
+  private acquireRequest = createMutex()
+  private startingChild: TauriChild | null = null
 
   constructor(options: { agentDef: ACPAgentDef; cwd?: string }) {
     this.agentDef = options.agentDef
     this.cwd = options.cwd ?? '.'
+  }
+
+  private assertOpen(): void {
+    if (this.destroying) throw new Error('Agent session is closed.')
   }
 
   async sendMessages({
@@ -95,76 +104,135 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   }: Parameters<ChatTransport<UIMessage>['sendMessages']>[0]): Promise<
     ReadableStream<UIMessageChunk>
   > {
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
-    const text =
-      lastUserMessage?.parts
-        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-        .map((p) => p.text)
-        .join('\n') ?? ''
+    abortSignal?.throwIfAborted()
+    const release = await this.acquireRequest()
+    try {
+      abortSignal?.throwIfAborted()
+      this.assertOpen()
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
 
-    if (this.session?.dead) {
-      this.session = null
-    }
-
-    if (!this.session) {
-      this.session = await this.spawnAgent()
-      this.sentContext = false
-    }
-
-    const promptText = this.sentContext ? text : `${SYSTEM_PROMPT}\n\n${text}`
-    this.sentContext = true
-
-    const { connection, sessionId } = this.session
-    const session = this.session
-
-    return new ReadableStream<UIMessageChunk>({
-      start: (controller) => {
-        const textId = `text-${Date.now()}`
-        let textStarted = false
-        let closed = false
-
-        function finish(reason: 'stop' | 'other' | 'error', errorText?: string) {
-          if (closed) return
-          closed = true
-          if (errorText) controller.enqueue({ type: 'error', errorText })
-          if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
-          controller.enqueue({ type: 'finish-step' })
-          controller.enqueue({ type: 'finish', finishReason: reason })
-          session.onUpdate = null
-          controller.close()
-        }
-
-        session.onUpdate = (params) => {
-          if (closed) return
-          const result = mapUpdate(params.update, textId, textStarted)
-          for (const chunk of result.chunks) {
-            controller.enqueue(chunk)
-          }
-          textStarted = result.textStarted
-        }
-
-        abortSignal?.addEventListener('abort', () => {
-          void connection.cancel({ sessionId })
-          finish('stop')
-        })
-
-        controller.enqueue({ type: 'start' })
-        controller.enqueue({ type: 'start-step' })
-
-        connection
-          .prompt({
-            sessionId,
-            prompt: [{ type: 'text', text: promptText }]
-          })
-          .catch((e) => {
-            recordACPTransportFailure({
-              operation: 'message',
-              ...describeDiagnosticError(e)
-            })
-            finish('error', formatConnectionError(e, this.agentDef))
-          })
+      if (this.session?.dead) {
+        this.session = null
       }
-    })
+
+      if (!this.session) {
+        this.session = await this.spawnAgent(abortSignal)
+        this.sentContext = false
+      }
+
+      abortSignal?.throwIfAborted()
+      this.assertOpen()
+      const prompt = buildACPPrompt(
+        lastUserMessage,
+        this.session.supportsImages,
+        this.sentContext ? undefined : SYSTEM_PROMPT
+      )
+
+      const { connection, sessionId } = this.session
+      const session = this.session
+
+      let cancelStream: () => void = () => undefined
+      return new ReadableStream<UIMessageChunk>({
+        start: (controller) => {
+          const textId = `text-${Date.now()}`
+          let textStarted = false
+          let closed = false
+          let settled = false
+          let cancelTimer: ReturnType<typeof setTimeout> | undefined
+
+          function finish(reason: FinishReason, errorText?: string) {
+            if (closed) return
+            closed = true
+            if (errorText) controller.enqueue({ type: 'error', errorText })
+            if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+            controller.enqueue({ type: 'finish-step' })
+            controller.enqueue({ type: 'finish', finishReason: reason })
+            session.onUpdate = null
+            abortSignal?.removeEventListener('abort', onAbort)
+            controller.close()
+          }
+
+          const cancelAgent = () => {
+            const terminate = async () => {
+              if (settled) return
+              session.dead = true
+              await session.child.kill().catch((error) => {
+                this.destroying = true
+                recordACPTransportFailure({
+                  operation: 'message',
+                  ...describeDiagnosticError(error)
+                })
+              })
+              release()
+            }
+            // A stalled cancel must not leave the next message waiting on the old process.
+            cancelTimer ??= setTimeout(() => void terminate(), 5000)
+            void connection.cancel({ sessionId }).catch(() => void terminate())
+          }
+          function onAbort() {
+            cancelAgent()
+            finish('stop')
+          }
+          cancelStream = () => {
+            closed = true
+            session.onUpdate = null
+            abortSignal?.removeEventListener('abort', onAbort)
+            cancelAgent()
+          }
+
+          session.onUpdate = (params) => {
+            if (closed) return
+            const result = mapUpdate(params.update, textId, textStarted)
+            for (const chunk of result.chunks) {
+              controller.enqueue(chunk)
+            }
+            textStarted = result.textStarted
+          }
+
+          abortSignal?.addEventListener('abort', onAbort, { once: true })
+
+          controller.enqueue({ type: 'start' })
+          controller.enqueue({ type: 'start-step' })
+
+          void connection
+            .prompt({
+              sessionId,
+              prompt
+            })
+            .then(({ stopReason }) => {
+              if (!closed && this.session === session && stopReason !== 'cancelled')
+                this.sentContext = true
+              let reason: FinishReason = 'stop'
+              if (stopReason === 'max_tokens') reason = 'length'
+              else if (stopReason === 'refusal') reason = 'content-filter'
+              else if (stopReason === 'max_turn_requests') reason = 'other'
+              return finish(reason)
+            })
+            .catch((e) => {
+              if (abortSignal?.aborted) {
+                finish('stop')
+                return
+              }
+              recordACPTransportFailure({
+                operation: 'message',
+                ...describeDiagnosticError(e)
+              })
+              finish('error', formatConnectionError(e, this.agentDef))
+            })
+            .finally(() => {
+              settled = true
+              clearTimeout(cancelTimer)
+              release()
+            })
+        },
+        cancel: () => {
+          cancelStream()
+        }
+      })
+    } catch (error) {
+      release()
+      throw error
+    }
   }
 
   async reconnectToStream(): Promise<ReadableStream<UIMessageChunk> | null> {
@@ -176,10 +244,19 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     if (this.session) {
       await this.session.child.kill()
       this.session = null
+    } else if (this.startingChild) {
+      await this.startingChild.kill()
     }
   }
 
-  private async spawnAgent(): Promise<ACPSession> {
+  private processClosed(session: ACPSession | null): void {
+    if (!session) return
+    session.dead = true
+    if (this.session === session) this.session = null
+  }
+
+  private async spawnAgent(abortSignal?: AbortSignal): Promise<ACPSession> {
+    let ownedSession: ACPSession | null = null
     let process: Awaited<ReturnType<typeof spawnACPProcess>>
     try {
       process = await spawnACPProcess({
@@ -187,77 +264,80 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         args: this.agentDef.args,
         logId: this.agentDef.id,
         destroying: () => this.destroying,
-        onUnexpectedClose: () => {
-          if (!this.session) return
-          this.session.dead = true
-          this.session = null
-        }
+        onUnexpectedClose: () => this.processClosed(ownedSession)
       })
     } catch (e) {
       recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(e) })
       throw new Error(formatConnectionError(e, this.agentDef))
     }
     const { child, input, output } = process
-    const stream = ndJsonStream(input, output)
-    let onUpdate: ACPSession['onUpdate'] = null
+    this.startingChild = child
+    if (this.destroying || abortSignal?.aborted) {
+      await child.kill()
+      this.startingChild = null
+      abortSignal?.throwIfAborted()
+      throw new Error('Agent session is closed.')
+    }
+    const onAbort = () => void child.kill().catch(() => undefined)
+    abortSignal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const stream = ndJsonStream(input, output)
+      let onUpdate: ACPSession['onUpdate'] = null
 
-    const clientImpl: Client = {
-      async requestPermission(
-        params: RequestPermissionRequest
-      ): Promise<RequestPermissionResponse> {
-        const { requestPermissionFromUser } = await import('@/app/ai/acp/permission')
-        return requestPermissionFromUser(params)
-      },
+      const clientImpl: Client = {
+        async requestPermission(
+          params: RequestPermissionRequest
+        ): Promise<RequestPermissionResponse> {
+          const { requestPermissionFromUser } = await import('@/app/ai/acp/permission')
+          return requestPermissionFromUser(params)
+        },
 
-      async sessionUpdate(params: SessionNotification): Promise<void> {
-        onUpdate?.(params)
+        async sessionUpdate(params: SessionNotification): Promise<void> {
+          onUpdate?.(params)
+        }
       }
-    }
 
-    const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
-    const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
-    let automationAuthToken: string | null
-    try {
-      automationAuthToken = await getAutomationAuthToken()
-    } catch (e) {
-      await child.kill().catch(() => undefined)
-      throw startupError(e, this.agentDef)
-    }
+      const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
+      const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
+      const automationAuthToken = await getAutomationAuthToken()
 
-    try {
-      await connection.initialize({
+      let supportsImages = false
+      const initialized = await connection.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: {}
       })
-    } catch (e) {
-      await child.kill().catch(() => undefined)
-      throw startupError(e, this.agentDef)
-    }
+      supportsImages = initialized.agentCapabilities?.promptCapabilities?.image ?? false
 
-    let sessionResult
-    try {
-      sessionResult = await connection.newSession({
+      const sessionResult = await connection.newSession({
         cwd: this.cwd,
         mcpServers: await buildACPMCPServers({ authorizationToken: automationAuthToken })
       })
+
+      const session: ACPSession = {
+        connection,
+        sessionId: sessionResult.sessionId,
+        child,
+        dead: false,
+        supportsImages,
+        get onUpdate() {
+          return onUpdate
+        },
+        set onUpdate(fn) {
+          onUpdate = fn
+        }
+      }
+
+      abortSignal?.throwIfAborted()
+      this.assertOpen()
+      ownedSession = session
+      return session
     } catch (e) {
       await child.kill().catch(() => undefined)
+      abortSignal?.throwIfAborted()
       throw startupError(e, this.agentDef)
+    } finally {
+      abortSignal?.removeEventListener('abort', onAbort)
+      if (this.startingChild === child) this.startingChild = null
     }
-
-    const session: ACPSession = {
-      connection,
-      sessionId: sessionResult.sessionId,
-      child,
-      dead: false,
-      get onUpdate() {
-        return onUpdate
-      },
-      set onUpdate(fn) {
-        onUpdate = fn
-      }
-    }
-
-    return session
   }
 }

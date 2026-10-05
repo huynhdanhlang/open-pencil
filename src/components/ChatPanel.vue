@@ -21,7 +21,7 @@ import ChatRunLocation from '@/components/chat/ChatRunLocation.vue'
 import ChatTranscript from '@/components/chat/ChatTranscript.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
 
-const { isConfigured, ensureChat, history, chatFailure, clearChatFailure } = useAIChat()
+const { isConfigured, ensureChat, history, chatFailure, clearChatFailure, providerID } = useAIChat()
 const { ai } = useI18n()
 const runLocation = useChatRunLocation()
 
@@ -32,6 +32,7 @@ const submission = useChatSubmission({
   flush: history.flush,
   clearFailure: clearChatFailure,
   getEditor: getActiveEditorStore,
+  useAgentImages: () => providerID.value.startsWith('acp:'),
   messages: computed(() => ({
     openSettings: ai.value.openProviderSettingsAction,
     requestFailed: ai.value.chatRequestFailed,

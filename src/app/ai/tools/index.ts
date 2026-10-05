@@ -72,6 +72,27 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
         if (!def.mutates) return def.execute(figma, args)
         // A step's calls may run concurrently; whole-page snapshots must not interleave.
         const release = await acquireMutation()
+        if (!toolChangesDocument(def)) {
+          try {
+            if (runPageId(store) !== pageId) {
+              throw new Error(
+                'The agent page changed while this view command was queued. Retry on the current page.'
+              )
+            }
+            // Canonical selection/viewport setters belong to the page on screen.
+            if (store.state.currentPageId !== pageId) await store.switchPage(pageId)
+            const result = await def.execute(figma, args)
+            if (figma.currentPageId !== pageId) {
+              if (store.state.currentPageId !== pageId) {
+                throw new Error('The viewed page changed during the agent command.')
+              }
+              await moveRunToPage(store, figma.currentPageId)
+            }
+            return result
+          } finally {
+            release()
+          }
+        }
         const before = store.snapshotPage(pageId)
         if (toolChangesDocument(def)) recordRunBaseline(store, before)
         try {
@@ -104,7 +125,7 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
         }
       },
       onAfterExecute: (def) => {
-        if (def.mutates && !isAtomicTool(def)) store.requestRender()
+        if (toolChangesDocument(def) && !isAtomicTool(def)) store.requestRender()
       },
       onFlashNodes: (nodeIds) => {
         markRunWork(store, nodeIds)

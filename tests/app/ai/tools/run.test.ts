@@ -8,7 +8,7 @@ import { toRaw } from 'vue'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import { createToolLoopTransport } from '@/app/ai/chat/transports'
-import { runPageId } from '@/app/ai/tools'
+import { createAITools, runPageId, startRun } from '@/app/ai/tools'
 import { aiToolOverrides } from '@/app/ai/tools/preferences'
 import * as figmaFactory from '@/app/automation/bridge/figma-factory'
 import { createEditorStore } from '@/app/editor/session/create'
@@ -16,6 +16,7 @@ import { presenceOf } from '@/app/presence/registry'
 import { appPreferences } from '@/app/settings/preferences/store'
 
 import { MOCK_USAGE } from '#tests/helpers/chat/usage'
+import { asDouble } from '#tests/helpers/doubles'
 
 type EditorStore = ReturnType<typeof createEditorStore>
 type StreamChunk =
@@ -88,28 +89,36 @@ async function runMessage(store: EditorStore, steps: Step[]) {
 }
 
 async function withStore(
-  check: (store: EditorStore, pages: { a: string; b: string }) => Promise<void>
+  check: (store: EditorStore, pages: { a: string; b: string }) => Promise<void>,
+  nativeView = false
 ) {
   const previousPreferences = structuredClone(toRaw(appPreferences.value))
   const previousTools = aiToolOverrides.value
   const store = createEditorStore()
   // Viewport DOM plumbing is outside this contract; keep the page the tools are given.
-  const factory = spyOn(figmaFactory, 'makeFigmaFromStore').mockImplementation((editor, pageId) => {
-    const api = new FigmaAPI(editor.graph)
-    api.currentPage = api.wrapNode(pageId ?? editor.state.currentPageId)
-    return api
-  })
+  const factory = nativeView
+    ? null
+    : spyOn(figmaFactory, 'makeFigmaFromStore').mockImplementation((editor, pageId) => {
+        const api = new FigmaAPI(editor.graph)
+        api.currentPage = api.wrapNode(pageId ?? editor.state.currentPageId)
+        return api
+      })
   // No canvas presents frames here; treat every page switch as presented.
   store.preparationController.acknowledgePresentation(Number.MAX_SAFE_INTEGER)
   try {
-    aiToolOverrides.value = { create_shape: true, switch_page: true }
+    aiToolOverrides.value = {
+      create_shape: true,
+      switch_page: true,
+      select_nodes: true,
+      viewport_set: true
+    }
     const a = store.state.currentPageId
     const b = store.graph.addPage('B').id
     await check(store, { a, b })
   } finally {
     appPreferences.value = previousPreferences
     aiToolOverrides.value = previousTools
-    factory.mockRestore()
+    factory?.mockRestore()
     store.dispose()
   }
 }
@@ -118,6 +127,29 @@ const rectangle = {
   toolName: 'create_shape',
   input: { type: 'RECTANGLE', x: 0, y: 0, width: 10, height: 10 }
 }
+
+test('a queued view command cannot switch back to the previous agent page', async () => {
+  await withStore(async (store, { b }) => {
+    startRun(store, 10)
+    const tools = createAITools(store)
+    type Execute = (input: Record<string, unknown>, options: { toolCallId: string; messages: [] }) => Promise<unknown>
+    const rawSwitch = tools.switch_page?.execute
+    const rawViewport = tools.viewport_set?.execute
+    if (typeof rawSwitch !== 'function' || typeof rawViewport !== 'function') throw new Error('View tools missing')
+    const switchPage = asDouble<Execute>(rawSwitch)
+    const viewport = asDouble<Execute>(rawViewport)
+    const first = switchPage({ page: b }, { toolCallId: 'switch', messages: [] })
+    const second = viewport({ x: 30, y: 40, zoom: 0.5 }, { toolCallId: 'zoom', messages: [] })
+    const results = await Promise.allSettled([first, second])
+    expect(results[0]?.status).toBe('fulfilled')
+    expect(results[1]).toMatchObject({
+      status: 'fulfilled',
+      value: { error: expect.stringContaining('agent page changed') }
+    })
+    expect(store.state.currentPageId).toBe(b)
+    expect(runPageId(store)).toBe(b)
+  }, true)
+})
 
 test('a run keeps working on its page while the user views another', async () => {
   await withStore(async (store, { a, b }) => {
@@ -133,6 +165,32 @@ test('a run keeps working on its page while the user views another', async () =>
     expect(store.graph.getChildren(a)).toHaveLength(0)
     expect(store.state.currentPageId).toBe(b)
   })
+})
+
+test('native agent view operations select and zoom without page snapshots or layout', async () => {
+  await withStore(async (store, { a, b }) => {
+    const shape = store.graph.createNode('RECTANGLE', a)
+    const snapshot = spyOn(store, 'snapshotPage')
+    const layout = spyOn(store, 'runMutationWithLayout')
+    const undo = spyOn(store, 'pushUndoEntry')
+    try {
+      await runMessage(store, [
+        (editor) => editor.switchPage(b),
+        { toolName: 'select_nodes', input: { ids: [shape.id] } },
+        { toolName: 'viewport_set', input: { x: 30, y: 40, zoom: 0.5 } }
+      ])
+      expect(store.state.currentPageId).toBe(a)
+      expect([...store.state.selectedIds]).toEqual([shape.id])
+      expect(store.getViewport()).toMatchObject({ center: { x: 30, y: 40 }, zoom: 0.5 })
+      expect(snapshot).not.toHaveBeenCalled()
+      expect(layout).not.toHaveBeenCalled()
+      expect(undo).not.toHaveBeenCalled()
+    } finally {
+      snapshot.mockRestore()
+      layout.mockRestore()
+      undo.mockRestore()
+    }
+  }, true)
 })
 
 test("the agent's switch_page moves the run and the user's view", async () => {

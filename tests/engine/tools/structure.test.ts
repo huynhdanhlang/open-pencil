@@ -3,6 +3,38 @@ import { describe, expect, test } from 'bun:test'
 import { expectDefined } from '#tests/helpers/assert'
 import { getTool, setupToolTest, type ToolResult } from '#tests/helpers/tools'
 
+describe('batch_update preflight', () => {
+  test.each([null, { visible: 'false' }, { opacity: 2 }, { width: 10 }, { direction: 'sideways' }])(
+    'rejects invalid later properties without changing earlier nodes: %j',
+    (props) => {
+      const { figma } = setupToolTest()
+      const rect = figma.createRectangle()
+      rect.name = 'Original'
+      const result = getTool('batch_update').execute(figma, {
+        operations: JSON.stringify([
+          { id: rect.id, props: { name: 'Changed' } },
+          { id: rect.id, props }
+        ])
+      }) as ToolResult
+      expect(result.error).toBeDefined()
+      expect(rect.name).toBe('Original')
+    }
+  )
+  test('rejects missing nodes before changing the batch', () => {
+    const { figma } = setupToolTest()
+    const rect = figma.createRectangle()
+    rect.name = 'Original'
+    const result = getTool('batch_update').execute(figma, {
+      operations: JSON.stringify([
+        { id: rect.id, props: { name: 'Changed' } },
+        { id: 'missing', props: { name: 'X' } }
+      ])
+    }) as ToolResult
+    expect(result.error).toBeDefined()
+    expect(rect.name).toBe('Original')
+  })
+})
+
 describe('delete_node', () => {
   test('removes a node', () => {
     const { figma } = setupToolTest()

@@ -5,9 +5,148 @@ import type { SessionUpdate } from '@agentclientprotocol/sdk'
 import type { ACPAgentDef } from '@open-pencil/core/constants'
 
 import { mapUpdate } from '@/app/ai/acp/map-update'
-import { formatConnectionError, buildCrashChunks } from '@/app/ai/acp/transport'
+import { ACPChatTransport, formatConnectionError, buildCrashChunks } from '@/app/ai/acp/transport'
 
 const TEXT_ID = 'text-1'
+
+test('a delayed old-process close cannot clear its replacement session', () => {
+  const transport = new ACPChatTransport({
+    agentDef: { id: 'codex', name: 'Codex', command: 'codex-acp', args: [] }
+  })
+  const previous = { dead: false }
+  const replacement = { dead: false }
+  Reflect.set(transport, 'session', replacement)
+  Reflect.apply(Reflect.get(transport, 'processClosed'), transport, [previous])
+  expect(previous.dead).toBe(true)
+  expect(replacement.dead).toBe(false)
+  expect(Reflect.get(transport, 'session')).toBe(replacement)
+  Reflect.apply(Reflect.get(transport, 'processClosed'), transport, [replacement])
+  expect(Reflect.get(transport, 'session')).toBeNull()
+})
+
+test('a successful ACP response finishes the UI stream and allows the next turn', async () => {
+  const transport = new ACPChatTransport({
+    agentDef: { id: 'codex', name: 'Codex', command: 'codex-acp', args: [] }
+  })
+  const session = {
+    sessionId: 'test',
+    supportsImages: true,
+    dead: false,
+    onUpdate: null as ((params: { update: SessionUpdate }) => void) | null,
+    child: { write: async () => undefined, kill: async () => undefined },
+    connection: {
+      prompt: async () => {
+        session.onUpdate?.({
+          update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Ready' } }
+        })
+        return { stopReason: 'end_turn' }
+      },
+      cancel: async () => undefined
+    }
+  }
+  Reflect.set(transport, 'session', session)
+  const stream = await transport.sendMessages({
+    trigger: 'submit-message',
+    chatId: 'test',
+    messageId: undefined,
+    abortSignal: undefined,
+    messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]
+  })
+  const reader = stream.getReader()
+  const chunks: unknown[] = []
+  const read = async () => {
+    for (;;) {
+      const r = await reader.read()
+      if (r.done) break
+      chunks.push(r.value)
+    }
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('ACP stream did not finish')), 500)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+    await reader.cancel()
+    reader.releaseLock()
+  }
+  expect(chunks).toContainEqual({ type: 'finish', finishReason: 'stop' })
+  const next = await transport.sendMessages({
+    trigger: 'submit-message',
+    chatId: 'test',
+    messageId: undefined,
+    abortSignal: undefined,
+    messages: [{ id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Again' }] }]
+  })
+  expect(await Array.fromAsync(next)).toContainEqual({ type: 'finish', finishReason: 'stop' })
+})
+
+test('aborting an active reply cancels the agent and releases the following turn', async () => {
+  const transport = new ACPChatTransport({
+    agentDef: { id: 'codex', name: 'Codex', command: 'codex-acp', args: [] }
+  })
+  let complete: (value: { stopReason: string }) => void = () => undefined
+  let cancelled = 0
+  let prompts = 0
+  const session = {
+    sessionId: 'test',
+    supportsImages: true,
+    dead: false,
+    onUpdate: null,
+    child: { kill: async () => undefined },
+    connection: {
+      prompt: () =>
+        ++prompts === 1
+          ? new Promise((resolve) => {
+              complete = resolve
+            })
+          : Promise.resolve({ stopReason: 'end_turn' }),
+      cancel: async () => {
+        cancelled++
+        complete({ stopReason: 'cancelled' })
+      }
+    }
+  }
+  Reflect.set(transport, 'session', session)
+  const abort = new AbortController()
+  const request = {
+    trigger: 'submit-message' as const,
+    chatId: 'test',
+    messageId: undefined,
+    abortSignal: undefined,
+    messages: [{ id: 'u', role: 'user' as const, parts: [{ type: 'text' as const, text: 'Hi' }] }]
+  }
+  const stream = await transport.sendMessages({ ...request, abortSignal: abort.signal })
+  abort.abort()
+  expect(await Array.fromAsync(stream)).toContainEqual({ type: 'finish', finishReason: 'stop' })
+  expect(cancelled).toBe(1)
+  expect(await Array.fromAsync(await transport.sendMessages(request))).toContainEqual({
+    type: 'finish',
+    finishReason: 'stop'
+  })
+  expect(prompts).toBe(2)
+})
+
+test('an already cancelled request does not send an ACP prompt', async () => {
+  const transport = new ACPChatTransport({
+    agentDef: { id: 'codex', name: 'Codex', command: 'codex-acp', args: [] }
+  })
+  const controller = new AbortController()
+  controller.abort()
+  await expect(
+    transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'test',
+      messageId: undefined,
+      abortSignal: controller.signal,
+      messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]
+    })
+  ).rejects.toMatchObject({ name: 'AbortError' })
+})
 
 describe('mapUpdate', () => {
   test('agent_message_chunk with non-empty text starts text and emits delta', () => {

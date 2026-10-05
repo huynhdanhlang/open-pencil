@@ -193,7 +193,7 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     name: 'Codex',
     command: 'codex-acp',
     args: [],
-    installCommand: 'npm i -g @zed-industries/codex-acp'
+    installCommand: 'npm i -g @agentclientprotocol/codex-acp'
   },
   {
     id: 'gemini-cli',

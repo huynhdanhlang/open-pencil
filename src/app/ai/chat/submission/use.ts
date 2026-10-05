@@ -7,6 +7,7 @@ import {
   designMessageWithImageFindings,
   VisionModelUnavailableError
 } from '@/app/ai/attachment/image/analyze'
+import { preparedImageFiles } from '@/app/ai/attachment/image/message'
 import { prepareImageAttachment, revokeImagePreviewURL } from '@/app/ai/attachment/image/prepare'
 import {
   imageDraftPresentations,
@@ -35,6 +36,7 @@ interface SubmissionOptions {
   messages: Ref<SubmissionMessages>
   reportError: (message: string, action?: { label: string; run: () => void }) => void
   openModelSettings: () => void
+  useAgentImages: () => boolean
 }
 
 export function useChatSubmission(options: SubmissionOptions) {
@@ -53,7 +55,8 @@ export function useChatSubmission(options: SubmissionOptions) {
   async function sendAttachments(
     currentChat: ChatInstance,
     submission: ChatSubmission,
-    version: number
+    version: number,
+    useAgentImages: boolean
   ): Promise<void> {
     const messageId = crypto.randomUUID()
     const editor = options.getEditor()
@@ -79,6 +82,21 @@ export function useChatSubmission(options: SubmissionOptions) {
     const preparedImages = await Promise.all(
       submission.images.map((image) => prepareImageAttachment(image.file))
     )
+    if (version !== operationVersion || options.chat.value !== currentChat) return
+    if (useAgentImages) {
+      setMessageAttachments(messageId, [
+        ...nodeAttachments,
+        ...preparedImagePresentations(messageId, submission.images, preparedImages)
+      ])
+      await currentChat
+        .sendMessage({
+          messageId,
+          text: submission.modelText,
+          files: preparedImageFiles(preparedImages)
+        })
+        .catch(() => undefined)
+      return
+    }
     const findings = await analyzeAttachedImages(editor, submission.modelText, preparedImages)
     if (version !== operationVersion || options.chat.value !== currentChat) return
 
@@ -134,7 +152,7 @@ export function useChatSubmission(options: SubmissionOptions) {
       if (submission.images.length === 0 && submission.nodes.length === 0) {
         await sendText(currentChat, submission)
       } else {
-        await sendAttachments(currentChat, submission, version)
+        await sendAttachments(currentChat, submission, version, options.useAgentImages())
       }
     } catch (error) {
       reportSubmissionError(error)
