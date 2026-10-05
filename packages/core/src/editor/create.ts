@@ -247,7 +247,9 @@ export function createEditor(options?: EditorOptions) {
     uninstallTextMeasurer?.()
     uninstallTextMeasurer =
       typeof renderer.measureTextNode === 'function'
-        ? installTextMeasurer((node, maxWidth) => renderer.measureTextNode(node, maxWidth))
+        ? installTextMeasurer(
+            (node, maxWidth) => _renderer?.measureTextNode(node, maxWidth) ?? null
+          )
         : null
   }
 

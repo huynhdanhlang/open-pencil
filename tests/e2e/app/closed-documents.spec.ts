@@ -21,7 +21,8 @@ test('documents closed in tabs are released', async ({ page }) => {
 
   for (let cycle = 0; cycle < 3; cycle++) {
     await page.evaluate(async (fixture) => {
-      const tabs = await import('/src/app/tabs/index.ts')
+      const modulePath = '/src/app/tabs/index.ts'
+      const tabs: typeof import('@/app/tabs') = await import(modulePath)
       const response = await fetch(`/__fixtures/${fixture}`)
       await tabs.openFileInNewTab(new File([await response.arrayBuffer()], fixture))
     }, FIXTURE)
@@ -34,7 +35,8 @@ test('documents closed in tabs are released', async ({ page }) => {
       )
       .toBe(true)
     await page.evaluate(async () => {
-      const tabs = await import('/src/app/tabs/index.ts')
+      const modulePath = '/src/app/tabs/index.ts'
+      const tabs: typeof import('@/app/tabs') = await import(modulePath)
       const store = tabs.getActiveStore()
       const graphs = Reflect.get(window, '__closedGraphs') as WeakRef<object>[]
       graphs.push(new WeakRef(store.graph))

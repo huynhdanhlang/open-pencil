@@ -262,6 +262,8 @@ Use bounded queries for only the needed nodes. Author a coherent frame/subtree i
 
 If rendering aborts, stop design writes and attempt canonical Save once. The native fork can preserve editable FIG data without generating a new preview; its warning means the file was saved, while rendering still needs an editor reopen. Confirm Save succeeded and verify the saved content before restarting. `close_file` must succeed with its unsaved guard; a saved file followed by new layout mutations can still leave the tab dirty. An operation timeout can leave work running, so inspect status before retrying. Preserve authentication and file scope; rescue through arbitrary scripting requires separate explicit authorization.
 
+Native FIG packing runs on a Rust blocking worker; this fork enables four Zstd workers for uncompressed design payloads of at least 8 MiB. Smaller payloads use the measured faster single-thread compression path. Saves remain serialized, and this does not parallelize canvas/layout; use bounded batches to reduce their main-thread work.
+
 ### Optional design review helper
 
 For a substantial independent analysis/review, discover `agent_dispatch`, `agent_status` and `agent_cancel`. These are optional native fork capabilities, not universal upstream tools. Read [Agent tasks](references/agent-tasks.md) before dispatching. At most one snapshot-only Codex helper runs; the main agent checks the advice and alone applies canvas changes. Small edits stay with the main agent. Never emulate missing dispatch through `eval` or confuse internal Codex subagents with OpenPencil MCP dispatch.

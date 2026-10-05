@@ -3,6 +3,8 @@ use std::io::{Cursor, Write};
 use std::sync::OnceLock;
 
 static FIG_BUILD_LOCK: OnceLock<tauri::async_runtime::Mutex<()>> = OnceLock::new();
+const FIG_COMPRESSION_WORKERS: u32 = 4;
+const FIG_PARALLEL_COMPRESSION_MIN_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Deserialize)]
 pub struct ImageEntry {
@@ -49,6 +51,12 @@ fn build_fig_archive(
     fig_kiwi_version: Option<u32>,
 ) -> Result<Vec<u8>, String> {
     let mut encoder = zstd::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
+    // Small payloads spend more time starting compression workers than compressing.
+    if kiwi_data.len() >= FIG_PARALLEL_COMPRESSION_MIN_BYTES {
+        encoder
+            .multithread(FIG_COMPRESSION_WORKERS)
+            .map_err(|e| e.to_string())?;
+    }
     encoder
         .include_contentsize(true)
         .map_err(|e| e.to_string())?;
@@ -105,30 +113,46 @@ mod tests {
 
     #[test]
     fn archive_preserves_version_payload_thumbnail_metadata_and_images() {
-        let payload = b"editable design data";
-        let bytes = build_fig_archive(
-            vec![1, 2, 3],
-            payload.to_vec(),
-            vec![4, 5],
-            "{\"name\":\"Design\"}".to_string(),
-            Some(vec![ImageEntry { name: "images/test".to_string(), data: vec![6, 7] }]),
-            Some(106),
-        ).unwrap();
-        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let mut canvas = Vec::new();
-        archive.by_name("canvas.fig").unwrap().read_to_end(&mut canvas).unwrap();
-        assert_eq!(&canvas[..8], b"fig-kiwi");
-        assert_eq!(u32::from_le_bytes(canvas[8..12].try_into().unwrap()), 106);
-        assert_eq!(&canvas[16..19], &[1, 2, 3]);
-        assert_eq!(zstd::decode_all(Cursor::new(&canvas[23..])).unwrap(), payload);
-        for (name, expected) in [
-            ("thumbnail.png", vec![4, 5]),
-            ("meta.json", b"{\"name\":\"Design\"}".to_vec()),
-            ("images/test", vec![6, 7]),
+        for payload in [
+            b"editable design data".to_vec(),
+            b"editable design data".repeat(500_000),
         ] {
-            let mut actual = Vec::new();
-            archive.by_name(name).unwrap().read_to_end(&mut actual).unwrap();
-            assert_eq!(actual, expected);
+            let bytes = build_fig_archive(
+                vec![1, 2, 3],
+                payload.clone(),
+                vec![4, 5],
+                "{\"name\":\"Design\"}".to_string(),
+                Some(vec![ImageEntry {
+                    name: "images/test".to_string(),
+                    data: vec![6, 7],
+                }]),
+                Some(106),
+            )
+            .unwrap();
+            let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+            let mut canvas = Vec::new();
+            archive
+                .by_name("canvas.fig")
+                .unwrap()
+                .read_to_end(&mut canvas)
+                .unwrap();
+            assert_eq!(&canvas[..8], b"fig-kiwi");
+            assert_eq!(u32::from_le_bytes(canvas[8..12].try_into().unwrap()), 106);
+            assert_eq!(&canvas[16..19], &[1, 2, 3]);
+            assert_eq!(zstd::decode_all(Cursor::new(&canvas[23..])).unwrap(), payload);
+            for (name, expected) in [
+                ("thumbnail.png", vec![4, 5]),
+                ("meta.json", b"{\"name\":\"Design\"}".to_vec()),
+                ("images/test", vec![6, 7]),
+            ] {
+                let mut actual = Vec::new();
+                archive
+                    .by_name(name)
+                    .unwrap()
+                    .read_to_end(&mut actual)
+                    .unwrap();
+                assert_eq!(actual, expected);
+            }
         }
     }
 }
