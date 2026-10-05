@@ -13,7 +13,7 @@ export {
   splitSegmentAt
 } from './bezier'
 
-import type { CanvasKit, Path } from 'canvaskit-wasm'
+import type { CanvasKit, FillType, Path, PathBuilder } from 'canvaskit-wasm'
 
 export {
   buildStyleOverrideTable,
@@ -25,6 +25,14 @@ import type { VectorNetwork, WindingRule } from '@open-pencil/scene-graph'
 import { addLoopToPath, addOpenSegmentsToPath } from './path-helpers'
 export { vectorNetworkToCenterlinePath, fitCircleArc, isClosedThinCrescent } from './centerline'
 export { regenerateFillGeometry } from './fill-geometry'
+
+function setBuilderFillType(builder: PathBuilder, fillType: FillType): void {
+  // CanvasKit 0.41.1 mutates the original but returns an owning native copy,
+  // despite declaring void. Newer bindings return the original instead.
+  // https://skia.googlesource.com/skia/+/2ffd155313f538385ce814e2c4318d6fc922f0f3
+  const copy = builder.setFillType(fillType) as unknown as PathBuilder | undefined
+  if (copy && copy !== builder) copy.delete()
+}
 
 export function vectorNetworkToPath(ck: CanvasKit, network: VectorNetwork): Path[] {
   const { vertices, segments, regions } = network
@@ -38,7 +46,8 @@ export function vectorNetworkToPath(ck: CanvasKit, network: VectorNetwork): Path
         for (const segmentIndex of loop) regionSegmentIndexes.add(segmentIndex)
         addLoopToPath(regionPath, loop, segments, vertices)
       }
-      regionPath.setFillType(
+      setBuilderFillType(
+        regionPath,
         region.windingRule === 'EVENODD' ? ck.FillType.EvenOdd : ck.FillType.Winding
       )
       paths.push(regionPath.detachAndDelete())
@@ -70,55 +79,59 @@ export function geometryBlobToPath(
   windingRule: WindingRule
 ): Path {
   const path = new ck.PathBuilder()
-  if (!(blob.buffer instanceof ArrayBuffer)) return path.detachAndDelete()
-  const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength)
-  let o = 0
+  try {
+    if (!(blob.buffer instanceof ArrayBuffer)) return path.detach()
+    const dv = new DataView(blob.buffer, blob.byteOffset, blob.byteLength)
+    let o = 0
 
-  while (o < blob.length) {
-    const cmd = blob[o++]
-    switch (cmd) {
-      case CMD_CLOSE:
-        path.close()
-        break
-      case CMD_MOVE_TO: {
-        const x = dv.getFloat32(o, true)
-        const y = dv.getFloat32(o + 4, true)
-        o += 8
-        path.moveTo(x, y)
-        break
+    while (o < blob.length) {
+      const cmd = blob[o++]
+      switch (cmd) {
+        case CMD_CLOSE:
+          path.close()
+          break
+        case CMD_MOVE_TO: {
+          const x = dv.getFloat32(o, true)
+          const y = dv.getFloat32(o + 4, true)
+          o += 8
+          path.moveTo(x, y)
+          break
+        }
+        case CMD_LINE_TO: {
+          const x = dv.getFloat32(o, true)
+          const y = dv.getFloat32(o + 4, true)
+          o += 8
+          path.lineTo(x, y)
+          break
+        }
+        case CMD_QUAD_TO: {
+          const x1 = dv.getFloat32(o, true)
+          const y1 = dv.getFloat32(o + 4, true)
+          const x = dv.getFloat32(o + 8, true)
+          const y = dv.getFloat32(o + 12, true)
+          o += 16
+          path.quadTo(x1, y1, x, y)
+          break
+        }
+        case CMD_CUBIC_TO: {
+          const x1 = dv.getFloat32(o, true)
+          const y1 = dv.getFloat32(o + 4, true)
+          const x2 = dv.getFloat32(o + 8, true)
+          const y2 = dv.getFloat32(o + 12, true)
+          const x = dv.getFloat32(o + 16, true)
+          const y = dv.getFloat32(o + 20, true)
+          o += 24
+          path.cubicTo(x1, y1, x2, y2, x, y)
+          break
+        }
+        default:
+          return path.detach()
       }
-      case CMD_LINE_TO: {
-        const x = dv.getFloat32(o, true)
-        const y = dv.getFloat32(o + 4, true)
-        o += 8
-        path.lineTo(x, y)
-        break
-      }
-      case CMD_QUAD_TO: {
-        const x1 = dv.getFloat32(o, true)
-        const y1 = dv.getFloat32(o + 4, true)
-        const x = dv.getFloat32(o + 8, true)
-        const y = dv.getFloat32(o + 12, true)
-        o += 16
-        path.quadTo(x1, y1, x, y)
-        break
-      }
-      case CMD_CUBIC_TO: {
-        const x1 = dv.getFloat32(o, true)
-        const y1 = dv.getFloat32(o + 4, true)
-        const x2 = dv.getFloat32(o + 8, true)
-        const y2 = dv.getFloat32(o + 12, true)
-        const x = dv.getFloat32(o + 16, true)
-        const y = dv.getFloat32(o + 20, true)
-        o += 24
-        path.cubicTo(x1, y1, x2, y2, x, y)
-        break
-      }
-      default:
-        return path.detachAndDelete()
     }
-  }
 
-  path.setFillType(windingRule === 'EVENODD' ? ck.FillType.EvenOdd : ck.FillType.Winding)
-  return path.detachAndDelete()
+    setBuilderFillType(path, windingRule === 'EVENODD' ? ck.FillType.EvenOdd : ck.FillType.Winding)
+    return path.detach()
+  } finally {
+    path.delete()
+  }
 }
