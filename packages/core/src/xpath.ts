@@ -230,7 +230,8 @@ export async function queryByXPath(
 
   if (targetPages.length === 0) return []
 
-  const { evaluateXPathToNodes } = await import('fontoxpath')
+  const fontoxpath = await import('fontoxpath')
+  const { evaluateXPathToNodes } = fontoxpath.default ?? fontoxpath
   const domFacade = createDomFacade(graph) as IDomFacade
   const results: SceneNode[] = []
 
