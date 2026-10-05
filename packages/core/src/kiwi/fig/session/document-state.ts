@@ -16,6 +16,17 @@ interface ReaderState {
 }
 const states = new WeakMap<SceneGraph, ReaderState>()
 
+/** The imported checkpoint predates live component deletion; the live graph owns that edit. */
+function checkpointForLiveGraph(
+  graph: SceneGraph,
+  checkpoint: FigSessionCheckpoint
+): FigSessionCheckpoint {
+  return {
+    ...checkpoint,
+    components: checkpoint.components.filter(([, entry]) => graph.getNode(entry.rootId))
+  }
+}
+
 export function registerReaderRecovery(
   graph: SceneGraph,
   bytes: ArrayBuffer,
@@ -72,11 +83,16 @@ export function populateReaderExport(source: SceneGraph, target: SceneGraph): bo
   if (!checkpoint) throw new Error('Missing reader checkpoint')
   const session = createFigDocumentSession(state.bytes, readerSessionOptions(state.diagnostics), {
     graph: target,
-    checkpoint
+    checkpoint: checkpointForLiveGraph(source, checkpoint)
   })
   // Export must include internal content too, not just the dependency closure needed
   // for visible pages. Loading happens on the isolated target, never the live graph.
-  for (const page of session.pages) session.loadPage(page.id)
+  for (const page of session.pages) {
+    const graphId = session.graphPageId(page.id)
+    if (!graphId) throw new Error(`Missing reader page mapping ${page.id}`)
+    // A removed page must not be populated from the pre-edit archive during Save.
+    if (source.getNode(graphId)) session.loadPage(page.id)
+  }
   return true
 }
 
@@ -96,7 +112,7 @@ export function recoverReaderPage(graph: SceneGraph, pageId: string): boolean {
     if (!state.checkpoint) throw new Error('Missing reader checkpoint')
     state.session = createFigDocumentSession(state.bytes, readerSessionOptions(state.diagnostics), {
       graph,
-      checkpoint: state.checkpoint
+      checkpoint: checkpointForLiveGraph(graph, state.checkpoint)
     })
   }
   const page = state.session.pages.find((page) => state.session?.graphPageId(page.id) === pageId)

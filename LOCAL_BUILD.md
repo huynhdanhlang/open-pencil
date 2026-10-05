@@ -22,6 +22,12 @@ This includes imported LIGA/CALT defaults. Providers are reused within an
 export and disposed afterward; glyph blobs reuse the existing deduplication map.
 Imported glyph geometry stays authoritative until a layout edit.
 
+FIG export reconciles reader checkpoints with live component deletion and skips
+pages removed before population. It loads retained pages on the isolated export
+graph without changing the live document. The adapter treats missing live roots
+as deletion; it does not establish deletion provenance or support for instances
+whose main component was removed.
+
 MCP selection and viewport tools now update the actual editor through its
 canonical actions. View reads use the canvas dimensions, zoom reports the
 applied value, and fitting rejects node IDs from another page. View commands
