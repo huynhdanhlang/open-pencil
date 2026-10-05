@@ -76,6 +76,17 @@ describe('SceneGraph ID generator', () => {
     expect(() => new SceneGraph(() => 'same')).toThrow('IDs in a row that are in use')
   })
 
+  test('skips a large imported range without treating a progressing generator as exhausted', () => {
+    let next = 1
+    const graph = new SceneGraph(() => `7:${next++}`)
+    const page = pageId(graph)
+    for (let i = 0; i < 1500; i++) graph.createNode('RECTANGLE', page)
+    next = 3
+
+    expect(graph.createNode('RECTANGLE', page).id).toBe('7:1503')
+    expect(graph.nodes.size).toBe(1503)
+  })
+
   test('gives modes added to a collection IDs from the injected generator', () => {
     const graph = new SceneGraph(sequence('7'))
     const collection = graph.createCollection('Colors')

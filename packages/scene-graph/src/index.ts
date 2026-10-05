@@ -369,13 +369,23 @@ export class SceneGraph {
   }
   /** An ID no entity uses; `issued` also excludes IDs handed out earlier in the same creation. */
   private generateEntityId(issued?: Set<string>): string {
-    for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt++) {
+    // Imported documents can occupy a long sequential range ahead of the local generator.
+    // Allow it to pass every occupied entity, while still bounding a stuck custom generator.
+    let maxAttempts =
+      MAX_ID_ATTEMPTS +
+      this.nodes.size +
+      this.variables.size +
+      this.variableCollections.size +
+      (issued?.size ?? 0)
+    for (const collection of this.variableCollections.values())
+      maxAttempts += collection.modes.length
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const id = this.idGenerator()
       if (this.isEntityIdTaken(id) || issued?.has(id)) continue
       issued?.add(id)
       return id
     }
-    throw new Error(`The ID generator returned ${MAX_ID_ATTEMPTS} IDs in a row that are in use`)
+    throw new Error(`The ID generator returned ${maxAttempts} IDs in a row that are in use`)
   }
   private isEntityIdTaken(id: string): boolean {
     if (this.nodes.has(id) || this.variables.has(id) || this.variableCollections.has(id))
