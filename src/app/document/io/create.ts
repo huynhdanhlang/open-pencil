@@ -35,7 +35,11 @@ export function createDocumentIOActions(
     },
     preparationController
   })
-  const { startWatchingFile, stopWatchingFile } = createFileWatcher({
+  const {
+    startWatchingFile,
+    stopWatchingFile,
+    dispose: disposeFileWatcher
+  } = createFileWatcher({
     getFilePath: sourceState.getFilePath,
     getFileHandle: sourceState.getFileHandle,
     getLastWriteTime: sourceState.getLastWriteTime,
@@ -91,7 +95,10 @@ export function createDocumentIOActions(
     setPlannedFilePath: sourceActions.setPlannedFilePath,
     saveFigFileToPath: sourceActions.saveFigFileToPath,
     startWatchingCurrentFile: sourceActions.startWatchingCurrentFile,
-    disposeDocumentIO: sourceActions.disposeDocumentIO,
+    disposeDocumentIO: () => {
+      disposeFileWatcher()
+      sourceActions.disposeDocumentIO()
+    },
     openFigFile,
     openDOMFile,
     importDOMText,

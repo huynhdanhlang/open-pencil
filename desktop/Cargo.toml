@@ -52,3 +52,7 @@ objc2-core-text = { version = "0.3.2", default-features = false, features = ["st
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+# Exact Wry 0.57.0 snapshot: app-scoped Linux WebKit memory policy at construction.
+[patch.crates-io]
+wry = { path = "vendor/wry" }

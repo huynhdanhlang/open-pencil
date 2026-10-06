@@ -8,15 +8,16 @@ type FileWatchOptions = {
   reloadFromDisk: () => void
 }
 
-export function createFileWatcher({
-  getFilePath,
-  getFileHandle,
-  getLastWriteTime,
-  reloadFromDisk
-}: FileWatchOptions) {
+export function createFileWatcher(
+  { getFilePath, getFileHandle, getLastWriteTime, reloadFromDisk }: FileWatchOptions,
+  targets = { isTauri: IS_TAURI, watchTauriFile, watchBrowserFile }
+) {
   let unwatchFile: (() => void) | null = null
+  let generation = 0
+  let disposed = false
 
   function stopWatchingFile() {
+    generation++
     if (unwatchFile) {
       unwatchFile()
       unwatchFile = null
@@ -24,22 +25,42 @@ export function createFileWatcher({
   }
 
   async function startWatchingFile() {
+    if (disposed) return
     stopWatchingFile()
+    const started = generation
+    const current = () => !disposed && started === generation
+    const reload = () => {
+      if (current()) reloadFromDisk()
+    }
+    const stop = () => {
+      if (current()) stopWatchingFile()
+    }
     const filePath = getFilePath()
     const fileHandle = getFileHandle()
+    let unwatch: (() => void) | null = null
 
-    if (filePath && IS_TAURI) {
-      unwatchFile = await watchTauriFile(filePath, getLastWriteTime, reloadFromDisk)
+    if (filePath && targets.isTauri) {
+      unwatch = await targets.watchTauriFile(filePath, getLastWriteTime, reload)
     } else if (fileHandle) {
-      unwatchFile = await watchBrowserFile(
+      unwatch = await targets.watchBrowserFile(
         fileHandle,
         getFileHandle,
         getLastWriteTime,
-        reloadFromDisk,
-        stopWatchingFile
+        reload,
+        stop
       )
     }
+    if (!current()) {
+      unwatch?.()
+      return
+    }
+    unwatchFile = unwatch
   }
 
-  return { startWatchingFile, stopWatchingFile }
+  function dispose() {
+    disposed = true
+    stopWatchingFile()
+  }
+
+  return { startWatchingFile, stopWatchingFile, dispose }
 }
