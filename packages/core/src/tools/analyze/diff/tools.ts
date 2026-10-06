@@ -1,6 +1,11 @@
 import * as v from 'valibot'
 
-import { parseJSXAttributes, sceneNodeAttributes, sceneNodeToJSX } from '@open-pencil/design-jsx'
+import {
+  normalizeJSXAttributeSources,
+  parseJSXAttributes,
+  sceneNodeAttributes,
+  sceneNodeToJSX
+} from '@open-pencil/design-jsx'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { toolNumber, nodeIdInput, nodeComparisonInput } from '#core/tools/input'
@@ -90,7 +95,7 @@ export const diffShow = defineTool({
     if (!current) return { error: `${node.type} nodes have no JSX attributes` }
     let proposed
     try {
-      proposed = parseJSXAttributes(args.attributes)
+      proposed = normalizeJSXAttributeSources(parseJSXAttributes(args.attributes))
     } catch (error) {
       return { error: errorMessage(error) }
     }
@@ -146,7 +151,10 @@ export const diffApply = defineTool({
       results.filter((result) => statuses.includes(result.status)).length
     const failed = count('failed')
     if (failed > 0 && !args.dryRun) {
-      return { error: 'Patch does not apply', results: results.filter((r) => r.error) }
+      return {
+        error: 'Patch does not apply',
+        results: results.filter((r) => r.error)
+      }
     }
     return {
       dryRun: args.dryRun,

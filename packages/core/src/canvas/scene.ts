@@ -47,6 +47,7 @@ import {
   drawReflowedPathTextSilhouettes,
   isReflowedPathText
 } from './text/derived'
+import { drawMatchingSavedParagraph } from './text/saved-paragraph'
 
 function drawVisibleFills(
   r: SkiaRenderer,
@@ -186,7 +187,12 @@ function renderChildIds(
     (childId) => {
       const child = graph.getNode(childId)
       if (!child) return null
-      return { x: child.x, y: child.y, width: child.width, height: child.height }
+      return {
+        x: child.x,
+        y: child.y,
+        width: child.width,
+        height: child.height
+      }
     }
   )
 }
@@ -945,7 +951,10 @@ function drawResolvedPathText(
 }
 
 function drawSavedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fill?: Fill): boolean {
-  return canDrawSavedText(node, fill) && drawDerivedText(r, canvas, node)
+  return (
+    canDrawSavedText(node, fill) &&
+    (drawMatchingSavedParagraph(r, canvas, node) || drawDerivedText(r, canvas, node))
+  )
 }
 
 export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fill?: Fill): void {

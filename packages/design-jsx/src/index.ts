@@ -97,7 +97,7 @@ export {
   type DesignJSXWithLayers,
   type JSXAttributeSource
 } from './export'
-export { parseJSXAttributes } from './attributes'
+export { parseJSXAttributes, normalizeJSXAttributeSources } from './attributes'
 export { jsxNodeFields, type JSXNodeFields } from './fields'
 export { reconcileRenderedLayers } from './reconcile'
 export { JSX_REFERENCE, AUTHORING_EXAMPLES, type AuthoringExample } from './reference'

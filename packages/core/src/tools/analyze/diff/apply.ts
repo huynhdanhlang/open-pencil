@@ -5,6 +5,7 @@ import {
   createElement,
   DESIGN_JSX_SUPPORTED_PROPERTIES,
   jsxNodeFields,
+  normalizeJSXAttributeSources,
   parseJSXAttributes,
   resolveToTree,
   sceneNodeAttributes,
@@ -81,7 +82,7 @@ function parseSources(sources: string[]): JSXAttributeSource[] {
   const attributes = sources.flatMap((source) => parseJSXAttributes(source))
   const unsupported = attributes.find(({ name }) => !DESIGN_JSX_SUPPORTED_PROPERTIES.has(name))
   if (unsupported) throw new Error(`Unsupported attribute "${unsupported.name}"`)
-  return attributes
+  return normalizeJSXAttributeSources(attributes)
 }
 
 /** Old values that differ from the node's, and new attributes it already has. */
@@ -151,7 +152,10 @@ function planUpdate(
       Object.keys(update.bind).length === 0 &&
       update.unbind.length === 0
     const status = empty ? 'unchanged' : 'applied'
-    return { result: { path: operation.path, id: node.id, status, changes }, update }
+    return {
+      result: { path: operation.path, id: node.id, status, changes },
+      update
+    }
   } catch (error) {
     return failed(operation, errorMessage(error))
   }
@@ -169,7 +173,11 @@ function planAdd(graph: SceneGraph, operation: Extract<DiffOperation, { kind: 'a
   } catch (error) {
     return failed(operation, errorMessage(error))
   }
-  const place = { parentId: parent.id, index: operation.index, jsx: operation.jsx }
+  const place = {
+    parentId: parent.id,
+    index: operation.index,
+    jsx: operation.jsx
+  }
   return { result: { path: operation.path, id: null, status: 'added' }, place }
 }
 
@@ -180,14 +188,23 @@ function planOperation(graph: SceneGraph, operation: DiffOperation, force: boole
     case 'remove': {
       const node = editableNode(graph, operation.id)
       if (typeof node === 'string') return failed(operation, node)
-      return { result: { path: operation.path, id: node.id, status: 'removed' } }
+      return {
+        result: { path: operation.path, id: node.id, status: 'removed' }
+      }
     }
     case 'move': {
       const node = editableNode(graph, operation.id)
       if (typeof node === 'string') return failed(operation, node)
       if (!node.parentId) return failed(operation, `Node "${node.id}" has no parent`)
-      const place = { parentId: node.parentId, index: operation.index, ids: [node.id] }
-      return { result: { path: operation.path, id: node.id, status: 'moved' }, place }
+      const place = {
+        parentId: node.parentId,
+        index: operation.index,
+        ids: [node.id]
+      }
+      return {
+        result: { path: operation.path, id: node.id, status: 'moved' },
+        place
+      }
     }
   }
   return planAdd(graph, operation)

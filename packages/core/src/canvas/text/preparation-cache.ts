@@ -11,18 +11,22 @@ const MAX_PREPARED_PARAGRAPHS = 1024
 const MAX_PREPARED_TEXT_UNITS = 262_144
 
 import { PARAGRAPH_INPUT_KEYS } from './paragraph-inputs'
+import type { TextShapeRuntime } from './shape'
 
 type PreparationInput = SceneNode[(typeof PARAGRAPH_INPUT_KEYS)[number]]
 
 export interface PreparedText {
   paragraph: Paragraph
   missingGlyphs?: ReturnType<typeof missingGlyphOccurrences>
+  matchesSavedGlyphs?: boolean
 }
 
 interface Entry extends PreparedText {
   nodeId: string
   inputs: PreparationInput[]
   units: number
+  savedGlyphs: SceneNode['derivedTextGlyphs']
+  verticalAlignment: SceneNode['textAlignVertical']
 }
 
 export class TextPreparationCache {
@@ -34,6 +38,7 @@ export class TextPreparationCache {
   private readonly invalidatedCoverage = new Set<string>()
   private generation = -1
   private provider: TypefaceFontProvider | null = null
+  private pinnedShapeRuntime: TextShapeRuntime | null = null
 
   constructor(
     private readonly maxEntries = MAX_PREPARED_PARAGRAPHS,
@@ -58,7 +63,7 @@ export class TextPreparationCache {
     variant: string,
     generation: number,
     provider: TypefaceFontProvider,
-    build: () => Paragraph,
+    build: () => Paragraph | PreparedText,
     consume: (prepared: PreparedText) => T
   ): T {
     if (this.generation !== generation || this.provider !== provider) {
@@ -67,28 +72,35 @@ export class TextPreparationCache {
       this.provider = provider
     }
     if (node.text.length > this.maxTextUnits || this.maxEntries <= 0) {
-      const paragraph = build()
+      const built = build()
+      const prepared = 'paragraph' in built ? built : { paragraph: built }
       try {
-        return consume({ paragraph })
+        return consume(prepared)
       } finally {
-        paragraph.delete()
+        prepared.paragraph.delete()
       }
     }
     const key = `${node.id}\0${variant}`
     let entry = this.entries.get(key)
     if (
       entry &&
-      !PARAGRAPH_INPUT_KEYS.every((prop, index) => entry?.inputs[index] === node[prop])
+      (!PARAGRAPH_INPUT_KEYS.every((prop, index) => entry?.inputs[index] === node[prop]) ||
+        entry.savedGlyphs !== node.derivedTextGlyphs ||
+        entry.verticalAlignment !== node.textAlignVertical)
     ) {
       this.deleteNode(node.id)
       entry = undefined
     }
     if (!entry) {
+      const built = build()
+      const prepared = 'paragraph' in built ? built : { paragraph: built }
       entry = {
+        ...prepared,
         nodeId: node.id,
         inputs: PARAGRAPH_INPUT_KEYS.map((prop) => node[prop]),
-        paragraph: build(),
-        units: node.text.length
+        units: node.text.length,
+        savedGlyphs: node.derivedTextGlyphs,
+        verticalAlignment: node.textAlignVertical
       }
       this.entries.set(key, entry)
       const keys = this.nodeKeys.get(node.id) ?? new Set<string>()
@@ -96,6 +108,11 @@ export class TextPreparationCache {
       this.nodeKeys.set(node.id, keys)
     }
     return consume(entry)
+  }
+
+  /** One pinned provider per font scope, not one font-data copy per cached text node. */
+  shapeRuntime(create: () => TextShapeRuntime): TextShapeRuntime {
+    return (this.pinnedShapeRuntime ??= create())
   }
 
   hasGlyphCoverage(node: SceneNode, generation: number, provider: TypefaceFontProvider): boolean {
@@ -137,5 +154,7 @@ export class TextPreparationCache {
     this.glyphCoverage = new WeakMap()
     this.invalidatedCoverage.clear()
     this.entries.clear()
+    this.pinnedShapeRuntime?.dispose()
+    this.pinnedShapeRuntime = null
   }
 }

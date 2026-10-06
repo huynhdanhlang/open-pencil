@@ -104,6 +104,9 @@
 
 ### Fixed
 
+- JSX diff previews and application now treat supported aliases (`fontSize`/`size`, `width`/`w`, etc.) as the same attribute, including old-value checks. Conflicting aliases fail instead of silently overriding or ignoring an edit.
+- Saved plain text uses the same paragraph raster as live text when a cached check proves every saved glyph outline and placement matches the exact loaded font. Imported layout differences, missing fonts, decorations, path text and complex/blended paints retain their saved-glyph rendering; one bounded font scope is shared across prepared paragraphs.
+
 - MCP design JSX respects replacement and insertion placement, keeps variable bindings through the desktop bridge, and restores dependent component instances on other pages with their original layer IDs and overrides when a structural edit is undone.
 - Draw segmented controls in the properties panel at the height of the fields beside them.
 - Keep saving AI chat history in Safari Private Browsing after a message with an image or a reply that changed the document. Safari cannot store image data that way in a private window, so the conversation stopped saving from that point and showed "Chat history could not be saved".

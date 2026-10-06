@@ -147,46 +147,62 @@ export function shapeText(
     halfLeading: true
   })
   try {
-    const lines = paragraph.getShapedLines()
-    const metrics = paragraph.getLineMetrics()
-    if (lines.length === 0 || lines.length !== metrics.length) return null
-
-    const offsetY = textVerticalOffset(node, paragraph.getHeight())
-    const glyphs: ShapedTextGlyph[] = []
-    const offsetsToCharacters = shapedCharacterOffsets(text, lines)
-    const characterOffsets: Array<number | undefined> = Array.from({ length: text.length })
-    for (const [lineIndex, line] of lines.entries()) {
-      for (const run of line.runs) {
-        glyphs.push(
-          ...shapedRunGlyphs(
-            run,
-            runOutlineSource(node, text, run, offsetsToCharacters, fontData),
-            { left: metrics[lineIndex].left, baseline: metrics[lineIndex].baseline + offsetY },
-            characterOffsets,
-            offsetsToCharacters
-          )
-        )
-      }
-    }
-    // Outlines from some runs only would draw the text with characters missing, and saved
-    // glyphs draw decorations on one baseline.
-    const outlined =
-      glyphs.every((glyph) => glyph.commands) && !(lines.length > 1 && hasDecoration(node))
-    return {
-      glyphs: outlined ? glyphs : glyphs.map((glyph) => ({ ...glyph, commands: null })),
-      baselines: metrics.map((line) => ({
-        firstCharacter: line.startIndex,
-        endCharacter: Math.min(line.endIncludingNewline, text.length),
-        position: { x: line.left, y: line.baseline + offsetY },
-        width: line.width,
-        lineY: line.baseline - line.ascent + offsetY,
-        lineHeight: line.height,
-        lineAscent: line.ascent
-      })),
-      logicalIndexToCharacterOffsetMap: completeCharacterOffsets(characterOffsets)
-    }
+    return shapeParagraph(node, paragraph, fontData)
   } finally {
     paragraph.delete()
+  }
+}
+
+/** Outline the same paragraph that will be painted, using its provider's pinned face buffers. */
+export function shapeParagraph(
+  node: SceneNode,
+  paragraph: Paragraph,
+  fontData?: ReadonlyMap<string, ArrayBuffer>
+): ShapedText | null {
+  const text = transformTextCase(node.text, node.textCase)
+  if (!canShape(node, text)) return null
+  const lines = paragraph.getShapedLines()
+  const metrics = paragraph.getLineMetrics()
+  if (lines.length === 0 || lines.length !== metrics.length) return null
+
+  const offsetY = textVerticalOffset(node, paragraph.getHeight())
+  const glyphs: ShapedTextGlyph[] = []
+  const offsetsToCharacters = shapedCharacterOffsets(text, lines)
+  const characterOffsets: Array<number | undefined> = Array.from({
+    length: text.length
+  })
+  for (const [lineIndex, line] of lines.entries()) {
+    for (const run of line.runs) {
+      glyphs.push(
+        ...shapedRunGlyphs(
+          run,
+          runOutlineSource(node, text, run, offsetsToCharacters, fontData),
+          {
+            left: metrics[lineIndex].left,
+            baseline: metrics[lineIndex].baseline + offsetY
+          },
+          characterOffsets,
+          offsetsToCharacters
+        )
+      )
+    }
+  }
+  // Outlines from some runs only would draw the text with characters missing, and saved
+  // glyphs draw decorations on one baseline.
+  const outlined =
+    glyphs.every((glyph) => glyph.commands) && !(lines.length > 1 && hasDecoration(node))
+  return {
+    glyphs: outlined ? glyphs : glyphs.map((glyph) => ({ ...glyph, commands: null })),
+    baselines: metrics.map((line) => ({
+      firstCharacter: line.startIndex,
+      endCharacter: Math.min(line.endIncludingNewline, text.length),
+      position: { x: line.left, y: line.baseline + offsetY },
+      width: line.width,
+      lineY: line.baseline - line.ascent + offsetY,
+      lineHeight: line.height,
+      lineAscent: line.ascent
+    })),
+    logicalIndexToCharacterOffsetMap: completeCharacterOffsets(characterOffsets)
   }
 }
 
@@ -208,6 +224,16 @@ export async function withFigExportRuntime<T>(
 ): Promise<T> {
   if (!needsShaping(graph)) return write(EMPTY_EXPORT_RUNTIME)
   const canvasKit = ck ?? fontManager.providerCanvasKit() ?? (await getCanvasKit())
+  const runtime = createTextShapeRuntime(canvasKit, graph.nodes.values())
+  try {
+    return await write(runtime)
+  } finally {
+    runtime.dispose()
+  }
+}
+
+/** One clean font scope, shared by export and bounded saved-paragraph preparation. */
+export function createTextShapeRuntime(canvasKit: CanvasKit, nodes: Iterable<SceneNode>) {
   const provider = canvasKit.TypefaceFontProvider.Make()
   const fontData = new Map<string, ArrayBuffer>()
   try {
@@ -228,8 +254,8 @@ export async function withFigExportRuntime<T>(
         if (fallback !== family) registerFace(fallback, 400, false)
       }
     }
-    for (const node of graph.nodes.values()) {
-      if (node.type !== 'TEXT') continue
+    const registerNode = (node: SceneNode) => {
+      if (node.type !== 'TEXT') return
       registerStyle(node.fontFamily, node.fontWeight, node.italic)
       for (const run of node.styleRuns) {
         registerStyle(
@@ -239,8 +265,18 @@ export async function withFigExportRuntime<T>(
         )
       }
     }
-    return await write({ shapeText: (node) => shapeText(canvasKit, provider, node, fontData) })
-  } finally {
+    for (const node of nodes) registerNode(node)
+    return {
+      provider,
+      fontData,
+      registerNode,
+      shapeText: (node: SceneNode) => shapeText(canvasKit, provider, node, fontData),
+      dispose: () => provider.delete()
+    }
+  } catch (error) {
     provider.delete()
+    throw error
   }
 }
+
+export type TextShapeRuntime = ReturnType<typeof createTextShapeRuntime>

@@ -1,17 +1,22 @@
 import { describe, expect, test } from 'bun:test'
 
+import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
+
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { ALL_TOOLS, diffDocuments } from '@open-pencil/core/tools'
 import { SceneGraph, type Color } from '@open-pencil/scene-graph'
-
-import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
 
 type DiffResult = { diff?: string | null; message?: string; error?: string }
 type ApplyResult = {
   error?: string
   applied?: number
   failed?: number
-  results?: { status: string; id: string | null; error?: string; changes?: string[] }[]
+  results?: {
+    status: string
+    id: string | null
+    error?: string
+    changes?: string[]
+  }[]
 }
 
 function tool(name: string) {
@@ -74,7 +79,12 @@ describe('diff_create and diff_apply', () => {
     // Updates and moves keep their nodes; only the added note is new.
     expect(getNodeOrThrow(graph, card.id).childIds.slice(0, 2)).toEqual([badge.id, label.id])
     expect(getNodeOrThrow(graph, label.id).width).toBe(120)
-    expect(await run<DiffResult>(figma, 'diff_create', { from: card.id, to: copy.id })).toEqual({
+    expect(
+      await run<DiffResult>(figma, 'diff_create', {
+        from: card.id,
+        to: copy.id
+      })
+    ).toEqual({
       diff: null,
       message: 'No differences found'
     })
@@ -86,7 +96,9 @@ describe('diff_create and diff_apply', () => {
     const copy = card.clone()
     copy.opacity = 0.5
 
-    await run<ApplyResult>(figma, 'diff_apply', { patch: await createPatch(figma, card.id, copy.id) })
+    await run<ApplyResult>(figma, 'diff_apply', {
+      patch: await createPatch(figma, card.id, copy.id)
+    })
     expect(getNodeOrThrow(graph, card.id).opacity).toBe(0.5)
     expect(card.getPluginData('note')).toBe('kept')
   })
@@ -115,7 +127,10 @@ describe('diff_create and diff_apply', () => {
       expectDefined(copy.children[0], 'copied label').resize(120, 24)
       const patch = (await createPatch(figma, card.id, copy.id)).replace('+w={120}', '+w={wide}')
 
-      const applied = await run<ApplyResult>(figma, 'diff_apply', { patch, force })
+      const applied = await run<ApplyResult>(figma, 'diff_apply', {
+        patch,
+        force
+      })
       expect(applied.error).toBe('Patch does not apply')
       // The card's change was valid, but it must not land without the label's.
       expect(getNodeOrThrow(graph, card.id).opacity).toBe(1)
@@ -194,12 +209,116 @@ describe('diff_create and diff_apply', () => {
 
   test('reports a hunk it cannot read', async () => {
     const { figma } = setup()
-    const applied = await run<ApplyResult>(figma, 'diff_apply', { patch: 'w={1}' })
+    const applied = await run<ApplyResult>(figma, 'diff_apply', {
+      patch: 'w={1}'
+    })
     expect(applied.error).toBe('Line 1: unexpected line: w={1}')
   })
 })
 
 describe('diff_show', () => {
+  test('previews fontSize under its exported name and applies it with stale checks', async () => {
+    const { graph, figma } = setup()
+    const label = figma.createText()
+    label.name = 'Request'
+    label.fontSize = 17
+
+    const shown = await run<DiffResult>(figma, 'diff_show', {
+      id: label.id,
+      attributes: 'fontSize={18}'
+    })
+    const patch = expectDefined(shown.diff, 'patch')
+    expect(patch).toBe(`@@ /Request #${label.id}\n-size={17}\n+size={18}`)
+    const preview = await run<ApplyResult>(figma, 'diff_apply', {
+      patch,
+      dryRun: true
+    })
+    expect(preview.results?.[0]?.changes).toEqual(['size'])
+    expect(getNodeOrThrow(graph, label.id).fontSize).toBe(17)
+    label.fontSize = 19
+    expect((await run<ApplyResult>(figma, 'diff_apply', { patch })).error).toBe(
+      'Patch does not apply'
+    )
+    expect(getNodeOrThrow(graph, label.id).fontSize).toBe(19)
+    label.fontSize = 17
+    expect(await run<ApplyResult>(figma, 'diff_apply', { patch })).toMatchObject({
+      applied: 1,
+      failed: 0
+    })
+    expect(getNodeOrThrow(graph, label.id).fontSize).toBe(18)
+  })
+
+  test('checks alias-only legacy additions against the existing canonical attribute', async () => {
+    const { graph, figma } = setup()
+    const label = figma.createText()
+    label.fontSize = 17
+    const patch = `@@ /Request #${label.id}\n+fontSize={18}`
+    const stale = await run<ApplyResult>(figma, 'diff_apply', { patch })
+    expect(stale.results?.[0]?.error).toContain('size: expected none, found size={17}')
+    expect(getNodeOrThrow(graph, label.id).fontSize).toBe(17)
+    expect(await run<ApplyResult>(figma, 'diff_apply', { patch, force: true })).toMatchObject({
+      applied: 1,
+      failed: 0
+    })
+    expect(getNodeOrThrow(graph, label.id).fontSize).toBe(18)
+  })
+
+  test.each([false, true])('rejects contradictory aliases even when force is %p', async (force) => {
+    const { graph, figma, card } = setup()
+    const shown = await run<DiffResult>(figma, 'diff_show', {
+      id: card.id,
+      attributes: 'w={220} width={240}'
+    })
+    expect(shown.error).toContain('Conflicting attributes for "w"')
+    const applied = await run<ApplyResult>(figma, 'diff_apply', {
+      patch: `@@ /Card #${card.id}\n-w={200}\n+w={220}\n+width={240}`,
+      force
+    })
+    expect(applied.results?.[0]?.error).toContain('Conflicting attributes for "w"')
+    expect(getNodeOrThrow(graph, card.id).width).toBe(200)
+  })
+
+  test('uses aliases for default text size and other exported properties', async () => {
+    const { graph, figma, card } = setup()
+    const label = figma.createText()
+    label.fontSize = 14
+    const textPatch = expectDefined(
+      (
+        await run<DiffResult>(figma, 'diff_show', {
+          id: label.id,
+          attributes: 'fontSize={18} fontFamily="Inter" fontWeight={700}'
+        })
+      ).diff,
+      'text patch'
+    )
+    await run<ApplyResult>(figma, 'diff_apply', { patch: textPatch })
+    expect(getNodeOrThrow(graph, label.id)).toMatchObject({
+      fontSize: 18,
+      fontFamily: 'Inter',
+      fontWeight: 700
+    })
+    const framePatch = expectDefined(
+      (
+        await run<DiffResult>(figma, 'diff_show', {
+          id: card.id,
+          attributes: 'width={240} height={110} backgroundColor="#FF0000"'
+        })
+      ).diff,
+      'frame patch'
+    )
+    await run<ApplyResult>(figma, 'diff_apply', { patch: framePatch })
+    expect(getNodeOrThrow(graph, card.id)).toMatchObject({
+      width: 240,
+      height: 110
+    })
+    expect(getNodeOrThrow(graph, card.id).fills[0]?.color).toEqual({
+      r: 1,
+      g: 0,
+      b: 0,
+      a: 1
+    })
+  })
+
   test('previews attributes without changing the node, as a patch diff_apply applies', async () => {
     const { graph, figma, card } = setup()
 
@@ -225,7 +344,10 @@ describe('diff_show', () => {
     ['opacity={half}', 'half is not defined']
   ])('rejects %p', async (attributes, error) => {
     const { figma, card } = setup()
-    const shown = await run<DiffResult>(figma, 'diff_show', { id: card.id, attributes })
+    const shown = await run<DiffResult>(figma, 'diff_show', {
+      id: card.id,
+      attributes
+    })
     expect(shown.error).toContain(error)
   })
 })
