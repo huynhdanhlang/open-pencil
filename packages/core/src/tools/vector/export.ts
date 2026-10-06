@@ -1,7 +1,7 @@
 import { fromUint8Array } from 'js-base64'
 import * as v from 'valibot'
 
-import type { RasterExportFormat } from '#core/io/formats/raster'
+import { computeContentBounds, type RasterExportFormat } from '#core/io/formats/raster'
 import { toolNumber } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
@@ -123,24 +123,8 @@ export const exportImage = defineTool({
     const format = args.format.toUpperCase() as RasterExportFormat
     const requestedScale = args.scale
     const maxEdge = args.maxEdge
-    const nodes = ids.map((id) => figma.getNodeById(id)).filter((node) => node !== null)
-    if (nodes.length === 0) return { error: 'No visible nodes to export' }
-    const bounds = nodes.reduce(
-      (result, node) => {
-        const box = node.absoluteBoundingBox
-        const minX = Math.min(result.minX, box.x)
-        const minY = Math.min(result.minY, box.y)
-        const maxX = Math.max(result.maxX, box.x + box.width)
-        const maxY = Math.max(result.maxY, box.y + box.height)
-        return { minX, minY, maxX, maxY }
-      },
-      {
-        minX: Number.POSITIVE_INFINITY,
-        minY: Number.POSITIVE_INFINITY,
-        maxX: Number.NEGATIVE_INFINITY,
-        maxY: Number.NEGATIVE_INFINITY
-      }
-    )
+    const bounds = computeContentBounds(figma.graph, ids)
+    if (!bounds) return { error: 'No visible nodes to export' }
     const width = bounds.maxX - bounds.minX
     const height = bounds.maxY - bounds.minY
     const boundedScale = boundedRasterScale(width, height, requestedScale, maxEdge)

@@ -447,46 +447,68 @@ export function applyImageFill(
   const hash = fill.imageHash
   if (!hash) return false
   let img = r.imageCache.get(hash)
+  let cached = true
   if (!img) {
     const data = graph.images.get(hash)
     if (!data) return false
     const decoded = r.ck.MakeImageFromEncoded(data) ?? undefined
     if (!decoded) return false
-    img = decoded.makeCopyWithDefaultMipmaps()
-    decoded.delete()
-    r.imageCache.set(hash, img)
+    try {
+      img = decoded.makeCopyWithDefaultMipmaps()
+    } finally {
+      decoded.delete()
+    }
+    cached = false
+    try {
+      cached = r.imageCache.set(hash, img)
+    } catch (error) {
+      if (r.imageCache.peek(hash) !== img) img.delete()
+      throw error
+    }
   }
 
-  const imgW = img.width()
-  const imgH = img.height()
-  const scaleMode = fill.imageScaleMode ?? 'FILL'
+  try {
+    const imgW = img.width()
+    const imgH = img.height()
+    const scaleMode = fill.imageScaleMode ?? 'FILL'
 
-  const localMatrix = makeImageFillLocalMatrix(r, fill, node, imgW, imgH)
+    const localMatrix = makeImageFillLocalMatrix(r, fill, node, imgW, imgH)
 
-  if (scaleMode === 'TILE') {
-    const shader = img.makeShaderCubic(
-      r.ck.TileMode.Repeat,
-      r.ck.TileMode.Repeat,
-      1 / 3,
-      1 / 3,
+    if (scaleMode === 'TILE') {
+      const shader = img.makeShaderCubic(
+        r.ck.TileMode.Repeat,
+        r.ck.TileMode.Repeat,
+        1 / 3,
+        1 / 3,
+        localMatrix
+      )
+      try {
+        paint.setShader(shader)
+      } finally {
+        shader.delete()
+      }
+      return true
+    }
+
+    const tileMode = scaleMode === 'FIT' ? r.ck.TileMode.Decal : r.ck.TileMode.Clamp
+    const shader = img.makeShaderOptions(
+      tileMode,
+      tileMode,
+      r.ck.FilterMode.Linear,
+      r.ck.MipmapMode.Linear,
       localMatrix
     )
-    paint.setShader(shader)
-    shader.delete()
+    try {
+      paint.setShader(shader)
+    } finally {
+      shader.delete()
+    }
     return true
+  } finally {
+    // The paint/shader holds its own native reference. A rejected cache insert
+    // leaves handle ownership here, rather than leaking an oversized image.
+    if (!cached) img.delete()
   }
-
-  const tileMode = scaleMode === 'FIT' ? r.ck.TileMode.Decal : r.ck.TileMode.Clamp
-  const shader = img.makeShaderOptions(
-    tileMode,
-    tileMode,
-    r.ck.FilterMode.Linear,
-    r.ck.MipmapMode.Linear,
-    localMatrix
-  )
-  paint.setShader(shader)
-  shader.delete()
-  return true
 }
 
 export function makeArcPath(r: SkiaRenderer, node: SceneNode) {

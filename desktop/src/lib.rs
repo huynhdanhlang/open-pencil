@@ -12,7 +12,7 @@ use credentials::{
     credential_write,
 };
 use deep_link::path_matches_suffix;
-use fig_container::build_fig_file;
+use fig_container::{build_fig_file, build_fig_file_binary};
 use fonts::{list_system_fonts, load_system_font};
 use http::proxy_http_request;
 use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
@@ -291,6 +291,7 @@ pub fn run() {
         .manage(PendingOpen(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             build_fig_file,
+            build_fig_file_binary,
             credential_read,
             credential_access_paused,
             credential_retry_access,

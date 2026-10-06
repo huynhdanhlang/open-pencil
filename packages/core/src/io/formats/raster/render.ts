@@ -1,4 +1,4 @@
-import type { CanvasKit, Canvas } from 'canvaskit-wasm'
+import type { CanvasKit, Canvas, Image, Surface, MallocObj } from 'canvaskit-wasm'
 
 import {
   getWorldMatrix,
@@ -88,6 +88,28 @@ function findAlphaBounds(ck: CanvasKit, canvas: Canvas, width: number, height: n
 
 const MIN_TRANSPARENT_TRIM_INSET = 2
 
+// Two-times supersampling requires at least 20 bytes per output pixel before
+// snapshots/encoding. Bound allocations before touching the shared WASM heap.
+const MAX_RASTER_PIXELS = 16 * 1024 * 1024
+const MAX_RASTER_DIMENSION = 16384
+
+function validateRasterDimensions(width: number, height: number): void {
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_RASTER_DIMENSION ||
+    height > MAX_RASTER_DIMENSION ||
+    width * height > MAX_RASTER_PIXELS
+  ) {
+    throw new RangeError(
+      `Raster export exceeds the safe allocation limit (${width}×${height}). ` +
+        'Export a smaller selection or reduce the scale.'
+    )
+  }
+}
+
 function shouldTrimAlphaBounds(
   alphaBounds: NonNullable<ReturnType<typeof findAlphaBounds>>,
   width: number,
@@ -115,36 +137,39 @@ function renderToSurface(
   setup: (canvas: Canvas) => void,
   trimTransparent = false
 ): Uint8Array | null {
+  validateRasterDimensions(width, height)
   const renderScale = 2
   const renderWidth = width * renderScale
   const renderHeight = height * renderScale
   const pixels = ck.Malloc(Uint8Array, renderWidth * renderHeight * 4)
-  const surface = ck.MakeRasterDirectSurface(
-    {
-      alphaType: ck.AlphaType.Premul,
-      colorType: ck.ColorType.RGBA_8888,
-      colorSpace: ck.ColorSpace.SRGB,
-      width: renderWidth,
-      height: renderHeight
-    },
-    pixels,
-    renderWidth * 4
-  )
-  if (!surface) {
-    ck.Free(pixels)
-    return null
-  }
-
+  let surface: Surface | null = null
+  let downsamplePixels: MallocObj | null = null
+  let downsampleSurface: Surface | null = null
+  let highResImage: Image | null = null
+  let image: Image | null = null
   try {
+    surface = ck.MakeRasterDirectSurface(
+      {
+        alphaType: ck.AlphaType.Premul,
+        colorType: ck.ColorType.RGBA_8888,
+        colorSpace: ck.ColorSpace.SRGB,
+        width: renderWidth,
+        height: renderHeight
+      },
+      pixels,
+      renderWidth * 4
+    )
+    if (!surface) return null
+
     const canvas = surface.getCanvas()
     canvas.scale(renderScale, renderScale)
     setup(canvas)
     renderer.renderSceneToCanvas(canvas, renderGraph, pageId)
     surface.flush()
 
-    const highResImage = surface.makeImageSnapshot()
-    const downsamplePixels = ck.Malloc(Uint8Array, width * height * 4)
-    const downsampleSurface = ck.MakeRasterDirectSurface(
+    highResImage = surface.makeImageSnapshot()
+    downsamplePixels = ck.Malloc(Uint8Array, width * height * 4)
+    downsampleSurface = ck.MakeRasterDirectSurface(
       {
         alphaType: ck.AlphaType.Premul,
         colorType: ck.ColorType.RGBA_8888,
@@ -155,11 +180,7 @@ function renderToSurface(
       downsamplePixels,
       width * 4
     )
-    if (!downsampleSurface) {
-      ck.Free(downsamplePixels)
-      highResImage.delete()
-      return null
-    }
+    if (!downsampleSurface) return null
     const downsampleCanvas = downsampleSurface.getCanvas()
     downsampleCanvas.clear(ck.TRANSPARENT)
     downsampleCanvas.drawImageRectOptions(
@@ -172,6 +193,7 @@ function renderToSurface(
     )
     downsampleSurface.flush()
     highResImage.delete()
+    highResImage = null
 
     const foundAlphaBounds = trimTransparent
       ? findAlphaBounds(ck, downsampleCanvas, width, height)
@@ -180,7 +202,7 @@ function renderToSurface(
       foundAlphaBounds && shouldTrimAlphaBounds(foundAlphaBounds, width, height)
         ? foundAlphaBounds
         : null
-    const image = alphaBounds
+    image = alphaBounds
       ? downsampleSurface.makeImageSnapshot([
           alphaBounds.minX,
           alphaBounds.minY,
@@ -218,12 +240,13 @@ function renderToSurface(
       }
     }
 
-    image.delete()
-    downsampleSurface.delete()
-    ck.Free(downsamplePixels)
     return resultBytes
   } finally {
-    surface.delete()
+    image?.delete()
+    highResImage?.delete()
+    downsampleSurface?.delete()
+    if (downsamplePixels) ck.Free(downsamplePixels)
+    surface?.delete()
     ck.Free(pixels)
   }
 }
@@ -292,6 +315,7 @@ export function renderNodesToImage(
   const pixelW = Math.ceil(contentW * options.scale)
   const pixelH = Math.ceil(contentH * options.scale)
   if (pixelW <= 0 || pixelH <= 0) return null
+  validateRasterDimensions(pixelW, pixelH)
 
   const extracted = extractExportGraph(graph, { scope: 'selection', nodeIds })
   if (!extracted.pageId) return null

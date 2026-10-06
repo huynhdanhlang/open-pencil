@@ -43,6 +43,7 @@ import { fontManager } from '#core/text/fonts'
 import { fontHasGlyphSync } from '#core/text/opentype'
 import { getTextOutlineSupport } from '#core/text/outlines'
 
+import { encodeNativeFigPayload } from './native-payload'
 import {
   appendVariableNodeChanges,
   sequentialPositions,
@@ -621,14 +622,17 @@ export async function exportFigFile(
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core')
     return new Uint8Array(
-      await invoke<ArrayBuffer>('build_fig_file', {
-        schemaDeflated: Array.from(schemaDeflated),
-        kiwiData: Array.from(kiwiData),
-        thumbnailPng: Array.from(thumbnailPNG),
-        metaJson: metaJSON,
-        images: imageEntries.map((e) => ({ name: e.name, data: Array.from(e.data) })),
-        figKiwiVersion: version
-      })
+      await invoke<ArrayBuffer>(
+        'build_fig_file_binary',
+        encodeNativeFigPayload(
+          schemaDeflated,
+          kiwiData,
+          thumbnailPNG,
+          metaJSON,
+          imageEntries,
+          version
+        )
+      )
     )
   }
 

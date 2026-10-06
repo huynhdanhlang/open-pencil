@@ -6,6 +6,7 @@ import type { RenderColorSpace, ResolvedRenderColor } from '@open-pencil/scene-g
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
+import { ResourceCache } from '#core/cache/resource'
 /* eslint-disable max-lines -- SkiaRenderer facade owns CanvasKit state and delegates domain drawing */
 import {
   SELECTION_COLOR,
@@ -107,7 +108,13 @@ export class SkiaRenderer {
   pendingFontNodes = new Map<string, PendingFontNode>()
   textPictureGenerations = new Map<string, { data: Uint8Array; generation: number }>()
   readonly transientPreviews = new Map<string, TransientCanvasPreview>()
-  imageCache = new Map<string, CKImage>()
+  imageCache = new ResourceCache<string, CKImage>({
+    maxEntries: 256,
+    maxWeight: 256 * 1024 * 1024,
+    // Conservative RGBA + mipmaps bound, including thin (1×N) images.
+    weight: (image) => image.width() * image.height() * 8,
+    dispose: (image) => image.delete()
+  })
   vectorPathCache = new Map<string, Path[]>()
   vectorStrokePathCache = new Map<string, Path[]>()
   vectorStrokeOutlineCache = new Map<string, Path[]>()

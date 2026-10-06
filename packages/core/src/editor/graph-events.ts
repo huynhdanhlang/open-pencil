@@ -120,6 +120,7 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
         onNodeStructureChanged(node.id)
       },
       deleted: (id, _parentId) => {
+        for (const renderer of options.getRenderers()) renderer.invalidateVectorPath(id)
         options.emitEditorEvent('node:deleted', id, _parentId)
         onNodeStructureChanged(id)
       },
