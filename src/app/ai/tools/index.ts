@@ -37,6 +37,7 @@ export {
   runAgentId,
   runPageId,
   runUndoEntries,
+  runRevision,
   startRun
 } from './run'
 

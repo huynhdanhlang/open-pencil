@@ -276,6 +276,8 @@ For repeated lag or disconnects, discover the fork's read-only `get_runtime_stat
 
 Native FIG Save sends a raw binary payload to Rust to avoid expanding design/image bytes into JSON number arrays. Keep the frontend and native binary matched; an unknown binary-save command means incompatible builds, not permission to change authentication or filesystem scope. The transfer has an explicit 512 MiB limit and preserves the existing serialized Rust archive/compression owner.
 
+Chat-turn Revert tracks only a fresh direct-model tool run belonging to the same chat and document. ACP/Codex replies do not inherit an earlier direct run's Undo entries; use the dedicated scoped `undo`/`redo` tools for your own MCP changes. Closing a document releases its turn records and rejects late reply retention, while other documents keep their history.
+
 ### Optional design review helper
 
 For a substantial independent analysis/review, discover `agent_dispatch`, `agent_status` and `agent_cancel`. These are optional native fork capabilities, not universal upstream tools. Read [Agent tasks](references/agent-tasks.md) before dispatching. At most one snapshot-only Codex helper runs; the main agent checks the advice and alone applies canvas changes. Small edits stay with the main agent. Never emulate missing dispatch through `eval` or confuse internal Codex subagents with OpenPencil MCP dispatch.

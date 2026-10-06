@@ -17,7 +17,7 @@ import { setVisibleMessageText } from '@/app/ai/chat/presentation'
 import { useRevertRecords } from '@/app/ai/chat/submission/reverts'
 import type { ChatInstance, ChatSubmission } from '@/app/ai/chat/submission/types'
 import { recordTurn, restoreTurn, revertTurn } from '@/app/ai/chat/turns'
-import { runUndoEntries } from '@/app/ai/tools'
+import { runUndoEntries, runRevision } from '@/app/ai/tools'
 import type { EditorStore } from '@/app/editor/active-store'
 
 interface SubmissionMessages {
@@ -63,11 +63,14 @@ export function useChatSubmission(options: SubmissionOptions) {
 
   /** Runs one message and keeps the undo entries its edits pushed, so the turn can be reverted. */
   async function withTurn(chat: ChatInstance, send: () => Promise<void>): Promise<void> {
+    const editor = options.getEditor()
+    const beforeRun = runRevision(editor)
     const previous = lastAssistantId(chat)
     await send()
     const reply = lastAssistantId(chat)
-    if (!reply || reply === previous) return
-    const editor = options.getEditor()
+    // Never attach a prior direct run or a different chat's edits to an ACP reply.
+    if (!reply || reply === previous || options.chat.value !== chat) return
+    if (runRevision(editor) !== beforeRun + 1) return
     recordTurn(reply, editor, runUndoEntries(editor))
   }
 

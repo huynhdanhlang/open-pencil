@@ -11,7 +11,14 @@ import { snapshotMessages } from '@/app/ai/chat/history/messages'
 import { changePreviewSize } from '@/app/ai/chat/preferences'
 import type { ChatInstance } from '@/app/ai/chat/submission/types'
 import { useChatSubmission } from '@/app/ai/chat/submission/use'
-import { clearTurns, revertOf, revertTurn, turnEdits } from '@/app/ai/chat/turns'
+import {
+  clearTurns,
+  recordTurn,
+  restoreTurn,
+  revertOf,
+  revertTurn,
+  turnEdits
+} from '@/app/ai/chat/turns'
 import { createAITools, startRun } from '@/app/ai/tools'
 import * as figmaFactory from '@/app/automation/bridge/figma-factory'
 import { createEditorStore } from '@/app/editor/session/create'
@@ -107,6 +114,7 @@ function submission(chat: ReturnType<typeof fakeChat>) {
     messages: shallowRef({ openSettings: '', requestFailed: '', visionUnavailable: '' }),
     reportError: () => undefined,
     openModelSettings: () => undefined,
+    useAgentImages: () => false,
     // Like the history's flush, this snapshots the messages synchronously, so a message that
     // cannot be cloned throws here instead of becoming a rejected promise.
     flush: () => {
@@ -282,4 +290,39 @@ test('an edit made after the revert closes the restore, and the reply stays mark
   await actions.restore('reply-1')
   expect(width(card.id)).toBe(100)
   expect(mark(chat, 'reply-1')).toEqual({ reportedIn: undefined })
+})
+
+test('a reply without a fresh direct tool run cannot inherit an earlier turn edits', async () => {
+  const { card, chat, actions } = setup()
+  await actions.submit(send('Wider'))
+  chat.reply = async () => {
+    chat.messages = [
+      ...chat.messages,
+      { id: 'agent-read-only', role: 'assistant', parts: [{ type: 'text', text: 'Reviewed' }] }
+    ]
+  }
+  await actions.submit(send('Inspect'))
+  expect(turnEdits('agent-read-only')).toBeNull()
+  expect(revertTurn('agent-read-only')).toBe(false)
+  expect(width(card.id)).toBe(200)
+  expect(turnEdits('reply-1')?.revertable).toBe(true)
+})
+
+test('disposing a document releases its turn records and rejects late replies without touching another document', () => {
+  const other = createEditorStore()
+  const entry = { label: 'AI: probe', forward: () => undefined, inverse: () => undefined }
+  store.pushUndoEntry(entry)
+  other.pushUndoEntry(entry)
+  recordTurn('closed-store', store, [entry])
+  recordTurn('other-store', other, [entry])
+  try {
+    store.dispose()
+    expect(turnEdits('closed-store')).toBeNull()
+    recordTurn('late-closed-store', store, [entry])
+    expect(turnEdits('late-closed-store')).toBeNull()
+    expect(revertTurn('other-store')).toBe(true)
+    expect(restoreTurn('other-store')).toBe(true)
+  } finally {
+    other.dispose()
+  }
 })

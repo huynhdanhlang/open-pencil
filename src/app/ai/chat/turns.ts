@@ -34,6 +34,7 @@ function historyVersion(store: EditorStore): number {
 
 /** Keyed by the assistant message the turn produced. The undo stack lives as long as the session. */
 const turns = shallowReactive(new Map<string, TurnRecord>())
+const disposedStores = new WeakSet<EditorStore>()
 const restoredListeners = new Set<(messageId: string) => void>()
 
 /** Whether a reverted turn's entries are the next ones Redo applies, oldest first. */
@@ -65,6 +66,7 @@ export function recordTurn(
   store: EditorStore,
   entries: readonly UndoEntry[]
 ): void {
+  if (disposedStores.has(store)) return
   if (entries.length === 0) turns.delete(messageId)
   else turns.set(messageId, { store, entries: [...entries], reverted: false })
 }
@@ -110,6 +112,14 @@ export function restoreTurn(messageId: string): boolean {
   // Each step redoes one of the turn's entries, oldest first.
   for (const _entry of turn.entries) turn.store.redoAction()
   return true
+}
+
+/** Release this document's undo closures; late replies cannot retain it again. */
+export function disposeTurnsForStore(store: EditorStore): void {
+  disposedStores.add(store)
+  for (const [messageId, turn] of turns) {
+    if (turn.store === store) turns.delete(messageId)
+  }
 }
 
 export function clearTurns(): void {

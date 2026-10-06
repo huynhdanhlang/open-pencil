@@ -4,6 +4,7 @@ import { createEditor } from '@open-pencil/core/editor'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { disposeTurnsForStore } from '@/app/ai/chat/turns'
 import { recordPreparationOutcome } from '@/app/diagnostics'
 import {
   getActiveEditorStore,
@@ -241,6 +242,7 @@ function buildEditorStore(initialGraph?: SceneGraph) {
     // App-specific overrides and additions
     ...modules,
     dispose() {
+      disposeTurnsForStore(store)
       stopColorSpaceSync()
       recentPages.dispose()
       disposeSelection()

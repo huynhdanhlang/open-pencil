@@ -9,6 +9,7 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { addAgent, type AgentHandle } from '@/app/presence/registry'
 
 class RunState {
+  revision = 0
   currentSteps = 0
   /** Captured for the message in progress; settings changes apply to the next one. */
   maxSteps = DEFAULT_AGENT_STEPS
@@ -22,6 +23,7 @@ class RunState {
   undoEntries: UndoEntry[] = []
 
   start(maxSteps: number, pageId: string): void {
+    this.revision++
     this.currentSteps = 0
     this.maxSteps = resolveAgentStepLimit(maxSteps)
     this.pageId = pageId
@@ -124,4 +126,9 @@ export function recordRunUndoEntry(store: EditorStore, label: string): void {
 
 export function runUndoEntries(store: EditorStore): readonly UndoEntry[] {
   return getRunState(store).undoEntries
+}
+
+/** Identifies a fresh direct-tool run; ACP replies do not own this collector. */
+export function runRevision(store: EditorStore): number {
+  return getRunState(store).revision
 }
