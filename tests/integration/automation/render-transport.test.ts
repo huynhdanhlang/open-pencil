@@ -159,7 +159,9 @@ test('replacement and Undo preserve exact foreign instance overrides and unrelat
   const component = store.graph.createNode('COMPONENT', store.state.currentPageId)
   const original = store.graph.createNode('TEXT', component.id, {
     name: 'Original',
-    text: 'Default'
+    text: 'Default',
+    x: 31,
+    y: 47
   })
   const other = store.graph.addPage('Instances')
   const instance = store.graph.createInstance(component.id, other.id)
@@ -169,6 +171,7 @@ test('replacement and Undo preserve exact foreign instance overrides and unrelat
   recordInstanceOverride(store.graph, child.id, ['text'])
   await render({ replace_id: original.id, jsx: '<Text name="Replacement">New</Text>' })
   expect(store.graph.getChildren(instance.id).map((n) => n.name)).toEqual(['Replacement'])
+  expect(store.graph.getChildren(instance.id)[0]).toMatchObject({ x: 31, y: 47 })
   const unrelated = store.graph.createNode('RECTANGLE', other.id, { name: 'Unrelated' })
   store.undo.undo()
   await Promise.resolve()
@@ -178,6 +181,7 @@ test('replacement and Undo preserve exact foreign instance overrides and unrelat
   store.undo.redo()
   await Promise.resolve()
   expect(store.graph.getChildren(instance.id).map((n) => n.name)).toEqual(['Replacement'])
+  expect(store.graph.getChildren(instance.id)[0]).toMatchObject({ x: 31, y: 47 })
   expect(store.graph.getNode(unrelated.id)).toBe(unrelated)
   const redoneIds = store.graph.getChildren(instance.id).map((n) => n.id)
   store.undo.undo()
@@ -245,4 +249,33 @@ test('deleting a locally cloned nested instance propagates and Undo restores its
   store.undo.undo()
   await Promise.resolve()
   expect(store.graph.getChildren(instance.id).map((n) => n.id)).toEqual([child.id])
+})
+
+test.each([
+  '<Rectangle left={2} top={3} w={24} h={24} />',
+  '<svg viewBox="0 0 24 24"><path d="M0 0L24 0L24 24Z" /></svg>'
+])('replacement placement reaches creation observers for %s', async (jsx) => {
+  const component = store.graph.createNode('COMPONENT', store.state.currentPageId)
+  const old = store.graph.createNode('RECTANGLE', component.id, { x: 31, y: 47 })
+  const other = store.graph.addPage('Instances')
+  const instance = store.graph.createInstance(component.id, other.id)
+  if (!instance) throw new Error('Missing instance')
+  await render({ replace_id: old.id, jsx })
+  expect(store.graph.getChildren(component.id)[0]).toMatchObject({ x: 31, y: 47 })
+  expect(store.graph.getChildren(instance.id)[0]).toMatchObject({ x: 31, y: 47 })
+})
+
+test('replacement placement preserves ordinary auto-layout flow', async () => {
+  const component = store.graph.createNode('COMPONENT', store.state.currentPageId, {
+    layoutMode: 'HORIZONTAL',
+    width: 300,
+    height: 100
+  })
+  const old = store.graph.createNode('RECTANGLE', component.id, { width: 24, height: 24 })
+  const other = store.graph.addPage('Instances')
+  const instance = store.graph.createInstance(component.id, other.id)
+  if (!instance) throw new Error('Missing instance')
+  await render({ replace_id: old.id, jsx: '<Rectangle w={24} h={24} />' })
+  expect(store.graph.getChildren(component.id)[0].layoutPositioning).toBe('AUTO')
+  expect(store.graph.getChildren(instance.id)[0].layoutPositioning).toBe('AUTO')
 })

@@ -86,8 +86,21 @@ export async function renderRoots<Artwork>(
   const parentId = options.parentId ?? graph.getPages()[0].id
 
   const nodes: SceneNode[] = []
+  const position = {
+    ...(options.x !== undefined ? { x: options.x } : {}),
+    ...(options.y !== undefined ? { y: options.y } : {})
+  }
   for (const root of roots) {
-    const node = await renderNode(services, graph, root, parentId, options.onNode)
+    // Creation observers can clone component children before the async render completes.
+    const node = await renderNode(
+      services,
+      graph,
+      root,
+      parentId,
+      options.onNode,
+      undefined,
+      position
+    )
     if (options.x !== undefined) graph.updateNode(node.id, { x: options.x })
     if (options.y !== undefined) graph.updateNode(node.id, { y: options.y })
     nodes.push(node)
@@ -232,7 +245,8 @@ async function renderIconNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
-  parentId: string
+  parentId: string,
+  position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
   const props = tree.props
   const iconName = props.name as string | undefined
@@ -241,7 +255,7 @@ async function renderIconNode<Artwork>(
   const size = (props.size as number | undefined) ?? 24
   const artwork = await services.icon(iconName, size)
   if (!artwork) throw new Error(`Icon "${iconName}" not found`)
-  return placeArtwork(services, graph, artwork, props, size, parentId)
+  return placeArtwork(services, graph, artwork, props, size, parentId, position)
 }
 
 function placeArtwork<Artwork>(
@@ -250,12 +264,14 @@ function placeArtwork<Artwork>(
   artwork: Artwork,
   props: Record<string, unknown>,
   size: number,
-  parentId: string
+  parentId: string,
+  position: Pick<RenderOptions, 'x' | 'y'>
 ): SceneNode {
   const parentLayout = graph.getNode(parentId)?.layoutMode ?? 'NONE'
   const overrides: Partial<SceneNode> = {}
   if (props.label) overrides.name = props.label as string
   applyIconSize(props, overrides, parentLayout, size)
+  Object.assign(overrides, position)
   const color = parseColor((props.color as string | undefined) ?? '#000000')
   return services.createArtwork(graph, artwork, { parentId, size, color, overrides })
 }
@@ -268,7 +284,8 @@ function renderSVGNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
-  parentId: string
+  parentId: string,
+  position: Pick<RenderOptions, 'x' | 'y'>
 ): SceneNode {
   const props = tree.props
   const explicitW = typeof props.w === 'number' ? props.w : 0
@@ -284,7 +301,7 @@ function renderSVGNode<Artwork>(
   if (!artwork) {
     throw new Error('<svg> requires SVG markup, a body prop, or supported SVG shape children')
   }
-  return placeArtwork(services, graph, artwork, props, size, parentId)
+  return placeArtwork(services, graph, artwork, props, size, parentId, position)
 }
 
 function parseVariantValues(name: string): Record<string, string> {
@@ -402,7 +419,8 @@ function resolveComponent(
 async function renderInstanceNode(
   graph: SceneGraph,
   tree: TreeNode,
-  parentId: string
+  parentId: string,
+  position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
   const parent = graph.getNode(parentId)
   const parentLayout = parent?.layoutMode ?? 'NONE'
@@ -415,7 +433,8 @@ async function renderInstanceNode(
   }
   const overrides: Partial<SceneNode> = {
     ...propsToOverrides(props, false, parentLayout),
-    ...componentMetadata(props, 'INSTANCE', componentPropertyScope(graph, parentId))
+    ...componentMetadata(props, 'INSTANCE', componentPropertyScope(graph, parentId)),
+    ...position
   }
   // Instances inherit their container layout, but explicitly authored dimensions
   // must also replace the inherited sizing mode on that axis.
@@ -497,13 +516,14 @@ async function renderArtworkNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
-  parentId: string
+  parentId: string,
+  position: Pick<RenderOptions, 'x' | 'y'>
 ): Promise<SceneNode> {
   const metadata = componentMetadata(tree.props, 'VECTOR', componentPropertyScope(graph, parentId))
   const node =
     tree.type === 'icon'
-      ? await renderIconNode(services, graph, tree, parentId)
-      : renderSVGNode(services, graph, tree, parentId)
+      ? await renderIconNode(services, graph, tree, parentId, position)
+      : renderSVGNode(services, graph, tree, parentId, position)
   if (Object.keys(metadata).length > 0) graph.updateNode(node.id, metadata)
   return node
 }
@@ -545,9 +565,10 @@ async function renderNode<Artwork>(
   tree: TreeNode,
   parentId: string,
   onNode?: RenderOptions['onNode'],
-  scope?: RekaScope
+  scope?: RekaScope,
+  position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
-  const node = await renderNodeContent(services, graph, tree, parentId, onNode, scope)
+  const node = await renderNodeContent(services, graph, tree, parentId, onNode, scope, position)
   onNode?.(tree, node)
   return node
 }
@@ -558,21 +579,31 @@ async function renderNodeContent<Artwork>(
   tree: TreeNode,
   parentId: string,
   onNode?: RenderOptions['onNode'],
-  scope?: RekaScope
+  scope?: RekaScope,
+  position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
   if (tree.type === 'icon' || tree.type === 'svg')
-    return renderArtworkNode(services, graph, tree, parentId)
-  if (tree.type === 'instance') return renderInstanceNode(graph, tree, parentId)
+    return renderArtworkNode(services, graph, tree, parentId, position)
+  if (tree.type === 'instance') return renderInstanceNode(graph, tree, parentId, position)
   const reka = await renderRekaNode(graph, tree, parentId, scope, {
     render: (child, childParentId, childScope) =>
       renderNode(services, graph, child, childParentId, onNode, childScope),
     create: (nodeType, element, elementParentId) => {
       const { overrides, bindings } = elementOverrides(graph, nodeType, element, elementParentId)
-      const created = graph.createNode(nodeType, elementParentId, overrides)
+      const created = graph.createNode(nodeType, elementParentId, {
+        ...overrides,
+        ...(elementParentId === parentId ? position : {})
+      })
       applyBindings(graph, created.id, bindings)
       return created
     },
-    instance: (element, elementParentId) => renderInstanceNode(graph, element, elementParentId),
+    instance: (element, elementParentId) =>
+      renderInstanceNode(
+        graph,
+        element,
+        elementParentId,
+        elementParentId === parentId ? position : {}
+      ),
     finishSet: (setId) => inferComponentSetProperties(graph, setId)
   })
   if (reka) return reka
@@ -581,7 +612,7 @@ async function renderNodeContent<Artwork>(
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
 
   const { overrides, bindings } = elementOverrides(graph, nodeType, tree, parentId)
-  const node = graph.createNode(nodeType, parentId, overrides)
+  const node = graph.createNode(nodeType, parentId, { ...overrides, ...position })
   applyBindings(graph, node.id, bindings)
 
   for (const child of tree.children) {
