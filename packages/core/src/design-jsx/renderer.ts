@@ -4,6 +4,7 @@ import { fetchIcons } from '#core/icons'
 import { createIconFromPaths } from '#core/icons/render'
 import { extractPaths, extractPathsFromElements, scalePathInfos } from '#core/icons/svg'
 import type { IconData } from '#core/icons/types'
+import { findPageId } from '#core/io/subgraph'
 import { computeAllLayouts } from '#core/layout'
 
 function parseViewBox(viewBox: string | undefined): { w: number; h: number } {
@@ -44,5 +45,10 @@ export const { renderJSX, renderTree, renderTreeRoots } = createDesignJSXRendere
   svg: svgIconData,
   createArtwork: (graph, icon, { parentId, size, color, overrides }) =>
     createIconFromPaths(graph, icon, icon.name, size, color, parentId, overrides),
-  layout: computeAllLayouts
+  layout: (graph, parentId) => {
+    const parent = graph.getNode(parentId)
+    const pageId = parent?.type === 'CANVAS' ? parentId : findPageId(graph, parentId)
+    if (!pageId) throw new Error('Render parent no longer belongs to a page')
+    computeAllLayouts(graph, pageId)
+  }
 })

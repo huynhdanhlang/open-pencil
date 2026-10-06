@@ -74,7 +74,8 @@ export const combineAsVariants = defineTool({
 export const exposeInstanceSwap = defineTool({
   name: 'expose_instance_swap',
 
-  description: 'Expose nested instances as an instance-swap slot on their component.',
+  description:
+    'Expose nested instances as an instance-swap slot on their component. Returns the exact native property ID, default and preferred candidate IDs in property.',
   execution: { kind: 'sync', mutation: 'document' },
   input: v.object({
     instance_ids: v.pipe(v.array(v.string()), v.minLength(1), v.description('Instance node IDs')),
@@ -97,7 +98,17 @@ export const exposeInstanceSwap = defineTool({
     if (candidates.length !== candidate_ids.length)
       return { error: 'One or more candidate IDs were not found' }
     try {
-      return nodeSummary(figma.exposeInstanceSwap(slots, candidates, property_name))
+      const component = figma.exposeInstanceSwap(slots, candidates, property_name)
+      const id = figma.graph
+        .getNode(instance_ids[0])
+        ?.componentPropertyReferences.find(
+          (reference) => reference.field === 'INSTANCE_SWAP'
+        )?.propertyId
+      const property = figma.graph
+        .getNode(component.id)
+        ?.componentPropertyDefinitions.find((definition) => definition.id === id)
+      if (!property) throw new Error('Exposed instance-swap property is missing')
+      return { ...nodeSummary(component), property }
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) }
     }

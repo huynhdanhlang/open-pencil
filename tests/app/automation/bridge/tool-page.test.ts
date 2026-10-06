@@ -51,6 +51,40 @@ function target(store: EditorStore, pageId: string): AutomationTarget {
 }
 
 describe('automation tools on a page that has not been shown', () => {
+  test('a failed transported render cleans partial nodes and leaves no empty Undo entry', async () => {
+    const store = createEditorStore()
+    stores.push(store)
+    const pageId = store.state.currentPageId
+    const existing = store.graph.createNode('RECTANGLE', pageId, { name: 'Existing content' })
+    const before = structuredClone([...store.graph.nodes])
+    await expect(
+      handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'render',
+        args: {
+          tree: {
+            type: 'frame',
+            props: { name: 'Partial' },
+            children: [
+              { type: 'rectangle', props: {}, children: [] },
+              {
+                type: 'component',
+                props: {
+                  properties: [
+                    { id: 'visible', name: 'Visible', type: 'BOOLEAN', defaultValue: true }
+                  ]
+                },
+                children: []
+              }
+            ]
+          }
+        }
+      })
+    ).rejects.toThrow('Invalid properties')
+    expect([...store.graph.nodes]).toEqual(before)
+    expect(store.graph.getNode(existing.id)?.name).toBe('Existing content')
+    expect(store.undo.canUndo).toBe(false)
+  })
+
   test('view commands prepare a newly shown page once and preserve history', async () => {
     const { store, pageId } = await storeWithUnshownPage()
     const prepare = spyOn(store, 'preparePageNodes')

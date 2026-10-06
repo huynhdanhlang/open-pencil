@@ -15,7 +15,7 @@ export function createResourceResolver(resources: readonly NodeChange[]) {
     versions.set(version, id)
     keys.set(resource.key, versions)
   }
-  return (reference: NodeChange['variableSetID']): string | undefined => {
+  const resolve = (reference: NodeChange['variableSetID']): string | undefined => {
     if (reference?.guid) return guidToString(reference.guid)
     const asset = reference?.assetRef
     if (!asset) return undefined
@@ -24,4 +24,5 @@ export function createResourceResolver(resources: readonly NodeChange[]) {
     if (versions?.has('')) return versions.get('')
     return versions?.size === 1 ? versions.values().next().value : undefined
   }
+  return Object.assign(resolve, { hasAssetKey: (key: string) => keys.has(key) })
 }

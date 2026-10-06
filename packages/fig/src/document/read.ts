@@ -69,7 +69,7 @@ function createReader(
     changes,
     bindingDiagnostics,
     pageIds,
-    createSharedReaderState(changes, index)
+    createSharedReaderState(changes, index, assets)
   )
 }
 
@@ -79,13 +79,19 @@ function createReader(
  */
 interface SharedReaderState {
   index: SourceIndex
+  assets: ReadonlyMap<string, string>
   sourceInterpreter: ReturnType<typeof createOccurrenceInterpreter>
 }
 
-function createSharedReaderState(changes: readonly NodeChange[], index: SourceIndex) {
+function createSharedReaderState(
+  changes: readonly NodeChange[],
+  index: SourceIndex,
+  assets: ReadonlyMap<string, string>
+) {
   let sourceInterpreter: SharedReaderState['sourceInterpreter'] | undefined
   return {
     index,
+    assets,
     get sourceInterpreter() {
       sourceInterpreter ??= createOccurrenceInterpreter(
         changes.filter((change) => change.type !== 'VARIABLE' && change.type !== 'VARIABLE_SET')
@@ -133,6 +139,9 @@ function createScopedReader(
     })
   const knownPageIds = new Set(pages.map((page) => page.id))
   return {
+    hasAssetKey(key: string) {
+      return shared.assets.has(key)
+    },
     selectPages(ids: ReadonlySet<string>) {
       return createScopedReader(changes, bindingDiagnostics, ids, shared)
     },

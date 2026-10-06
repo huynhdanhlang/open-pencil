@@ -284,7 +284,13 @@ function materializeReader(
   // These passes apply to the nodes this page added, not to the whole graph.
   const materialized = [...graph.nodes.values()].filter((node) => !existingNodeIds.has(node.id))
   state.definitionTypes ??= seedDefinitionTypes(graph)
-  linkComponentPropertyValues(graph, sources, materialized, state.definitionTypes)
+  linkComponentPropertyValues(
+    graph,
+    sources,
+    materialized,
+    state.definitionTypes,
+    reader.hasAssetKey
+  )
   graph.preserveSourceMetadataDuring(() => {
     resolveVariantPropertyValues(graph, materialized)
     applyDocumentLayoutBindings(graph, savedSizeNodes, materialized, layoutScales)

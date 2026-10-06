@@ -53,9 +53,12 @@ function computeLayoutInternal(graph: SceneGraph, frameId: string): void {
     frame.layoutMode === 'GRID'
       ? buildGridTree(graph, frame, rootDirection)
       : buildYogaTree(graph, frame, rootDirection)
-  yogaRoot.calculateLayout(undefined, undefined, yogaDirection)
-  applyYogaLayout(graph, frame, yogaRoot, computeLayoutInternal)
-  freeYogaTree(yogaRoot)
+  try {
+    yogaRoot.calculateLayout(undefined, undefined, yogaDirection)
+    applyYogaLayout(graph, frame, yogaRoot, computeLayoutInternal)
+  } finally {
+    freeYogaTree(yogaRoot)
+  }
 }
 function resolveComputedLayoutDirection(
   graph: SceneGraph,
@@ -382,11 +385,7 @@ function derivedGrowingLeafFitsParent(
   return sizesFitParent(parent, children.length, sizes, axis)
 }
 
-/**
- * Fill text shares its parent's main axis like a fill frame: it grows and shrinks from a zero
- * basis, so its stored width (100px for new text) never decides its share. Returns whether
- * it fills the row's width, where its stored width must not constrain it either.
- */
+/** Fill text grows/shrinks from zero basis; return whether its stored width must be ignored. */
 function configureGrowingText(
   yogaChild: YogaNode,
   child: SceneNode,

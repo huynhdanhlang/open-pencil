@@ -113,7 +113,7 @@ function buildScreenInfo(
 export const designToComponentMap = defineTool({
   name: 'design_to_component_map',
   description:
-    'Analyze the document and return a structured component decomposition: components (with variants, props, instance counts), screens, and a dependency overview.',
+    'Analyze one page and return components (with variants, props and page-local instance counts), screens and dependencies. Zero instances on a source page does not imply zero consumers on other pages.',
   execution: { kind: 'sync', mutation: 'none' },
   input: v.object({
     page: v.optional(
@@ -186,6 +186,8 @@ export const designToComponentMap = defineTool({
     }
 
     return {
+      pageId: page.id,
+      instanceCountScope: 'page',
       componentCount: components.length,
       screenCount: screens.length,
       components: components.sort((a, b) => b.instanceCount - a.instanceCount),

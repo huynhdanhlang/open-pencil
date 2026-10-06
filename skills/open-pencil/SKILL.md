@@ -308,7 +308,6 @@ MCP canvas mutations, view commands, Undo/Redo and raster exports share the docu
 
 Image crop mode is `CROP` in the editor API and `STRETCH` in the FIG archive schema; the matched reader/writer maps these names while retaining the image transform. Save/import and exported pixels remain the fidelity check.
 
-
 This pinned Linux installation opts into a finite 8192 MiB WebKit web-process budget with `OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB` in its Intel app launcher. The exact Wry patch applies it when constructing WebContext, before the web process starts; setting only a base memory limit or a zero kill fraction does not override WebKitGTK 2.52.6's separate inactive-process threshold. Discover the actual installation policy rather than assuming the same budget on other hosts. Do not increase it blindly: compare repeated close/open cycles and idle reclamation, preserve document data, and investigate continued growth. File watcher registration is generation-guarded and disposed with its document so a late registration cannot retain or reload a closed editor.
 
 The native fork recovers an unexpectedly exited app-managed MCP child through its existing runtime owner, preserving configured authentication, root and disabled tools. Recovery is limited to three restarts in five minutes; an explicit Stop or externally managed server is not restarted. After recovery, resolve fresh discovery, tool schemas and the exact document/page before continuing. Do not replay a failed mutation blindly or treat reconnect as proof of a completed edit. If recovery stops, inspect the reported failure rather than loosening permissions or restarting an unsaved document.
@@ -367,6 +366,12 @@ Read [Design authoring](references/design-authoring.md) before creating or modif
 Use the `render` tool for JSX strings. Use only the APIs exposed by the installed `eval` environment; native library exports are not automatically scripting globals. The connected server's `get_codegen_prompt` provides its version's codegen and authoring guidance.
 
 For editable controls, inspect native property declarations and references together. Keep BOOLEAN/TEXT/SLOT IDs and defaults stable; use Root `parts` to bind existing named slots, including implicit containers. A Checkbox's `modelValue="Checked"` names a property, not a literal checked value. General instance JSX remains flattened: do not use it as proof of retained master identity, assignments, swaps or custom slot contents. Save the native `.fig` and verify generated application interaction separately.
+
+On matched versions, `get_node` with `depth: 0` returns native component definitions/references and instance component IDs/assignments. `expose_instance_swap` returns the created definition in `property`; use its ID and the discovered assignment API, then re-query after Save/import because node handles may change. `design_to_component_map` reports page-local instance counts and `instanceCountScope: "page"`; zero on the source page does not establish zero document consumers.
+
+On matched versions, JSX creation/initial layout failures clean invocation-owned layers. A rollback conflict retains unrelated content and reports containing IDs: re-query them and the original target before any retry. A disconnect or later placement/persistence failure does not prove an unchanged document. Keep Undo and recovery; group coherent authoring operations instead of repeatedly rebuilding the same subtree.
+
+If SVG succeeds but PNG fails, inspect the raster error stage. A missing renderer, allocation failure, or encoding failure is not evidence of hidden/deleted layers. Activate the exact document when its renderer is unavailable, then retry only the affected bounded frame; preserve unsaved work on a disconnect.
 
 ## Tips
 

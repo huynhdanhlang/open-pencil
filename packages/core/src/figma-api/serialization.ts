@@ -53,6 +53,16 @@ export function nodeProxyToJSON(
     height: n.height
   }
   if (n.fills.length > 0) obj.fills = n.fills
+  if (n.componentPropertyDefinitions.length)
+    obj.componentPropertyDefinitions = n.componentPropertyDefinitions
+  if (n.componentPropertyReferences.length)
+    obj.componentPropertyReferences = n.componentPropertyReferences
+  if (Object.keys(n.componentPropertyValues).length)
+    obj.componentPropertyValues = n.componentPropertyValues
+  if (n.type === 'INSTANCE') {
+    obj.componentId = n.componentId
+    obj.componentPropertyAssignments = n.componentPropertyAssignments
+  }
   if (n.strokes.length > 0) obj.strokes = n.strokes
   if (n.effects.length > 0) obj.effects = n.effects
   if (n.opacity !== 1) obj.opacity = n.opacity

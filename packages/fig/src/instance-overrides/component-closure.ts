@@ -44,7 +44,9 @@ export function materializeComponentClosure(
       for (const dependency of componentDependencies(
         occurrence.properties,
         resolveReference,
-        (key) => externalPreferredKeys.add(key)
+        (key) => externalPreferredKeys.add(key),
+        (key) =>
+          !resolveReference.hasAssetKey(key) && interpreter.sources.has(key) ? key : undefined
       ))
         propertyDependencies.add(dependency)
       if (occurrence.mainComponentId !== null) ensure(occurrence.mainComponentId)
@@ -70,6 +72,6 @@ export function materializeComponentClosure(
   // occurrence tree. Drain these edges after effective expansion, not on its call stack.
   for (const dependency of propertyDependencies) ensure(dependency)
   const materialized = [...graph.nodes.values()].filter((node) => !existingNodeIds.has(node.id))
-  linkComponentPropertyValues(graph, ids, materialized)
+  linkComponentPropertyValues(graph, ids, materialized, undefined, resolveReference.hasAssetKey)
   return Object.assign(components, { externalPreferredKeys })
 }

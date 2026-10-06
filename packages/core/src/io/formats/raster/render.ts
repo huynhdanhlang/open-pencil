@@ -125,91 +125,34 @@ function shouldTrimAlphaBounds(
   )
 }
 
-function renderToSurface(
+function encodeRasterSurface(
   ck: CanvasKit,
   renderer: SkiaRenderer,
-  renderGraph: SceneGraph,
-  pageId: string,
+  surface: Surface,
   width: number,
   height: number,
   format: ExportFormat,
   quality: number,
-  setup: (canvas: Canvas) => void,
-  trimTransparent = false
-): Uint8Array | null {
-  validateRasterDimensions(width, height)
-  const renderScale = 2
-  const renderWidth = width * renderScale
-  const renderHeight = height * renderScale
-  const pixels = ck.Malloc(Uint8Array, renderWidth * renderHeight * 4)
-  let surface: Surface | null = null
-  let downsamplePixels: MallocObj | null = null
-  let downsampleSurface: Surface | null = null
-  let highResImage: Image | null = null
-  let image: Image | null = null
-  try {
-    surface = ck.MakeRasterDirectSurface(
-      {
-        alphaType: ck.AlphaType.Premul,
-        colorType: ck.ColorType.RGBA_8888,
-        colorSpace: ck.ColorSpace.SRGB,
-        width: renderWidth,
-        height: renderHeight
-      },
-      pixels,
-      renderWidth * 4
-    )
-    if (!surface) return null
-
-    const canvas = surface.getCanvas()
-    canvas.scale(renderScale, renderScale)
-    setup(canvas)
-    renderer.renderSceneToCanvas(canvas, renderGraph, pageId)
-    surface.flush()
-
-    highResImage = surface.makeImageSnapshot()
-    downsamplePixels = ck.Malloc(Uint8Array, width * height * 4)
-    downsampleSurface = ck.MakeRasterDirectSurface(
-      {
-        alphaType: ck.AlphaType.Premul,
-        colorType: ck.ColorType.RGBA_8888,
-        colorSpace: ck.ColorSpace.SRGB,
-        width,
-        height
-      },
-      downsamplePixels,
-      width * 4
-    )
-    if (!downsampleSurface) return null
-    const downsampleCanvas = downsampleSurface.getCanvas()
-    downsampleCanvas.clear(ck.TRANSPARENT)
-    downsampleCanvas.drawImageRectOptions(
-      highResImage,
-      ck.LTRBRect(0, 0, renderWidth, renderHeight),
-      ck.LTRBRect(0, 0, width, height),
-      ck.FilterMode.Linear,
-      ck.MipmapMode.None,
-      null
-    )
-    downsampleSurface.flush()
-    highResImage.delete()
-    highResImage = null
-
-    const foundAlphaBounds = trimTransparent
-      ? findAlphaBounds(ck, downsampleCanvas, width, height)
+  trimTransparent: boolean
+): Uint8Array {
+  const downsampleSurface = surface
+  const downsampleCanvas = surface.getCanvas()
+  const foundAlphaBounds = trimTransparent
+    ? findAlphaBounds(ck, downsampleCanvas, width, height)
+    : null
+  const alphaBounds =
+    foundAlphaBounds && shouldTrimAlphaBounds(foundAlphaBounds, width, height)
+      ? foundAlphaBounds
       : null
-    const alphaBounds =
-      foundAlphaBounds && shouldTrimAlphaBounds(foundAlphaBounds, width, height)
-        ? foundAlphaBounds
-        : null
-    image = alphaBounds
-      ? downsampleSurface.makeImageSnapshot([
-          alphaBounds.minX,
-          alphaBounds.minY,
-          alphaBounds.maxX,
-          alphaBounds.maxY
-        ])
-      : downsampleSurface.makeImageSnapshot()
+  const image = alphaBounds
+    ? downsampleSurface.makeImageSnapshot([
+        alphaBounds.minX,
+        alphaBounds.minY,
+        alphaBounds.maxX,
+        alphaBounds.maxY
+      ])
+    : downsampleSurface.makeImageSnapshot()
+  try {
     const encoded = image.encodeToBytes(ckImageFormat(ck, format), quality)
     let resultBytes: Uint8Array | null = encoded ? new Uint8Array(encoded) : null
 
@@ -240,9 +183,98 @@ function renderToSurface(
       }
     }
 
+    if (!resultBytes?.length)
+      throw new Error(`Raster export encoding failed (${format}, ${width}×${height}).`)
     return resultBytes
   } finally {
-    image?.delete()
+    image.delete()
+  }
+}
+
+function renderToSurface(
+  ck: CanvasKit,
+  renderer: SkiaRenderer,
+  renderGraph: SceneGraph,
+  pageId: string,
+  width: number,
+  height: number,
+  format: ExportFormat,
+  quality: number,
+  setup: (canvas: Canvas) => void,
+  trimTransparent = false
+): Uint8Array | null {
+  validateRasterDimensions(width, height)
+  const renderScale = 2
+  const renderWidth = width * renderScale
+  const renderHeight = height * renderScale
+  const pixels = ck.Malloc(Uint8Array, renderWidth * renderHeight * 4)
+  let surface: Surface | null = null
+  let downsamplePixels: MallocObj | null = null
+  let downsampleSurface: Surface | null = null
+  let highResImage: Image | null = null
+  try {
+    surface = ck.MakeRasterDirectSurface(
+      {
+        alphaType: ck.AlphaType.Premul,
+        colorType: ck.ColorType.RGBA_8888,
+        colorSpace: ck.ColorSpace.SRGB,
+        width: renderWidth,
+        height: renderHeight
+      },
+      pixels,
+      renderWidth * 4
+    )
+    if (!surface)
+      throw new Error(
+        `Raster export surface allocation failed (${renderWidth}×${renderHeight}, supersampling).`
+      )
+
+    const canvas = surface.getCanvas()
+    canvas.scale(renderScale, renderScale)
+    setup(canvas)
+    renderer.renderSceneToCanvas(canvas, renderGraph, pageId)
+    surface.flush()
+
+    highResImage = surface.makeImageSnapshot()
+    downsamplePixels = ck.Malloc(Uint8Array, width * height * 4)
+    downsampleSurface = ck.MakeRasterDirectSurface(
+      {
+        alphaType: ck.AlphaType.Premul,
+        colorType: ck.ColorType.RGBA_8888,
+        colorSpace: ck.ColorSpace.SRGB,
+        width,
+        height
+      },
+      downsamplePixels,
+      width * 4
+    )
+    if (!downsampleSurface)
+      throw new Error(`Raster export surface allocation failed (${width}×${height}, downsampling).`)
+    const downsampleCanvas = downsampleSurface.getCanvas()
+    downsampleCanvas.clear(ck.TRANSPARENT)
+    downsampleCanvas.drawImageRectOptions(
+      highResImage,
+      ck.LTRBRect(0, 0, renderWidth, renderHeight),
+      ck.LTRBRect(0, 0, width, height),
+      ck.FilterMode.Linear,
+      ck.MipmapMode.None,
+      null
+    )
+    downsampleSurface.flush()
+    highResImage.delete()
+    highResImage = null
+
+    return encodeRasterSurface(
+      ck,
+      renderer,
+      downsampleSurface,
+      width,
+      height,
+      format,
+      quality,
+      trimTransparent
+    )
+  } finally {
     highResImage?.delete()
     downsampleSurface?.delete()
     if (downsamplePixels) ck.Free(downsamplePixels)

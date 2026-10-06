@@ -2,7 +2,7 @@ import type { DerivedSymbolOverride } from '#fig/instance-overrides/types'
 import { effectiveFigmaRawNodeFields, effectiveFigmaSourcePayload } from '#fig/source-metadata'
 
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { stringToGuid } from '@open-pencil/kiwi/fig/guid'
+import { guidToString, stringToGuid } from '@open-pencil/kiwi/fig/guid'
 import type {
   ComponentPropertyDefinition,
   ComponentPropertyReferenceField,
@@ -537,7 +537,8 @@ function applyInstancePayload(
 
 function componentPropertyPreferredValues(
   definition: ComponentPropertyDefinition,
-  context: SceneNodeToKiwiContext
+  context: SceneNodeToKiwiContext,
+  localIdCounter: { value: number }
 ) {
   if (
     (definition.type === 'INSTANCE_SWAP' || definition.type === 'SLOT') &&
@@ -546,7 +547,10 @@ function componentPropertyPreferredValues(
     return {
       instanceSwapValues: definition.preferredValues.map((value) => {
         const target = context.graph.getNode(value)
-        const key = target?.componentKey || target?.sourceLibraryKey || value
+        const key =
+          target?.componentKey ||
+          target?.sourceLibraryKey ||
+          (target ? guidToString(getOrCreateNodeGuid(context, target.id, localIdCounter)) : value)
         return { type: 'COMPONENT', key }
       })
     }
@@ -642,6 +646,7 @@ function applyComponentMetadata(
   localIdCounter: { value: number }
 ): void {
   if (node.componentKey) nc.componentKey = node.componentKey
+  if (node.componentKey) nc.key = node.componentKey
   if (node.sourceLibraryKey) nc.sourceLibraryKey = node.sourceLibraryKey
   const publishId = node.publishId ? parseGuidOrNull(node.publishId) : null
   const overrideKey = node.overrideKey ? parseGuidOrNull(node.overrideKey) : null
@@ -660,7 +665,7 @@ function applyComponentMetadata(
       id: getOrCreatePropertyGuid(context, def.id, localIdCounter),
       name: def.name,
       type: componentPropertyTypeForKiwi(def.type),
-      preferredValues: componentPropertyPreferredValues(def, context)
+      preferredValues: componentPropertyPreferredValues(def, context, localIdCounter)
     }
     if (def.type === 'SLOT') Object.assign(record, slotDefinitionFields(def))
     else {

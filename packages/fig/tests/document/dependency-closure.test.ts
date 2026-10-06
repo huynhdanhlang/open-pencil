@@ -7,6 +7,74 @@ import { createSourceIndex } from '#fig/instance-overrides/source-index'
 import { materializeDocument } from '@open-pencil/fig'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 
+test('a known asset key takes precedence over a matching source ID, including ambiguous versions', () => {
+  for (const ambiguous of [false, true]) {
+    const changes = [
+      { guid: guid(1), type: 'CANVAS' },
+      {
+        guid: guid(2),
+        type: 'SYMBOL',
+        parentIndex: { guid: guid(1), position: '!' },
+        componentPropDefs: [
+          {
+            id: guid(90),
+            type: 'INSTANCE_SWAP',
+            preferredValues: { instanceSwapValues: [{ key: '1:5' }] }
+          }
+        ]
+      },
+      { guid: guid(4), type: 'CANVAS', internalOnly: true },
+      { guid: guid(5), type: 'SYMBOL', parentIndex: { guid: guid(4), position: '!' } },
+      {
+        guid: guid(6),
+        type: 'SYMBOL',
+        key: '1:5',
+        version: ambiguous ? 'v1' : undefined,
+        parentIndex: { guid: guid(4), position: '!' }
+      },
+      ...(ambiguous
+        ? [
+            {
+              guid: guid(7),
+              type: 'SYMBOL',
+              key: '1:5',
+              version: 'v2',
+              parentIndex: { guid: guid(4), position: '!' }
+            }
+          ]
+        : [])
+    ] as NodeChange[]
+    const result = collectSceneDependencies(changes, undefined, createSourceIndex(changes))
+    expect(result.contentIds.has('1:5')).toBe(false)
+    expect(result.contentIds.has('1:6')).toBe(!ambiguous)
+    expect([...result.externalPreferredKeys]).toEqual(ambiguous ? ['1:5'] : [])
+  }
+})
+
+test('local preferred-only GUID keys retain internal components without treating external GUID-shaped keys as local', () => {
+  const changes = [
+    { guid: guid(1), type: 'CANVAS' },
+    {
+      guid: guid(2),
+      type: 'SYMBOL',
+      parentIndex: { guid: guid(1), position: '!' },
+      componentPropDefs: [
+        {
+          id: guid(90),
+          type: 'INSTANCE_SWAP',
+          preferredValues: { instanceSwapValues: [{ key: '1:5' }, { key: '1:999' }] }
+        }
+      ]
+    },
+    { guid: guid(4), type: 'CANVAS', internalOnly: true },
+    { guid: guid(5), type: 'SYMBOL', parentIndex: { guid: guid(4), position: '!' } }
+  ] as NodeChange[]
+  const result = collectSceneDependencies(changes, undefined, createSourceIndex(changes))
+  expect(result.contentIds.has('1:5')).toBe(true)
+  expect([...result.externalPreferredKeys]).toEqual(['1:999'])
+  expect(result.missingIds.size).toBe(0)
+})
+
 test('retains external preferred choices separately from required component dependencies', () => {
   const changes = [
     { guid: guid(1), type: 'CANVAS' },

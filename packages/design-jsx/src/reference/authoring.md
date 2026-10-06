@@ -5,6 +5,7 @@ This reference describes scene creation, not React DOM output. Use the `render` 
 ## Composition and layout
 
 - `render` placement uses `parent_id` and optional `insert_index`; `replace_id` takes the existing node's parent, sibling position and local coordinates unless `x`/`y` override them. Replacement creates new IDs and deletes the target, so use property tools for edits that must retain identity. Fragment roots occupy consecutive sibling positions and are returned through the first result plus `siblings`.
+- JSX creation and initial layout failures remove only the invocation's newly created layers and restore touched layout fields. If another edit attached content during an artwork await, a rollback conflict preserves its containing layers and reports their IDs. Inspect those IDs before retrying; a disconnected call, later placement or persistence failure still requires a fresh document query rather than assuming nothing changed.
 - `flex="row"` / `flex="col"` enables auto-layout. Use it for content; reserve explicit `x`/`y` or `position="absolute"` for intentional overlays and artwork. Without layout, children share the origin unless positioned.
 - `w` / `h` accept pixels, `"hug"` (content-sized), or `"fill"` (available space in a supported layout parent). Use Hug for notes, cards, and long pages instead of guessing heights. Fixed viewport sizes and artwork geometry are intentional exceptions.
 - `gap` controls spacing. `p`, `px`, `py`, and `pt`/`pr`/`pb`/`pl` control padding; longhands override shorthands. There is no margin shorthand.

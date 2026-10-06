@@ -11,7 +11,8 @@ export function linkComponentPropertyValues(
   graph: SceneGraph,
   sources: ReadonlyMap<string, string>,
   materialized: readonly SceneNode[],
-  definitionTypes?: Map<string, string>
+  definitionTypes?: Map<string, string>,
+  isAssetKey?: (key: string) => boolean
 ): void {
   const definitions = definitionTypes ?? new Map<string, string>()
   if (!definitionTypes)
@@ -21,6 +22,10 @@ export function linkComponentPropertyValues(
   for (const node of materialized) {
     for (const definition of node.componentPropertyDefinitions) {
       definitions.set(definition.id, definition.type)
+      if (definition.type === 'INSTANCE_SWAP' || definition.type === 'SLOT')
+        definition.preferredValues = definition.preferredValues?.map((value) =>
+          isAssetKey?.(value) ? value : (sources.get(value) ?? value)
+        )
       if (definition.type !== 'INSTANCE_SWAP') continue
       const target = sources.get(definition.defaultValue)
       if (target) definition.defaultValue = target

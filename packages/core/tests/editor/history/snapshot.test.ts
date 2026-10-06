@@ -50,6 +50,39 @@ test('scalar edits reuse immutable payload fields across history while payload e
   expect(editor.graph.getNode(a.id)?.x).toBe(0)
 })
 
+test('source edit markers share only the owned FIG payload across history revisions', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const node = editor.graph.createNode('TEXT', page)
+  const bytes = new Uint8Array(256 * 1024)
+  bytes[0] = 1
+  node.source.format = 'fig'
+  node.source.fig.rawNodeFields = { payload: bytes }
+  const before = editor.snapshotPage(page)
+  const saved = expectDefined(before.get(node.id), 'saved source')
+  expect(saved.source.fig).not.toBe(node.source.fig)
+  editor.graph.updateNode(node.id, { name: 'Changed' })
+  const named = editor.snapshotPage(page, before)
+  expect(named.get(node.id)?.source).not.toBe(saved.source)
+  expect(named.get(node.id)?.source.fig).toBe(saved.source.fig)
+  expect(saved.source.editedFields).toEqual([])
+  editor.graph.updateNode(node.id, { text: 'New text' })
+  const written = editor.snapshotPage(page, named)
+  expect(written.get(node.id)?.source.fig).toBe(saved.source.fig)
+  bytes[0] = 9
+  const changed = editor.snapshotPage(page, written)
+  expect(changed.get(node.id)?.source.fig).not.toBe(saved.source.fig)
+  const savedBytes = saved.source.fig.rawNodeFields.payload
+  if (!(savedBytes instanceof Uint8Array)) throw new Error('Missing owned source bytes')
+  expect(savedBytes[0]).toBe(1)
+  editor.restorePageFromSnapshot(written)
+  expect(editor.graph.getNode(node.id)?.source.fig).not.toBe(saved.source.fig)
+  expect(editor.graph.getNode(node.id)?.source.fig.rawNodeFields.payload).toEqual(
+    saved.source.fig.rawNodeFields.payload
+  )
+  editor.dispose()
+})
+
 test('dependent instance history shares binary copies and leaves unrelated foreign page nodes outside the snapshot', () => {
   const editor = createEditor()
   const page = editor.state.currentPageId

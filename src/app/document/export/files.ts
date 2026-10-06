@@ -109,7 +109,10 @@ export function createExportTargetActions(editor: Editor, state: EditorState, io
     pageId = state.currentPageId
   ): Promise<Uint8Array | null> {
     const renderer = editor.renderer
-    if (!renderer) return null
+    if (!renderer)
+      throw new Error(
+        'Raster renderer is unavailable for this document. Activate its tab and retry the export.'
+      )
     const ids = nodeIds.length > 0 ? nodeIds : editor.graph.getChildren(pageId).map((n) => n.id)
     if (ids.length === 0) return null
     const ownerPageId = findPageId(editor.graph, ids[0]) ?? pageId

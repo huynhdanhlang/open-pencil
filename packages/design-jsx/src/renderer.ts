@@ -19,6 +19,7 @@ import {
   componentPropertyScope
 } from './component-properties'
 import { applySizeOverrides, propsToOverrides } from './props-overrides'
+import { RenderCreationJournal } from './render-creation'
 import { prepareScalarBindings } from './scalar-bindings'
 import type { DesignJSXServices } from './services'
 import { FRAGMENT, isTreeNode } from './tree'
@@ -85,35 +86,40 @@ export async function renderRoots<Artwork>(
   if (roots.length === 0) throw new Error('JSX must return a Figma element (Frame, Text, etc)')
   const parentId = options.parentId ?? graph.getPages()[0].id
 
-  const nodes: SceneNode[] = []
-  const position = {
-    ...(options.x !== undefined ? { x: options.x } : {}),
-    ...(options.y !== undefined ? { y: options.y } : {})
-  }
-  for (const root of roots) {
-    // Creation observers can clone component children before the async render completes.
-    const node = await renderNode(
-      services,
-      graph,
-      root,
-      parentId,
-      options.onNode,
-      undefined,
-      position
-    )
-    if (options.x !== undefined) graph.updateNode(node.id, { x: options.x })
-    if (options.y !== undefined) graph.updateNode(node.id, { y: options.y })
-    nodes.push(node)
-  }
+  const journal = new RenderCreationJournal(graph)
+  try {
+    const nodes: SceneNode[] = []
+    const position: Pick<RenderOptions, 'x' | 'y'> = {}
+    if (options.x !== undefined) position.x = options.x
+    if (options.y !== undefined) position.y = options.y
+    for (const root of roots) {
+      // Creation observers can clone component children before the async render completes.
+      const node = await renderNode(
+        services,
+        graph,
+        root,
+        journal,
+        parentId,
+        options.onNode,
+        undefined,
+        position
+      )
+      if (options.x !== undefined) graph.updateNode(node.id, { x: options.x })
+      if (options.y !== undefined) graph.updateNode(node.id, { y: options.y })
+      nodes.push(node)
+    }
 
-  services.layout(graph)
+    journal.layout(() => services.layout(graph, parentId))
 
-  return nodes.map((node) => ({
-    id: node.id,
-    name: node.name,
-    type: node.type,
-    childIds: node.childIds
-  }))
+    return nodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      childIds: node.childIds
+    }))
+  } catch (error) {
+    return journal.rollback(error)
+  }
 }
 
 /** Render `tree` and return its first root; a fragment's other roots are rendered too. */
@@ -245,6 +251,7 @@ async function renderIconNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
@@ -255,7 +262,7 @@ async function renderIconNode<Artwork>(
   const size = (props.size as number | undefined) ?? 24
   const artwork = await services.icon(iconName, size)
   if (!artwork) throw new Error(`Icon "${iconName}" not found`)
-  return placeArtwork(services, graph, artwork, props, size, parentId, position)
+  return placeArtwork(services, graph, artwork, props, size, journal, parentId, position)
 }
 
 function placeArtwork<Artwork>(
@@ -264,6 +271,7 @@ function placeArtwork<Artwork>(
   artwork: Artwork,
   props: Record<string, unknown>,
   size: number,
+  journal: RenderCreationJournal,
   parentId: string,
   position: Pick<RenderOptions, 'x' | 'y'>
 ): SceneNode {
@@ -273,7 +281,9 @@ function placeArtwork<Artwork>(
   applyIconSize(props, overrides, parentLayout, size)
   Object.assign(overrides, position)
   const color = parseColor((props.color as string | undefined) ?? '#000000')
-  return services.createArtwork(graph, artwork, { parentId, size, color, overrides })
+  return journal.capture(() =>
+    services.createArtwork(graph, artwork, { parentId, size, color, overrides })
+  )
 }
 
 /**
@@ -284,6 +294,7 @@ function renderSVGNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   position: Pick<RenderOptions, 'x' | 'y'>
 ): SceneNode {
@@ -301,7 +312,7 @@ function renderSVGNode<Artwork>(
   if (!artwork) {
     throw new Error('<svg> requires SVG markup, a body prop, or supported SVG shape children')
   }
-  return placeArtwork(services, graph, artwork, props, size, parentId, position)
+  return placeArtwork(services, graph, artwork, props, size, journal, parentId, position)
 }
 
 function parseVariantValues(name: string): Record<string, string> {
@@ -419,6 +430,7 @@ function resolveComponent(
 async function renderInstanceNode(
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
@@ -453,8 +465,10 @@ async function renderInstanceNode(
       else if (value === 'hug' || value === 'fill') overrides[field] = 'HUG'
     }
   }
-  const instance =
-    graph.createInstance(component.id, parentId, overrides) ?? graph.createNode('FRAME', parentId)
+  const instance = journal.capture(
+    () =>
+      graph.createInstance(component.id, parentId, overrides) ?? graph.createNode('FRAME', parentId)
+  )
   try {
     for (const [field, value] of Object.entries(overrides)) {
       setInstanceOverride(instance.instanceOverrides, instance.id, instance.id, field, value)
@@ -516,14 +530,15 @@ async function renderArtworkNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   position: Pick<RenderOptions, 'x' | 'y'>
 ): Promise<SceneNode> {
   const metadata = componentMetadata(tree.props, 'VECTOR', componentPropertyScope(graph, parentId))
   const node =
     tree.type === 'icon'
-      ? await renderIconNode(services, graph, tree, parentId, position)
-      : renderSVGNode(services, graph, tree, parentId, position)
+      ? await renderIconNode(services, graph, tree, journal, parentId, position)
+      : renderSVGNode(services, graph, tree, journal, parentId, position)
   if (Object.keys(metadata).length > 0) graph.updateNode(node.id, metadata)
   return node
 }
@@ -563,12 +578,22 @@ async function renderNode<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   onNode?: RenderOptions['onNode'],
   scope?: RekaScope,
   position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
-  const node = await renderNodeContent(services, graph, tree, parentId, onNode, scope, position)
+  const node = await renderNodeContent(
+    services,
+    graph,
+    tree,
+    journal,
+    parentId,
+    onNode,
+    scope,
+    position
+  )
   onNode?.(tree, node)
   return node
 }
@@ -577,23 +602,26 @@ async function renderNodeContent<Artwork>(
   services: DesignJSXServices<Artwork>,
   graph: SceneGraph,
   tree: TreeNode,
+  journal: RenderCreationJournal,
   parentId: string,
   onNode?: RenderOptions['onNode'],
   scope?: RekaScope,
   position: Pick<RenderOptions, 'x' | 'y'> = {}
 ): Promise<SceneNode> {
   if (tree.type === 'icon' || tree.type === 'svg')
-    return renderArtworkNode(services, graph, tree, parentId, position)
-  if (tree.type === 'instance') return renderInstanceNode(graph, tree, parentId, position)
+    return renderArtworkNode(services, graph, tree, journal, parentId, position)
+  if (tree.type === 'instance') return renderInstanceNode(graph, tree, journal, parentId, position)
   const reka = await renderRekaNode(graph, tree, parentId, scope, {
     render: (child, childParentId, childScope) =>
-      renderNode(services, graph, child, childParentId, onNode, childScope),
+      renderNode(services, graph, child, journal, childParentId, onNode, childScope),
     create: (nodeType, element, elementParentId) => {
       const { overrides, bindings } = elementOverrides(graph, nodeType, element, elementParentId)
-      const created = graph.createNode(nodeType, elementParentId, {
-        ...overrides,
-        ...(elementParentId === parentId ? position : {})
-      })
+      const created = journal.capture(() =>
+        graph.createNode(nodeType, elementParentId, {
+          ...overrides,
+          ...(elementParentId === parentId ? position : {})
+        })
+      )
       applyBindings(graph, created.id, bindings)
       return created
     },
@@ -601,6 +629,7 @@ async function renderNodeContent<Artwork>(
       renderInstanceNode(
         graph,
         element,
+        journal,
         elementParentId,
         elementParentId === parentId ? position : {}
       ),
@@ -612,13 +641,15 @@ async function renderNodeContent<Artwork>(
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
 
   const { overrides, bindings } = elementOverrides(graph, nodeType, tree, parentId)
-  const node = graph.createNode(nodeType, parentId, { ...overrides, ...position })
+  const node = journal.capture(() =>
+    graph.createNode(nodeType, parentId, { ...overrides, ...position })
+  )
   applyBindings(graph, node.id, bindings)
 
   for (const child of tree.children) {
     if (typeof child === 'string') continue
     if (isTreeNode(child)) {
-      await renderNode(services, graph, child, node.id, onNode, scope)
+      await renderNode(services, graph, child, journal, node.id, onNode, scope)
     }
   }
 

@@ -133,7 +133,10 @@ export const exportImage = defineTool({
       scale: boundedScale,
       format
     })
-    if (!data || data.length === 0) return { error: 'No visible nodes to export' }
+    if (!data || data.length === 0)
+      return {
+        error: `Raster export failed (${format}, ${Math.ceil(width * boundedScale)}×${Math.ceil(height * boundedScale)}). Visible design bounds exist; the renderer returned no image.`
+      }
     const base64 = fromUint8Array(data)
     const mimeMap = { PNG: 'image/png', JPG: 'image/jpeg', WEBP: 'image/webp' } as const
     return {

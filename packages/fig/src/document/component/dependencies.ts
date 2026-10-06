@@ -19,7 +19,8 @@ interface DependencyDefinition {
 export function componentDependencies(
   node: NodeChange,
   resolveReference?: (reference: NodeChange['variableSetID']) => string | undefined,
-  reportExternalPreferred?: (key: string) => void
+  reportExternalPreferred?: (key: string) => void,
+  resolveLocalPreferred?: (key: string) => string | undefined
 ): ReadonlySet<string> {
   const dependencies = new Set<string>()
   const add = (guid: GUID | undefined): void => {
@@ -39,9 +40,11 @@ export function componentDependencies(
       if (definition.type === 'INSTANCE_SWAP' || definition.type === 'SLOT') {
         for (const preferred of definition.preferredValues?.instanceSwapValues ?? []) {
           if (!preferred.key) continue
-          const id = resolveReference?.({
+          const assetId = resolveReference?.({
             assetRef: { key: preferred.key, version: preferred.version }
           })
+          const id =
+            assetId ?? (preferred.version ? undefined : resolveLocalPreferred?.(preferred.key))
           if (!id) {
             if (!reportExternalPreferred)
               throw new Error(`Unresolved preferred component ${preferred.key}`)

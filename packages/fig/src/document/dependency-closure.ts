@@ -90,8 +90,11 @@ export function collectSceneDependencies(
       continue
     }
     contentIds.add(id)
-    const components = componentDependencies(node, resolveReference, (key) =>
-      externalPreferredKeys.add(key)
+    const components = componentDependencies(
+      node,
+      resolveReference,
+      (key) => externalPreferredKeys.add(key),
+      (key) => (!resolveReference.hasAssetKey(key) && sources.has(key) ? key : undefined)
     )
     for (const component of components) componentReferences.add(component)
     const slotContent = slotContentDependencies(node)

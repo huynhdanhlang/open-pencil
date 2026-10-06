@@ -69,7 +69,12 @@ import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
 import { updateNodePreview, type NodePreviewObserver } from './preview'
 import { styleDetachmentChanges } from './shared-styles'
 import { markSourceFieldsEdited } from './source-metadata'
-import { GLYPH_AFFECTING_KEYS, invalidateTextCaches, TEXT_PICTURE_KEYS } from './text-picture'
+import {
+  GLYPH_AFFECTING_KEYS,
+  invalidateTextCaches,
+  textCacheInvalidationChanges,
+  TEXT_PICTURE_KEYS
+} from './text-picture'
 import * as Variables from './variables'
 import type { VariableModeFallback } from './variables'
 import { normalizeVectorNetwork } from './vector-network'
@@ -142,6 +147,15 @@ function stripUndefinedProps<T extends object>(obj: T): T {
 
 export { captureGraphCheckpoint, restorePageCheckpoint } from './checkpoint'
 
+interface NodeMutationObserver {
+  created?: (node: SceneNode) => void
+  updated?: (
+    node: SceneNode,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[]
+  ) => void
+}
+
 export class SceneGraph {
   nodes = new Map<string, SceneNode>()
   images = new Map<string, Uint8Array>()
@@ -158,6 +172,7 @@ export class SceneGraph {
   private absPosCache = new Map<string, Vector>()
   private previewMutationDepth = 0
   private previewObservers: NodePreviewObserver[] = []
+  private mutationObservers: NodeMutationObserver[] = []
   private sourceMetadataPreservationDepth = 0
   private importedStateApplicationDepth = 0
   private layoutMutationDepth = 0
@@ -437,12 +452,23 @@ export class SceneGraph {
       }
       set.add(node.id)
     }
+    for (const observe of this.mutationObservers) observe.created?.(node)
     this.emitter.emit('node:created', node)
     return node
   }
   /** Publish synchronous graph events only after the supplied mutation succeeds. */
   withBufferedEvents<T>(action: () => T): T {
     return this.emitter.batch(action)
+  }
+
+  /** Track synchronous mutations before public event delivery, including a failing observer. */
+  observeNodeMutationsDuring<T>(action: () => T, observe: NodeMutationObserver): T {
+    this.mutationObservers.push(observe)
+    try {
+      return action()
+    } finally {
+      this.mutationObservers.pop()
+    }
   }
 
   createNode(type: NodeType, parentId: string, overrides: Partial<SceneNode> = {}): SceneNode {
@@ -584,6 +610,7 @@ export class SceneGraph {
     absent: readonly (keyof SceneNode)[] = []
   ): void {
     const { id } = node
+    this.observeNodeChanges(node, changes, absent)
     // Include removed keys in cache invalidation and update notifications.
     if (absent.length) {
       changes = { ...changes }
@@ -621,6 +648,18 @@ export class SceneGraph {
     if (changes.strokes) removeStaleBindings(node, 'strokes', changes)
     for (const key of absent) Reflect.deleteProperty(node, key)
     this.emitter.emit('node:updated', id, changes)
+  }
+
+  private observeNodeChanges(
+    node: SceneNode,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[]
+  ): void {
+    if (!this.mutationObservers.length) return
+    let effective = changes
+    if (node.type === 'TEXT')
+      effective = { ...textCacheInvalidationChanges(node, changes), ...changes }
+    for (const observe of this.mutationObservers) observe.updated?.(node, effective, absent)
   }
 
   reparentNode(nodeId: string, newParentId: string): void {

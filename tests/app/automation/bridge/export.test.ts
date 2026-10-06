@@ -82,6 +82,20 @@ function resultBytes(response: unknown): Uint8Array {
 }
 
 describe('automation export of a page that is not on screen', () => {
+  test('a visible frame without a renderer reports unavailable raster rather than empty design', async () => {
+    const store = createEditorStore()
+    stores.push(store)
+    const pageId = store.state.currentPageId
+    const frame = store.graph.createNode('FRAME', pageId, { width: 40, height: 30, fills: [RED] })
+    await expect(
+      handleTargetCommand(target(store, pageId), 'tool', {
+        name: 'export_image',
+        args: { ids: [frame.id] }
+      })
+    ).rejects.toThrow('Raster renderer is unavailable')
+    expect(store.graph.getNode(frame.id)?.visible).toBe(true)
+  })
+
   test('export_image waits for the document allocation lane', async () => {
     const store = await storeWithCanvas()
     const pageId = store.state.currentPageId
@@ -102,7 +116,9 @@ describe('automation export of a page that is not on screen', () => {
       completed = true
       return response
     })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
     const completedWhileOccupied = completed
     release()
     await occupied
