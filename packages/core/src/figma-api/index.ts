@@ -11,9 +11,8 @@ import type {
 } from '@open-pencil/scene-graph'
 import { getAxisAlignedBoundsInParent } from '@open-pencil/scene-graph/coordinate'
 import { copyFills, copyStrokes, copyEffects } from '@open-pencil/scene-graph/copy'
-import { computeBounds } from '@open-pencil/scene-graph/geometry'
 import { computeImageHash } from '@open-pencil/scene-graph/images'
-import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
+import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
 import { canMakeBooleanSourceNode } from '#core/canvas/boolean'
@@ -47,6 +46,12 @@ import {
   type FigmaFontName,
   type NodeProxyHost
 } from './proxy'
+import {
+  readDocumentRuntimeStatus,
+  readViewport,
+  type FigmaViewport,
+  type RuntimeHistory
+} from './runtime'
 import type { ExportImageOptions } from './types'
 
 const noop = () => undefined
@@ -94,6 +99,16 @@ export class FigmaAPI implements NodeProxyHost {
 
   setRenderer(renderer: SkiaRenderer | null): void {
     this._renderer = renderer
+  }
+
+  runtimeHistory: RuntimeHistory | null = null
+
+  getRuntimeStatus() {
+    return {
+      document: readDocumentRuntimeStatus(this.graph),
+      renderer: this._renderer?.getResourceUsage() ?? null,
+      history: this.runtimeHistory?.() ?? null
+    }
   }
 
   get currentPageId(): string {
@@ -148,8 +163,6 @@ export class FigmaAPI implements NodeProxyHost {
     return this.getNodeById(id)
   }
 
-  // --- Node Creation ---
-
   private _createNode(type: NodeType): FigmaNodeProxy {
     const node = this.graph.createNode(type, this._currentPageId)
     return this.wrapNode(node.id)
@@ -199,8 +212,6 @@ export class FigmaAPI implements NodeProxyHost {
     const page = this.graph.addPage('Page')
     return this.wrapNode(page.id)
   }
-
-  // --- Grouping ---
 
   private _nodeId(node: BaseNode | FigmaNodeProxy): string {
     return (node as BaseNode & { [INTERNAL_ID]: string })[INTERNAL_ID]
@@ -347,8 +358,6 @@ export class FigmaAPI implements NodeProxyHost {
     return this.graph.variableCollections.get(id) ?? null
   }
 
-  // --- Variable/Collection CRUD ---
-
   createVariable(
     name: string,
     type: VariableType,
@@ -386,8 +395,6 @@ export class FigmaAPI implements NodeProxyHost {
     this.graph.unbindVariable(nodeId, field)
     reconcileVariableLayouts(this.graph)
   }
-
-  // --- Boolean Operations ---
 
   private _booleanOperation(
     operation: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'EXCLUDE',
@@ -459,8 +466,6 @@ export class FigmaAPI implements NodeProxyHost {
     return this._booleanOperation('EXCLUDE', nodes, parent, index)
   }
 
-  // --- Flatten ---
-
   flatten(
     nodes: ReadonlyArray<FigmaNodeProxy>,
     parent?: FigmaNodeProxy,
@@ -524,31 +529,19 @@ export class FigmaAPI implements NodeProxyHost {
     return this.flatten(this._nodesById(nodeIds), parent)
   }
 
-  // --- Viewport ---
-
   private _viewport = { x: 0, y: 0, zoom: 1 }
 
-  get viewport(): {
-    center: Vector
-    zoom: number
-    scrollAndZoomIntoView: (nodes: readonly { absoluteBoundingBox: Rect }[]) => void
-  } {
-    return {
-      center: { x: this._viewport.x, y: this._viewport.y },
-      zoom: this._viewport.zoom,
-      scrollAndZoomIntoView: (nodes) => {
-        const b = computeBounds(nodes.map((n) => n.absoluteBoundingBox))
-        if (b.width === 0 && b.height === 0 && nodes.length === 0) return
-
-        const padding = 80
-        const contentW = b.width + padding * 2
-        const contentH = b.height + padding * 2
-        const viewW = IS_BROWSER ? window.innerWidth : 1280
-        const viewH = IS_BROWSER ? window.innerHeight : 720
-        const zoom = Math.min(viewW / contentW, viewH / contentH, 1)
-        this._viewport = { x: b.x + b.width / 2, y: b.y + b.height / 2, zoom }
+  get viewport(): FigmaViewport {
+    return readViewport(
+      this._viewport,
+      () => ({
+        x: IS_BROWSER ? window.innerWidth : 1280,
+        y: IS_BROWSER ? window.innerHeight : 720
+      }),
+      (viewport) => {
+        this._viewport = viewport
       }
-    }
+    )
   }
 
   set viewport(v: { center: Vector; zoom: number }) {
@@ -560,8 +553,6 @@ export class FigmaAPI implements NodeProxyHost {
     this.graph.images.set(hash, data)
     return { hash }
   }
-
-  // --- Stubs ---
 
   async loadFontAsync(_fontName: FigmaFontName): Promise<void> {
     // No-op: we don't gate text editing on font loading

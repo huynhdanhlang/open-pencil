@@ -38,6 +38,8 @@ export interface AutomationServerHandle {
   disconnect: () => void | Promise<void>
   authToken: string | null
   managed: boolean
+  /** Resolves when this app-owned child exits, including the no-app watchdog. */
+  closed?: Promise<void>
 }
 
 const DEV_AUTOMATION_HTTP_URL = import.meta.env.DEV
@@ -62,10 +64,7 @@ interface MCPLookup {
   path: string | null
   searched: string[]
 }
-// While no app is attached, the spawned server waits this long for a register
-// or reconnect before closing itself and removing its discovery file. This
-// prevents a server that outlives a crashed/reloaded app from squatting the
-// port forever while still allowing brief renderer reloads (issue #488).
+// Allow brief renderer reloads, then release the port/discovery file if orphaned (issue #488).
 const MCP_APP_ATTACH_TIMEOUT_MS = 30_000
 
 /** Delays used while a spawned server comes up; tests shorten them. */
@@ -82,11 +81,7 @@ let runtimeAutomationStartupError: Error | null = null
 let runtimeAutomationStartupFailure: MCPFailure | null = null
 let runtimeAutomationHealthFailure: MCPFailure | null = null
 
-/**
- * The startup failure recorded by the most recent spawn attempt. Settings uses
- * this so a missing install, a rejected shell command, or a server that exited
- * is reported instead of a single generic health message.
- */
+/** Settings receives the actual install, permission or child-exit failure from the last spawn. */
 export function getAutomationStartupError(): Error | null {
   return runtimeAutomationStartupError
 }
@@ -487,9 +482,11 @@ async function startMCPIfNeeded(timing: MCPStartupTiming): Promise<AutomationSer
   })
 
   let spawnedToken: string | null = null
+  let exited = false
   let child: Awaited<ReturnType<typeof command.spawn>>
   const childClosed = new Promise<{ code: number | null; signal: number | null }>((resolve) => {
     command.on('close', (event) => {
+      exited = true
       resolve(event)
       if (spawnedToken && runtimeAutomationAuthToken === spawnedToken) {
         runtimeAutomationAuthToken = null
@@ -536,15 +533,18 @@ async function startMCPIfNeeded(timing: MCPStartupTiming): Promise<AutomationSer
       runtimeAutomationStartupFailure = null
       return {
         disconnect: async () => {
-          await child.kill().catch((e) => {
-            console.error('[MCP] Failed to kill server:', e)
-          })
+          if (!exited) {
+            await child.kill().catch((e) => {
+              console.error('[MCP] Failed to kill server:', e)
+            })
+          }
           if (runtimeAutomationAuthToken === token) {
             runtimeAutomationAuthToken = null
           }
         },
         authToken: token,
-        managed: true
+        managed: true,
+        closed: childClosed.then(() => undefined)
       }
     } catch (err) {
       await child.kill().catch(() => undefined)
@@ -577,13 +577,8 @@ export async function spawnMCPIfNeeded(
 }
 
 /**
- * Returns the user's home directory. Used as the default OPENPENCIL_MCP_ROOT
- * so file-scoped tools operate on paths inside ~, which is writable and
- * matches user expectations. Throws if the Tauri path plugin is unavailable
- * — this function is only invoked under !import.meta.env.DEV && isTauri(),
- * so the Tauri path plugin should always succeed. A silent fallback to '/'
- * would defeat path scoping in resolveSafePath, and process.cwd() is
- * unpredictable and may also be too broad.
+ * Default MCP root is the native user's home. Throw if the Tauri path plugin is unavailable;
+ * falling back to '/' defeats path scoping, and process.cwd() may be unpredictable or too broad.
  */
 async function resolveTauriHomeDir(): Promise<string> {
   try {

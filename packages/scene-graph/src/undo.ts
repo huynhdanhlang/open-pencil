@@ -119,6 +119,14 @@ export class UndoManager {
     return this.batches.length > 0
   }
 
+  get diagnostics() {
+    return {
+      undo: this.undoStack.length,
+      redo: this.redoStack.length,
+      batches: this.batches.length
+    }
+  }
+
   get canUndo(): boolean {
     return this.undoStack.length > 0
   }

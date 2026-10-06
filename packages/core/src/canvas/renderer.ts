@@ -461,6 +461,44 @@ export class SkiaRenderer {
     return expand
   }
 
+  /** Counts are ownership diagnostics, not estimates of total native allocation. */
+  getResourceUsage() {
+    const heap = Reflect.get(this.ck, 'HEAPU8') as unknown
+    let paths = 0
+    for (const cache of [
+      this.vectorPathCache,
+      this.vectorStrokePathCache,
+      this.vectorStrokeOutlineCache,
+      this.fillGeometryCache,
+      this.strokeGeometryCache
+    ]) {
+      for (const entry of cache.values()) paths += entry.length
+    }
+    return {
+      // CanvasKit is shared by document renderers; capacity is a high-water mark, not live bytes.
+      wasmHeapScope: 'shared-canvaskit' as const,
+      wasmHeapCapacityBytes: heap instanceof Uint8Array ? heap.byteLength : null,
+      decodedImages: this.imageCache.size,
+      decodedImageBudgetBytes: this.imageCache.weight,
+      paths,
+      imageFilters: this.imageFilterCache.size,
+      maskFilters: this.maskFilterCache.size,
+      nodePictures: this.nodePictureCache.size,
+      subtreePictures: this.subtreePictureCache.size,
+      effectRasters: this.effectRasterCache.size,
+      effectRasterPixels: this.effectRasterCache.weight,
+      scenePicture: this.scenePicture !== null,
+      sceneBackingLogicalPixels: this.sceneBacking
+        ? this.sceneBacking.width * this.sceneBacking.height
+        : 0,
+      pendingSceneBackingLogicalPixels: this.sceneBackingBuild
+        ? this.sceneBackingBuild.width * this.sceneBackingBuild.height
+        : 0,
+      labelParagraphs: this.labelParagraphCache.size(),
+      labelTextUnits: this.labelParagraphCache.textUnits()
+    }
+  }
+
   constructor(ck: CanvasKit, surface: Surface, gl?: WebGL2RenderingContext | null) {
     this.ck = ck
     this.surface = surface

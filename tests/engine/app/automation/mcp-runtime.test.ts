@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ToolDescriptor } from '@open-pencil/mcp/tools'
 
 import { createMCPRuntimeService, type MCPRuntimeDependencies } from '@/app/automation/mcp/runtime'
+import { createDeferred } from '@/app/runtime/deferred'
 
 function descriptor(name = 'get_page_tree'): ToolDescriptor {
   return {
@@ -43,6 +44,88 @@ function setup(overrides: Partial<MCPRuntimeDependencies> = {}) {
 const getStore = () => ({}) as never
 
 describe('MCP runtime service', () => {
+  test('recovers an exited managed server with fresh authentication and the same editor', async () => {
+    const closed = createDeferred<undefined>()
+    let starts = 0
+    const tokens: (string | null)[] = []
+    const { service } = setup({
+      spawn: async () => ({
+        managed: true,
+        authToken: `token-${++starts}`,
+        closed: starts === 1 ? closed.promise : undefined,
+        disconnect: () => undefined
+      }),
+      connect: (store, token) => {
+        expect(store).toBe(getStore)
+        tokens.push(token)
+        return () => undefined
+      }
+    })
+    await service.start(getStore)
+    closed.resolve(undefined)
+    await Promise.resolve()
+    await service.refresh()
+    expect(starts).toBe(2)
+    expect(tokens).toEqual(['token-1', 'token-2'])
+    expect(service.state.status).toBe('running')
+    await service.stop()
+  })
+
+  for (const reason of ['stopped', 'external'] as const) {
+    test(`does not respawn a ${reason} server after its late exit`, async () => {
+      const closed = createDeferred<undefined>()
+      let starts = 0
+      const { service } = setup({
+        spawn: async () => {
+          starts++
+          return {
+            managed: reason !== 'external',
+            authToken: 'token',
+            closed: closed.promise,
+            disconnect: () => undefined
+          }
+        }
+      })
+      await service.start(getStore)
+      if (reason === 'stopped') await service.stop()
+      closed.resolve(undefined)
+      await Promise.resolve()
+      await service.refresh()
+      expect(starts).toBe(1)
+      await service.stop()
+    })
+  }
+
+  test('bounds repeated managed crashes and leaves an actionable error', async () => {
+    const exits = Array.from({ length: 5 }, () => createDeferred<undefined>())
+    let starts = 0
+    let healthy = false
+    const { catalogs, service } = setup({
+      readHealth: async () => (healthy ? { status: 'ok', tools: [descriptor()] } : null),
+      spawn: async () => {
+        healthy = true
+        return {
+          managed: true,
+          authToken: 'token',
+          closed: exits[starts++].promise,
+          disconnect: () => undefined
+        }
+      }
+    })
+    await service.start(getStore)
+    for (let index = 0; index < 4; index++) {
+      healthy = false
+      exits[index].resolve(undefined)
+      await Promise.resolve()
+      await service.refresh()
+    }
+    expect(starts).toBe(4)
+    expect(service.state.status).toBe('error')
+    expect(service.state.failure?.code).toBe('exited')
+    expect(catalogs.at(-1)).toEqual([])
+    await service.stop()
+  })
+
   test('starts only after a healthy server response', async () => {
     const { calls, catalogs, service } = setup()
 

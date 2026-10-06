@@ -30,6 +30,9 @@ export interface MCPRuntimeState {
 
 export type MCPRuntimeResult = { ok: true } | { ok: false; error: Error }
 
+const MAX_AUTOMATIC_RESTARTS = 3
+const AUTOMATIC_RESTART_WINDOW_MS = 5 * 60_000
+
 export interface MCPRuntimeDependencies {
   connect: (getStore: () => EditorStore, authToken: string | null) => () => void
   canConnect: () => boolean
@@ -83,6 +86,7 @@ export function createMCPRuntimeService(dependencies: MCPRuntimeDependencies) {
   let disconnectAutomation: (() => void) | null = null
   let activeStore: (() => EditorStore) | null = null
   let lifecycle: Promise<void> = Promise.resolve()
+  let automaticRestarts: number[] = []
 
   function enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const next = lifecycle.then(operation, operation)
@@ -135,6 +139,37 @@ export function createMCPRuntimeService(dependencies: MCPRuntimeDependencies) {
     }
   }
 
+  function observeServerExit(currentServer: AutomationServerHandle): void {
+    if (!currentServer.managed || !currentServer.closed) return
+    const recover = () =>
+      enqueue(async () => {
+        // Shutdown/restart can race a queued child-close event. Only its current owner may recover.
+        if (server !== currentServer || !activeStore) return
+        await disconnectCurrentServer()
+        state.version = null
+        dependencies.setToolDescriptors([])
+        const now = Date.now()
+        automaticRestarts = automaticRestarts.filter(
+          (time) => now - time < AUTOMATIC_RESTART_WINDOW_MS
+        )
+        if (automaticRestarts.length >= MAX_AUTOMATIC_RESTARTS) {
+          state.status = 'error'
+          state.failure = mcpFailure(
+            'exited',
+            'MCP server repeatedly exited; automatic recovery stopped'
+          )
+          console.warn('[MCP]', failureDetail(state.failure))
+          return
+        }
+        automaticRestarts.push(now)
+        console.warn('[MCP] Managed server exited; recovering connection')
+        await startOperation()
+      })
+    void currentServer.closed.then(recover, recover).catch((error) => {
+      console.warn('[MCP] Automatic recovery failed:', toError(error))
+    })
+  }
+
   async function startOperation(): Promise<MCPRuntimeResult> {
     state.status = 'starting'
     state.failure = null
@@ -150,6 +185,7 @@ export function createMCPRuntimeService(dependencies: MCPRuntimeDependencies) {
           disconnectAutomation = dependencies.connect(activeStore, server?.authToken ?? null)
         }
         applyHealth(health)
+        if (server) observeServerExit(server)
         return { ok: true }
       }
       failure = describeStartupFailure(dependencies, server)
@@ -188,11 +224,13 @@ export function createMCPRuntimeService(dependencies: MCPRuntimeDependencies) {
     refresh: () => enqueue(refreshOperation),
     start(getStore: () => EditorStore): Promise<MCPRuntimeResult> {
       activeStore = getStore
+      automaticRestarts = []
       return enqueue(startOperation)
     },
     stop: () => enqueue(() => stopOperation(true)),
     restart: () =>
       enqueue(async () => {
+        automaticRestarts = []
         const stopResult = await stopOperation(false)
         if (!stopResult.ok) return stopResult
         if (!activeStore) {

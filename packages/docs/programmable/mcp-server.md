@@ -203,6 +203,10 @@ Settings tools never expose credentials, AI models, MCP connections, storage, or
 
 ### Read
 
+The native fork also exposes `get_runtime_status` for diagnosing long sessions. It reports materialized node counts, imported-worker retention, shared CanvasKit heap capacity, renderer resource counts and Undo counts without returning design content. Heap capacity and cache weights are not total live process memory; compare repeated operations with native process memory and its journal. Retiring an obsolete imported worker preserves the recovery checkpoint and does not remove unloaded pages. Discover the installed schema before use.
+
+Unexpected exit of an app-managed native MCP child triggers serialized recovery with current authentication, filesystem root and tool policy. Recovery permits three restarts within five minutes, then reports failure; explicit Stop and externally managed servers are respected. Clients must rediscover the live document and inspect the outcome of interrupted commands before retrying a mutation.
+
 | Tool                   | Description                                                                                                                 |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `get_selection`        | Get currently selected nodes                                                                                                |

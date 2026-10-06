@@ -91,7 +91,12 @@ export function parseFigFileViaWorker(
                 const requestId = randomHex()
                 pendingArchives.set(requestId, resolveArchive)
                 channel.port1.postMessage({ type: 'original-archive', requestId })
-              })
+              }),
+            () => {
+              for (const resolveArchive of pendingArchives.values())
+                resolveArchive(new Uint8Array())
+              pendingArchives.clear()
+            }
           )
         } else {
           cleanupAbort()

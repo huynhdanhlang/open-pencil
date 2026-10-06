@@ -16,6 +16,8 @@ interface OriginalArchiveRequest {
   request: () => Promise<Uint8Array>
   valid: boolean
   unbind: () => void
+  invalidated: Promise<null>
+  invalidate: () => void
 }
 const originalArchiveRequests = new WeakMap<SceneGraph, OriginalArchiveRequest>()
 
@@ -59,11 +61,29 @@ export function canUseFigPopulationWorker(graph: SceneGraph): boolean {
 
 export function registerOriginalArchiveRequest(
   graph: SceneGraph,
-  request: () => Promise<Uint8Array>
+  request: () => Promise<Uint8Array>,
+  cancel?: () => void
 ): void {
-  const entry: OriginalArchiveRequest = { request, valid: true, unbind: () => undefined }
+  invalidateOriginalArchiveRequest(graph)
+  originalArchiveRequests.get(graph)?.unbind()
+  let resolveInvalidated: (value: null) => void = () => undefined
+  const invalidated = new Promise<null>((resolve) => {
+    resolveInvalidated = resolve
+  })
+  const entry: OriginalArchiveRequest = {
+    request,
+    valid: true,
+    unbind: () => undefined,
+    invalidated,
+    invalidate() {
+      if (!entry.valid) return
+      entry.valid = false
+      resolveInvalidated(null)
+      cancel?.()
+    }
+  }
   const invalidate = () => {
-    if (!graph.isApplyingLayout) entry.valid = false
+    if (!graph.isApplyingLayout && !graph.isApplyingImportedState) entry.invalidate()
   }
   entry.unbind = graph.onNodeEvents({
     created: invalidate,
@@ -75,10 +95,14 @@ export function registerOriginalArchiveRequest(
   originalArchiveRequests.set(graph, entry)
 }
 
+function invalidateOriginalArchiveRequest(graph: SceneGraph): void {
+  originalArchiveRequests.get(graph)?.invalidate()
+}
+
 export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Array | null> {
   const entry = originalArchiveRequests.get(graph)
   if (!entry?.valid) return null
-  const archive = await entry.request()
+  const archive = await Promise.race([entry.request(), entry.invalidated])
   return originalArchiveRequests.get(graph)?.valid === true &&
     originalArchiveRequests.get(graph) === entry
     ? archive
@@ -86,6 +110,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
 }
 
 export function releaseFigPopulationWorker(graph: SceneGraph): void {
+  invalidateOriginalArchiveRequest(graph)
   releaseReaderRecovery(graph)
   populationWorkers.get(graph)?.terminate()
   populationWorkers.delete(graph)
@@ -145,6 +170,9 @@ export function createPopulationWorkerClient(
     revision++
     stale = true
     emitTelemetry({ event: 'stale', reason: 'graph-mutation' })
+    // The recovery checkpoint/bytes stay with the live graph. Its stale worker mirror cannot
+    // contribute another delta or original archive, so release it during same-page editing.
+    fail(false)
   }
   let unbind: (() => void) | undefined
   const releaseSubscription = () => {
@@ -152,6 +180,8 @@ export function createPopulationWorkerClient(
     unbind = undefined
   }
   const fail = (emit = true) => {
+    if (disposed) return
+    disposed = true
     stale = true
     if (emit) emitTelemetry({ event: 'fallback', reason: 'worker-error' })
     for (const request of pending.values()) {
@@ -161,8 +191,12 @@ export function createPopulationWorkerClient(
     }
     pending.clear()
     releaseSubscription()
+    // Resolve archive waiters before retiring their transport, including errors/timeouts.
+    invalidateOriginalArchiveRequest(graph)
+    port?.close()
     worker.terminate()
     populationWorkers.delete(graph)
+    emitTelemetry({ event: 'terminated' })
   }
   unbind = graph.onNodeEvents({
     created: invalidate,
@@ -241,10 +275,7 @@ export function createPopulationWorkerClient(
     },
     terminate() {
       if (disposed) return
-      disposed = true
-      emitTelemetry({ event: 'terminated' })
       port?.postMessage({ type: 'dispose' })
-      port?.close()
       fail(false)
     }
   }
