@@ -23,6 +23,120 @@ async function render(jsx: string) {
 }
 
 describe('Reka UI elements in design JSX', () => {
+  for (const namespace of ['TextField', 'Textarea']) {
+    for (const explicitInput of [false, true]) {
+      test(`${namespace} preserves its declared root binding with input reference ${explicitInput}`, async () => {
+        const { graph, root, behaviour, missing } = await render(`
+          <${namespace}.Root modelValue="Draft"
+            properties={[{id:"draft",name:"Draft",type:"TEXT",defaultValue:"Initial"}]}>
+            <${namespace}.Input name="Unsent correction"
+              ${explicitInput ? 'propertyRefs={[{propertyId:"draft",field:"TEXT"}]}' : ''}>Initial</${namespace}.Input>
+          </${namespace}.Root>
+        `)
+        expect(root.componentPropertyDefinitions).toHaveLength(1)
+        expect(behaviour.texts.value?.propertyId).toBe('draft')
+        expect(graph.getChildren(root.id)[0]?.componentPropertyReferences).toEqual([
+          { propertyId: 'draft', field: 'TEXT' }
+        ])
+        expect(missing).toEqual([])
+        const jsx = sceneNodeToJSX(root.id, graph)
+        expect(jsx).toContain('modelValue="Draft"')
+        expect(jsx).toContain(`<${namespace}.Input`)
+        const reopened = await render(jsx)
+        expect(reopened.root.componentPropertyDefinitions).toHaveLength(1)
+        expect(reopened.behaviour.texts.value?.propertyId).toBe('draft')
+      })
+    }
+  }
+
+  test('an input reuses its declared TEXT reference without a root modelValue', async () => {
+    const { root, behaviour } = await render(`
+      <Textarea.Root properties={[{id:"draft",name:"Draft",type:"TEXT",defaultValue:"Draft"}]}>
+        <Textarea.Input propertyRefs={[{propertyId:"draft",field:"TEXT"}]}>Draft</Textarea.Input>
+      </Textarea.Root>
+    `)
+    expect(root.componentPropertyDefinitions).toHaveLength(1)
+    expect(behaviour.texts.value?.propertyId).toBe('draft')
+  })
+
+  test('NumberField preserves its separate input text without exporting a text modelValue', async () => {
+    const { graph, root, behaviour } = await render(`
+      <NumberField.Root min={0} max={10} defaultValue={3}>
+        <NumberField.Input>3</NumberField.Input>
+      </NumberField.Root>
+    `)
+    const jsx = sceneNodeToJSX(root.id, graph)
+    expect(jsx).not.toContain('modelValue=')
+    expect(jsx).not.toContain('text=')
+    expect(jsx).toContain('<NumberField.Input')
+    const again = await render(jsx)
+    expect(again.behaviour.texts.text?.propertyId).toBe(behaviour.texts.text?.propertyId)
+    expect(again.behaviour.numbers).toEqual(behaviour.numbers)
+    expect(again.root.componentPropertyDefinitions).toHaveLength(1)
+  })
+
+  test('Input export finds its behaviour binding after an unrelated legacy TEXT reference', async () => {
+    const { graph, root } = await render(`
+      <Textarea.Root modelValue="Draft" properties={[
+        {id:"draft",name:"Draft",type:"TEXT",defaultValue:"Draft"},
+        {id:"other",name:"Other",type:"TEXT",defaultValue:"Other"}
+      ]}>
+        <Textarea.Input>Draft</Textarea.Input>
+      </Textarea.Root>
+    `)
+    const input = graph.getChildren(root.id)[0]
+    if (!input) throw new Error('Input missing')
+    graph.updateNode(input.id, {
+      componentPropertyReferences: [
+        { propertyId: 'other', field: 'TEXT' },
+        { propertyId: 'draft', field: 'TEXT' }
+      ]
+    })
+    const jsx = sceneNodeToJSX(root.id, graph)
+    expect(jsx).toContain('<Textarea.Input')
+    expect(jsx).toContain('modelValue="Draft"')
+    const again = await render(jsx)
+    expect(again.graph.getChildren(again.root.id)[0]?.componentPropertyReferences).toEqual([
+      { propertyId: 'draft', field: 'TEXT' }
+    ])
+  })
+
+  test('conflicting root and input text bindings are rejected', async () => {
+    await expect(
+      render(`
+      <Textarea.Root modelValue="Draft" properties={[
+        {id:"draft",name:"Draft",type:"TEXT",defaultValue:"Draft"},
+        {id:"other",name:"Other",type:"TEXT",defaultValue:"Other"}
+      ]}>
+        <Textarea.Input propertyRefs={[{propertyId:"other",field:"TEXT"}]}>Draft</Textarea.Input>
+      </Textarea.Root>
+    `)
+    ).rejects.toThrow('Conflicting text bindings')
+  })
+
+  test('a textarea binding retains the variant that owns its TEXT definition', async () => {
+    const { graph, root, behaviour } = await render(`
+      <Textarea.Root modelValue="Draft">
+        <Component name="State=Default" properties={[
+          {id:"draft",name:"Draft",type:"TEXT",defaultValue:"Draft"}
+        ]}>
+          <Textarea.Input propertyRefs={[{propertyId:"draft",field:"TEXT"}]}>Draft</Textarea.Input>
+        </Component>
+      </Textarea.Root>
+    `)
+    expect(behaviour.texts.value?.propertyId).toBe('draft')
+    expect(root.componentPropertyDefinitions.filter((item) => item.type === 'TEXT')).toEqual([])
+    const jsx = sceneNodeToJSX(root.id, graph)
+    const again = await render(jsx)
+    expect(again.behaviour.texts.value?.propertyId).toBe('draft')
+    expect(again.root.componentPropertyDefinitions.filter((item) => item.type === 'TEXT')).toEqual(
+      []
+    )
+    expect(again.graph.getChildren(again.root.id)[0]?.componentPropertyDefinitions).toMatchObject([
+      { id: 'draft', name: 'Draft', type: 'TEXT' }
+    ])
+  })
+
   test('a Switch.Root with variants is a set whose thumb is one slot across its variants', async () => {
     const { graph, root, behaviour, missing } = await render(`
       <Switch.Root name="Switch" modelValue="State" states="Interaction">

@@ -81,7 +81,7 @@ export async function renderRekaNode(
         withoutBehaviourProps(tree),
         parentId
       )
-      const own = createScope(role.kind, root.id)
+      const own = createScope(role.kind, root.id, tree.props)
       await renderChildren(hooks.render, wrapRepeatedParts(tree, role.kind), root.id, own)
       if (variants) hooks.finishSet(root.id)
       finishRoot(graph, own, tree.props)

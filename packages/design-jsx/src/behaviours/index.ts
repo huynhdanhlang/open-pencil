@@ -1,5 +1,6 @@
 import {
   behaviourFromSpec,
+  behaviourProperties,
   createComponentPropertyId,
   createSlotProperty,
   withBehaviour,
@@ -141,10 +142,21 @@ export interface RekaScope {
   slots: Map<string, string>
   /** Text property ids by value, defined once on the root. */
   texts: Map<string, string>
+  values: NonNullable<BehaviourSpec['values']>
 }
 
-export function createScope(kind: BehaviourKind, ownerId: string): RekaScope {
-  return { kind, ownerId, slots: new Map(), texts: new Map() }
+export function createScope(
+  kind: BehaviourKind,
+  ownerId: string,
+  props: Record<string, unknown>
+): RekaScope {
+  return {
+    kind,
+    ownerId,
+    slots: new Map(),
+    texts: new Map(),
+    values: rootSpec(kind, props).values ?? {}
+  }
 }
 
 /** Make a rendered part frame its part's slot, with the id the part has in this component. */
@@ -163,21 +175,40 @@ export function bindInput(
   valueId: string,
   propertyName: string
 ) {
-  let id = scope.texts.get(valueId)
+  const owner = graph.getNode(scope.ownerId)
+  if (!owner) throw new Error('Input must have a component owner')
+  const definitions = behaviourProperties(graph, owner)
+  const binding = scope.values[valueId]
+  const name = typeof binding === 'string' ? binding : binding?.property
+  const declared =
+    name === undefined
+      ? undefined
+      : definitions.find((item) => item.name === name && item.type === 'TEXT')
+  if (name !== undefined && !declared) throw new Error(`Missing TEXT property "${name}"`)
+  const references = text.componentPropertyReferences.filter((item) => item.field === 'TEXT')
+  for (const reference of references) {
+    if (!definitions.some((item) => item.id === reference.propertyId && item.type === 'TEXT'))
+      throw new Error(`Missing TEXT property "${reference.propertyId}"`)
+  }
+  const ids = new Set([
+    ...references.map((item) => item.propertyId),
+    ...[declared?.id, scope.texts.get(valueId)].filter((id): id is string => id !== undefined)
+  ])
+  if (ids.size > 1) throw new Error(`Conflicting text bindings for "${valueId}"`)
+  let id = [...ids][0]
   if (!id) {
     id = createComponentPropertyId()
-    scope.texts.set(valueId, id)
-    const owner = graph.getNode(scope.ownerId)
     graph.updateNode(scope.ownerId, {
       componentPropertyDefinitions: [
-        ...(owner?.componentPropertyDefinitions ?? []),
+        ...owner.componentPropertyDefinitions,
         { id, name: propertyName, type: 'TEXT', defaultValue: text.text }
       ]
     })
   }
+  scope.texts.set(valueId, id)
   graph.updateNode(text.id, {
     componentPropertyReferences: [
-      ...text.componentPropertyReferences,
+      ...text.componentPropertyReferences.filter((item) => item.field !== 'TEXT'),
       { propertyId: id, field: 'TEXT' }
     ]
   })
@@ -239,8 +270,8 @@ export function finishRoot(
   const behaviour = behaviourFromSpec(graph, owner, rootSpec(scope.kind, props))
   behaviour.parts = { ...behaviour.parts, ...Object.fromEntries(scope.slots) }
   behaviour.texts = {
-    ...behaviour.texts,
-    ...Object.fromEntries([...scope.texts].map(([valueId, id]) => [valueId, { propertyId: id }]))
+    ...Object.fromEntries([...scope.texts].map(([valueId, id]) => [valueId, { propertyId: id }])),
+    ...behaviour.texts
   }
   graph.updateNode(owner.id, { pluginData: withBehaviour(owner, behaviour) })
 }

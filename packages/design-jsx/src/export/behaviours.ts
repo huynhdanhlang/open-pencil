@@ -10,6 +10,7 @@ import {
 } from '@open-pencil/scene-graph'
 
 import { REKA_ELEMENTS, rekaRole } from '../behaviours'
+import { plainValue } from './value'
 import type { JSXProp, JSXValue } from './value'
 
 /** The Reka namespace and element a kind's component is written as. */
@@ -53,10 +54,13 @@ function rootProps(graph: SceneGraph, owner: SceneNode): JSXProp[] {
   if (!behaviour) return []
   const spec = behaviourToSpec(graph, owner, behaviour)
   const props: JSXProp[] = []
+  const textProperties = owner.componentPropertyDefinitions.filter((item) => item.type === 'TEXT')
+  if (textProperties.length) props.push(['properties', plainValue(textProperties)])
   const valueProp = (value: NonNullable<typeof spec.values>[string]): JSXValue =>
     typeof value === 'string' ? value : { property: value.property, on: value.on, off: value.off }
   for (const [valueId, value] of Object.entries(spec.values ?? {})) {
-    if (Object.hasOwn(behaviour.texts, valueId)) continue
+    // NumberField's internal input text is distinct from its numeric modelValue.
+    if (Object.hasOwn(behaviour.texts, valueId) && valueId !== 'value') continue
     const name = valueId === 'value' ? 'modelValue' : valueId
     props.push([name, valueProp(value)])
   }
@@ -123,6 +127,13 @@ export function rekaExport(graph: SceneGraph, owner: SceneNode): RekaExport | nu
   )
   for (const layer of descendants(graph, owner)) {
     if (layer.type === 'INSTANCE') continue
+    if (layer.type === 'COMPONENT') {
+      const textProperties = layer.componentPropertyDefinitions.filter(
+        (item) => item.type === 'TEXT'
+      )
+      if (textProperties.length)
+        result.props.set(layer.id, [['properties', plainValue(textProperties)]])
+    }
     const partId = Object.entries(behaviour.parts).find(
       ([, id]) => id === slotPropertyId(layer)
     )?.[0]
@@ -130,14 +141,19 @@ export function rekaExport(graph: SceneGraph, owner: SceneNode): RekaExport | nu
       exportPart(graph, namespace, layer, partId, result)
       continue
     }
-    const reference = layer.componentPropertyReferences.find((item) => item.field === 'TEXT')
+    const reference = layer.componentPropertyReferences.find(
+      (item) => item.field === 'TEXT' && textIds.has(item.propertyId)
+    )
     const valueId = reference && textIds.get(reference.propertyId)
     if (layer.type === 'TEXT' && valueId) {
       const tag = elementFor(
         namespace,
         (role) => role?.role === 'input' && role.valueId === valueId
       )
-      if (tag) result.tags.set(layer.id, tag)
+      if (tag) {
+        result.tags.set(layer.id, tag)
+        result.props.set(layer.id, [['propertyRefs', plainValue([reference])]])
+      }
     }
   }
   return result
