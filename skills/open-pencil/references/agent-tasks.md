@@ -4,7 +4,7 @@ Use when a substantial independent review/analysis will help the main agent. The
 
 ## Discover and scope
 
-1. Discover live schemas for `agent_dispatch`, `agent_status`, `agent_cancel`. Missing tools mean this installation/client has no dispatch yet. Report that limitation and continue the main task yourself where possible; reconnect after an authorized installation if needed. Never invent dispatch, enable eval, change authentication/root, or silently substitute a provider.
+1. Discover live schemas for `agent_dispatch`, `agent_status`, `agent_cancel`. Check the native MCP server’s fresh `tools/list`: a Codex session may retain an older catalog after installation. The CLI `tool describe` lists Core tools and does not establish whether native helper dispatch is available. Missing live tools mean this installation/client has no dispatch yet. Report that limitation and continue the main task yourself where possible; reconnect after an authorized installation if needed. Never invent dispatch, enable eval, change authentication/root, or silently substitute a provider.
 2. Call `list_documents`; resolve the intended file and exact document/page IDs. Query only relevant nodes. Preserve unrelated tabs and unsaved work.
 3. Choose coherent node roots: total expanded subtree at most **200 nodes**, serialized context **64 KiB**, prompt **8 KiB UTF-8**. Split a large review into useful bounded slices. The native app captures immutable JSX plus SHA256; it does not send the whole document, filesystem, chat history or credentials.
 

@@ -1,6 +1,103 @@
 import { isEqual } from 'es-toolkit'
 
 import type { SceneGraph } from './index'
+import type { SceneNode } from './types'
+
+/** Replay page history without replacing unchanged nodes or cloning the entire page. */
+export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<string, SceneNode>) {
+  const page = snapshot.values().next().value
+  const livePage = page && graph.nodes.get(page.id)
+  if (!page || !livePage) return new Set<string>()
+  if (page.type !== 'CANVAS' || livePage.type !== 'CANVAS' || page.parentId !== livePage.parentId)
+    throw new Error('Page history must preserve its canvas root')
+  const targetIds = new Set<string>()
+  const visit = (id: string, parentId: string | null) => {
+    const node = snapshot.get(id)
+    if (
+      !node ||
+      id === graph.rootId ||
+      node.id !== id ||
+      targetIds.has(id) ||
+      node.parentId !== parentId
+    )
+      throw new Error('Invalid page history hierarchy')
+    targetIds.add(id)
+    for (const childId of node.childIds) visit(childId, id)
+  }
+  visit(page.id, page.parentId)
+  if (targetIds.size !== snapshot.size) throw new Error('Disconnected page history nodes')
+
+  const current = new Map<string, SceneNode>()
+  const walk = (id: string) => {
+    const node = graph.nodes.get(id)
+    if (!node || current.has(id)) return
+    current.set(id, node)
+    for (const childId of node.childIds) walk(childId)
+  }
+  walk(page.id)
+  const removed = [...current.values()].filter((node) => !snapshot.has(node.id))
+  const changed = [...snapshot.values()].filter((node) => !isEqual(graph.nodes.get(node.id), node))
+  // Clone before changing the graph; one batch preserves shared imported payloads.
+  const copies = structuredClone(changed)
+  const updates: Array<{ node: SceneNode; changes: Partial<SceneNode>; created: boolean }> = []
+  const externalParents = new Set<SceneNode>()
+  const removeIndex = (node: SceneNode) => {
+    if (node.type === 'INSTANCE' && node.componentId)
+      graph.instanceIndex.get(node.componentId)?.delete(node.id)
+  }
+  graph.withBufferedEvents(() =>
+    graph.preserveSourceMetadataDuring(() => {
+      for (const node of removed) {
+        removeIndex(node)
+        // Delete membership only: retained descendants may move out of a removed ancestor.
+        graph.nodes.delete(node.id)
+      }
+      for (const saved of copies) {
+        const live = graph.nodes.get(saved.id)
+        const changes: Partial<SceneNode> = { ...saved }
+        if (live) {
+          removeIndex(live)
+          if (live.parentId && live.parentId !== saved.parentId && !snapshot.has(live.parentId)) {
+            const parent = graph.nodes.get(live.parentId)
+            if (parent) {
+              parent.childIds = parent.childIds.filter((id) => id !== live.id)
+              externalParents.add(parent)
+            }
+          }
+          for (const key of Object.keys(live) as (keyof SceneNode)[]) {
+            if (!Object.hasOwn(saved, key)) {
+              Reflect.deleteProperty(live, key)
+              Reflect.set(changes, key, undefined)
+            }
+          }
+          Object.assign(live, saved)
+        } else graph.nodes.set(saved.id, saved)
+        const node = live ?? saved
+        if (node.type === 'INSTANCE' && node.componentId) {
+          let ids = graph.instanceIndex.get(node.componentId)
+          if (!ids) graph.instanceIndex.set(node.componentId, (ids = new Set()))
+          ids.add(node.id)
+        }
+        updates.push({ node, changes, created: !live })
+      }
+      graph.clearAbsPosCache()
+      // Consumers observe complete parent links, exact sibling arrays and component indexes.
+      for (const node of removed) graph.emitter.emit('node:deleted', node.id, node.parentId)
+      for (const parent of externalParents)
+        graph.emitter.emit('node:updated', parent.id, { childIds: parent.childIds })
+      for (const { node, changes, created } of updates) {
+        if (created) graph.emitter.emit('node:created', node)
+        else graph.emitter.emit('node:updated', node.id, changes)
+      }
+    })
+  )
+  const layoutPages = new Set([page.id])
+  for (const parent of externalParents) {
+    const ancestor = graph.closest(parent.id, (node) => node.type === 'CANVAS')
+    if (ancestor) layoutPages.add(ancestor.id)
+  }
+  return layoutPages
+}
 
 /** Capture rollback state without changing graph or surviving object identities. */
 export function captureGraphCheckpoint(graph: SceneGraph) {

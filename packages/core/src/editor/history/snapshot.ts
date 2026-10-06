@@ -1,6 +1,11 @@
 import { isEqual } from 'es-toolkit'
 
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import {
+  CommittedGraphEventError,
+  restorePageCheckpoint,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 
 import type { EditorContext } from '#core/editor/types'
 import { computeAllLayouts } from '#core/layout'
@@ -45,32 +50,29 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
   const page = ctx.graph.getNode(pageSnap.id)
   if (!page) return
 
-  for (const childId of page.childIds.slice()) ctx.graph.deleteNode(childId)
-  // One independently owned clone also preserves sharing when replaying history.
-  restoreChildren(ctx.graph, structuredClone(snapshot), page.id, pageSnap.childIds)
-
-  ctx.graph.clearAbsPosCache()
-  computeAllLayouts(ctx.graph, page.id)
-  if (page.id === ctx.state.currentPageId) {
-    ctx.setSelectedIds(new Set())
-    ctx.state.hoveredNodeId = null
+  let layoutPages = new Set([page.id])
+  const errors: unknown[] = []
+  try {
+    layoutPages = restorePageCheckpoint(ctx.graph, snapshot)
+  } catch (error) {
+    if (!(error instanceof CommittedGraphEventError)) throw error
+    errors.push(error)
+    layoutPages = new Set(ctx.graph.getPages().map((p) => p.id))
   }
-  ctx.requestRender()
-}
-
-function restoreChildren(
-  graph: SceneGraph,
-  snapshot: PageSnapshot,
-  parentId: string,
-  childIds: string[]
-): void {
-  for (const childId of childIds) {
-    const snap = snapshot.get(childId)
-    if (!snap) continue
-    // History copies can be shared by many entries; the restored graph must own its arrays/buffers.
-    const { parentId: _snapParentId, childIds: snapChildIds, ...rest } = snap
-    graph.createNode(snap.type, parentId, { ...rest, childIds: [] })
-    graph.reorderChild(snap.id, parentId, childIds.indexOf(childId))
-    restoreChildren(graph, snapshot, snap.id, snapChildIds)
+  try {
+    ctx.graph.clearAbsPosCache()
+    if (page.id === ctx.state.currentPageId) {
+      ctx.setSelectedIds(new Set())
+      ctx.state.hoveredNodeId = null
+    }
+    for (const pageId of layoutPages) computeAllLayouts(ctx.graph, pageId)
+  } catch (error) {
+    errors.push(error)
   }
+  try {
+    ctx.requestRender()
+  } catch (error) {
+    errors.push(error)
+  }
+  if (errors.length) throw new CommittedGraphEventError(errors)
 }

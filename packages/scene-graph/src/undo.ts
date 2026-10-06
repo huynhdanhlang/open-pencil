@@ -36,7 +36,12 @@ export class UndoManager {
   }
 
   execute(entry: UndoEntry): void {
-    entry.forward()
+    try {
+      entry.forward()
+    } catch (error) {
+      if (error instanceof CommittedGraphEventError) this.record(entry)
+      throw error
+    }
     this.record(entry)
   }
 
@@ -54,21 +59,11 @@ export class UndoManager {
   }
 
   undo(): string | null {
-    const entry = this.undoStack.pop()
-    if (!entry) return null
-    entry.inverse()
-    this.redoStack.push(entry)
-    this.onChange?.()
-    return entry.label
+    return this.replay(this.undoStack, this.redoStack, 'inverse')
   }
 
   redo(): string | null {
-    const entry = this.redoStack.pop()
-    if (!entry) return null
-    entry.forward()
-    this.undoStack.push(entry)
-    this.onChange?.()
-    return entry.label
+    return this.replay(this.redoStack, this.undoStack, 'forward')
   }
 
   beginBatch(label: string, coalesceKey?: string): void {
@@ -92,7 +87,8 @@ export class UndoManager {
       this.commitBatch()
       return result
     } catch (error) {
-      this.rollbackBatch()
+      if (error instanceof CommittedGraphEventError) this.commitBatch()
+      else this.rollbackBatch()
       throw error
     }
   }
@@ -100,7 +96,7 @@ export class UndoManager {
   rollbackBatch(): void {
     const batch = this.batches.pop()
     if (!batch) return
-    for (const entry of batch.entries.toReversed()) entry.inverse()
+    createReplay(batch.entries.toReversed(), 'inverse')()
   }
 
   /** Abandon provisional history without replaying it or changing committed undo/redo entries. */
@@ -163,10 +159,34 @@ export class UndoManager {
   private createBatchEntry(batch: UndoBatch): UndoEntry {
     return {
       label: batch.label,
-      forward: () => batch.entries.forEach((entry) => entry.forward()),
-      inverse: () => batch.entries.toReversed().forEach((entry) => entry.inverse()),
+      forward: createReplay(batch.entries, 'forward'),
+      inverse: createReplay(batch.entries.toReversed(), 'inverse'),
       coalesceKey: batch.coalesceKey
     }
+  }
+
+  private replay(
+    from: UndoEntry[],
+    to: UndoEntry[],
+    direction: 'inverse' | 'forward'
+  ): string | null {
+    const entry = from.pop()
+    if (!entry) return null
+    let committed = false
+    try {
+      entry[direction]()
+      committed = true
+    } catch (error) {
+      committed = error instanceof CommittedGraphEventError
+      if (!committed) from.push(entry)
+      throw error
+    } finally {
+      if (committed) {
+        to.push(entry)
+        this.onChange?.()
+      }
+    }
+    return entry.label
   }
 
   private pushUndoEntry(entry: UndoEntry): void {
@@ -190,3 +210,36 @@ export class UndoManager {
     if (overflow > 0) this.undoStack.splice(0, overflow)
   }
 }
+
+function createReplay(entries: UndoEntry[], direction: 'inverse' | 'forward'): () => void {
+  return () => {
+    const errors: unknown[] = []
+    const completed: UndoEntry[] = []
+    for (const entry of entries) {
+      try {
+        entry[direction]()
+      } catch (error) {
+        if (!(error instanceof CommittedGraphEventError)) {
+          const rollbackErrors: unknown[] = []
+          for (const applied of completed.toReversed()) {
+            try {
+              applied[direction === 'inverse' ? 'forward' : 'inverse']()
+            } catch (rollbackError) {
+              rollbackErrors.push(rollbackError)
+            }
+          }
+          if (rollbackErrors.length)
+            throw new AggregateError(
+              [error, ...errors, ...rollbackErrors],
+              'History batch replay and recovery failed'
+            )
+          throw error
+        }
+        errors.push(error)
+      }
+      completed.push(entry)
+    }
+    if (errors.length) throw new CommittedGraphEventError(errors)
+  }
+}
+import { CommittedGraphEventError } from './buffered-events'

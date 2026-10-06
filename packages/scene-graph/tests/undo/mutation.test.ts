@@ -1,8 +1,162 @@
 import { describe, test, expect } from 'bun:test'
 
-import { SceneGraph, UndoManager, type SceneNode } from '@open-pencil/scene-graph'
+import {
+  CommittedGraphEventError,
+  SceneGraph,
+  UndoManager,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 
 import { getNodeOrThrow } from '../helpers/assert'
+
+test('committed graph delivery failures retain Undo/Redo transitions and complete batch replay', () => {
+  const graph = new SceneGraph()
+  const undo = new UndoManager()
+  const a = graph.createNode('RECTANGLE', graph.getPages()[0].id)
+  const b = graph.createNode('RECTANGLE', graph.getPages()[0].id)
+  const unbind = graph.onNodeEvents({
+    updated: () => {
+      throw new Error('renderer unavailable')
+    }
+  })
+  const setX = (node: SceneNode, x: number) =>
+    graph.withBufferedEvents(() => graph.updateNode(node.id, { x }))
+  undo.beginBatch('two moves')
+  undo.record({ label: 'a', inverse: () => setX(a, 0), forward: () => setX(a, 10) })
+  undo.record({ label: 'b', inverse: () => setX(b, 0), forward: () => setX(b, 20) })
+  undo.commitBatch()
+  a.x = 10
+  b.x = 20
+  expect(() => undo.undo()).toThrow(CommittedGraphEventError)
+  expect([a.x, b.x]).toEqual([0, 0])
+  expect(undo.diagnostics).toEqual({ undo: 0, redo: 1, batches: 0 })
+  expect(() => undo.redo()).toThrow(CommittedGraphEventError)
+  expect([a.x, b.x]).toEqual([10, 20])
+  expect(undo.diagnostics).toEqual({ undo: 1, redo: 0, batches: 0 })
+  unbind()
+  undo.undo()
+  expect([a.x, b.x]).toEqual([0, 0])
+})
+
+test('preflight replay failure keeps its original history entry', () => {
+  const undo = new UndoManager()
+  undo.record({
+    label: 'invalid',
+    inverse: () => {
+      throw new Error('invalid snapshot')
+    },
+    forward: () => {}
+  })
+  expect(() => undo.undo()).toThrow('invalid snapshot')
+  expect(undo.diagnostics).toEqual({ undo: 1, redo: 0, batches: 0 })
+})
+
+test('a failed batch restores completed members before a safe retry', () => {
+  const undo = new UndoManager()
+  let first = 0
+  let second = 0
+  let unavailable = true
+  undo.beginBatch('two actions')
+  undo.record({
+    label: 'first',
+    inverse: () => {
+      first--
+    },
+    forward: () => {
+      first++
+    }
+  })
+  undo.record({
+    label: 'second',
+    inverse: () => {
+      second--
+    },
+    forward: () => {
+      if (unavailable) throw new Error('target unavailable')
+      second++
+    }
+  })
+  undo.commitBatch()
+  first = 1
+  second = 1
+  undo.undo()
+  expect(() => undo.redo()).toThrow('target unavailable')
+  expect([first, second]).toEqual([0, 0])
+  expect(undo.diagnostics).toEqual({ undo: 0, redo: 1, batches: 0 })
+  unavailable = false
+  undo.redo()
+  expect([first, second]).toEqual([1, 1])
+  expect(undo.diagnostics).toEqual({ undo: 1, redo: 0, batches: 0 })
+  undo.undo()
+  expect([first, second]).toEqual([0, 0])
+})
+
+test('a failed older batch permits newer Redo without skipping changes on retry', () => {
+  const undo = new UndoManager()
+  let a = 1
+  let b = 1
+  let unavailable = true
+  undo.beginBatch('older')
+  undo.record({
+    label: 'b',
+    forward: () => {
+      b = 1
+    },
+    inverse: () => {
+      if (unavailable) throw new Error('target unavailable')
+      b = 0
+    }
+  })
+  undo.record({
+    label: 'a',
+    forward: () => {
+      a = 1
+    },
+    inverse: () => {
+      a = 0
+    }
+  })
+  undo.commitBatch()
+  undo.execute({
+    label: 'newer',
+    forward: () => {
+      a = 2
+    },
+    inverse: () => {
+      a = 1
+    }
+  })
+  undo.undo()
+  expect(() => undo.undo()).toThrow('target unavailable')
+  expect([a, b]).toEqual([1, 1])
+  undo.redo()
+  undo.undo()
+  unavailable = false
+  undo.undo()
+  expect([a, b]).toEqual([0, 0])
+})
+
+test('committed command errors record completed work without rolling the batch back', () => {
+  const graph = new SceneGraph()
+  const undo = new UndoManager()
+  const node = graph.createNode('RECTANGLE', graph.getPages()[0].id)
+  const unbind = graph.onNodeEvents({
+    updated: () => {
+      throw new Error('renderer unavailable')
+    }
+  })
+  const setX = (x: number) => graph.withBufferedEvents(() => graph.updateNode(node.id, { x }))
+  expect(() =>
+    undo.runBatch('move', () =>
+      undo.execute({ label: 'move', forward: () => setX(12), inverse: () => setX(0) })
+    )
+  ).toThrow(CommittedGraphEventError)
+  expect(node.x).toBe(12)
+  expect(undo.diagnostics).toEqual({ undo: 1, redo: 0, batches: 0 })
+  unbind()
+  undo.undo()
+  expect(node.x).toBe(0)
+})
 
 // ---------------------------------------------------------------------------
 // SceneGraph + UndoManager — integration (updateNodeWithUndo pattern)

@@ -36,6 +36,7 @@ import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
 import { populateReaderExport } from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
+import { encodeNativeFigPayload } from './native-payload'
 import {
   appendVariableNodeChanges,
   sequentialPositions,
@@ -534,14 +535,17 @@ async function writeFigFile(
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core')
     return new Uint8Array(
-      await invoke<ArrayBuffer>('build_fig_file', {
-        schemaDeflated: Array.from(schemaDeflated),
-        kiwiData: Array.from(kiwiData),
-        thumbnailPng: Array.from(thumbnailPNG),
-        metaJson: metaJSON,
-        images: imageEntries.map((e) => ({ name: e.name, data: Array.from(e.data) })),
-        figKiwiVersion: version
-      })
+      await invoke<ArrayBuffer>(
+        'build_fig_file_binary',
+        encodeNativeFigPayload(
+          schemaDeflated,
+          kiwiData,
+          thumbnailPNG,
+          metaJSON,
+          imageEntries,
+          version
+        )
+      )
     )
   }
 
