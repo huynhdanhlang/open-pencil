@@ -41,6 +41,7 @@ export const OVERRIDE_FIELDS = {
   stackChildPrimaryGrow: { scene: ['layoutGrow'], kind: 'layout-mode' },
   stackPrimarySizing: { scene: ['primaryAxisSizing'], kind: 'layout-mode' },
   stackCounterSizing: { scene: ['counterAxisSizing'], kind: 'layout-mode' },
+  stackPositioning: { scene: ['layoutPositioning'], kind: 'layout-mode' },
   stackChildAlignSelf: { scene: ['layoutAlignSelf'], kind: 'layout-mode' }
 } as const satisfies Record<string, OverrideField>
 

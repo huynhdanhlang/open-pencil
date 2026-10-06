@@ -529,18 +529,20 @@ function interpretRoot(
       properties: {
         ...base?.properties,
         ...source,
-        ...(effective && source.symbolData
-          ? { symbolData: { ...source.symbolData, symbolID: effective } }
-          : {}),
         ...mergeVariableConsumptionMaps(base?.properties ?? {}, source)
       },
       children: expanded
     }
-    if (source.type === 'INSTANCE')
+    if (effective && source.symbolData)
+      occurrence.properties.symbolData = { ...source.symbolData, symbolID: effective }
+    if (source.type === 'INSTANCE') {
+      // Placement belongs to the occurrence, not the master's component-set position.
+      occurrence.properties.stackPositioning = source.stackPositioning ?? 'AUTO'
       occurrence.properties.componentPropAssignments = groups
         .flatMap((g) => g.assignments)
         // A slot whose content frame is gone falls back to its component's content.
         .filter((assignment) => !namesMissingSlotContent(assignment))
+    }
     // A swapped instance without a name of its own takes the replacement's default name.
     if (base && replaced.length && !occurrence.hasOwnName)
       occurrence.properties.name = base.defaultInstanceName ?? base.properties.name

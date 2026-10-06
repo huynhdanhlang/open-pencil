@@ -294,6 +294,7 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
     if (figLayout.stackReverseZIndex) nc.stackReverseZIndex = true
     serializeInheritedCounterAxisStretch(node, nc, graph)
     applyEditedLayoutFields(node, nc)
+    if (node.type === 'INSTANCE') nc.stackPositioning = node.layoutPositioning
     return
   }
   if (node.layoutMode !== 'NONE' && node.layoutMode !== 'GRID') {
@@ -312,7 +313,8 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
     nc.bordersTakeSpace = node.strokesIncludedInLayout
   }
   if (node.itemReverseZIndex) nc.stackReverseZIndex = true
-  if (node.layoutPositioning === 'ABSOLUTE') nc.stackPositioning = 'ABSOLUTE'
+  if (node.type === 'INSTANCE' || node.layoutPositioning === 'ABSOLUTE')
+    nc.stackPositioning = node.layoutPositioning
   if (node.layoutGrow > 0) nc.stackChildPrimaryGrow = node.layoutGrow
   if (node.layoutAlignSelf !== 'AUTO') {
     nc.stackChildAlignSelf = node.layoutAlignSelf
