@@ -19,10 +19,13 @@ import {
   createVector,
   exposeInstanceSwap,
   combineAsVariants,
+  createSlot,
   fetchIconsTool,
+  getBehaviour,
   importSVG,
   insertIcon,
-  searchIconsTool
+  searchIconsTool,
+  setBehaviour
 } from './create'
 import {
   setBlend,
@@ -132,6 +135,9 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   createComponent,
   createInstance,
   exposeInstanceSwap,
+  createSlot,
+  getBehaviour,
+  setBehaviour,
   createPage,
   createVector,
   createSlice,

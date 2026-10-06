@@ -230,18 +230,23 @@ Unexpected exit of an app-managed native MCP child triggers serialized recovery 
 
 ### Create
 
-| Tool                | Description                                                                                    |
-| ------------------- | ---------------------------------------------------------------------------------------------- |
-| `create_shape`      | Create a shape (`FRAME`, `RECTANGLE`, `ELLIPSE`, `TEXT`, `LINE`, `STAR`, `POLYGON`, `SECTION`) |
-| `create_vector`     | Create a vector node from a path string                                                        |
-| `create_slice`      | Create an export slice                                                                         |
-| `create_page`       | Create a new page                                                                              |
-| `render`            | Render JSX to design nodes — create entire component trees in one call                         |
-| `create_component`  | Convert a frame/group into a component                                                         |
-| `create_instance`   | Create an instance of a component                                                              |
-| `node_to_component` | Convert an existing node into a component in-place                                             |
+| Tool                | Description                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `create_shape`      | Create a shape (`FRAME`, `RECTANGLE`, `ELLIPSE`, `TEXT`, `LINE`, `STAR`, `POLYGON`, `SECTION`)  |
+| `create_vector`     | Create a vector node from a path string                                                         |
+| `create_slice`      | Create an export slice                                                                          |
+| `create_page`       | Create a new page                                                                               |
+| `render`            | Render JSX to design nodes — create entire component trees in one call                          |
+| `create_component`  | Convert a frame/group into a component                                                          |
+| `create_instance`   | Create an instance of a component                                                               |
+| `create_slot`       | Make a frame inside a main component a slot                                                     |
+| `set_behaviour`     | Make a component behave as a Reka UI control, by its property and slot names; `null` removes it |
+| `get_behaviour`     | Read a component's behaviour and what it still misses; without an ID, list every kind           |
+| `node_to_component` | Convert an existing node into a component in-place                                              |
 
 ### Modify
+
+For `set_behaviour` and `create_slot`, target the node's owning page. Cross-page writes return an error so Undo captures the changed page; `get_behaviour` can read another page without modifying it.
 
 | Tool                  | Description                                                                |
 | --------------------- | -------------------------------------------------------------------------- |
