@@ -1,6 +1,14 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
+import { refreshRenamedVariant } from '@open-pencil/scene-graph/variant-properties'
 
 import { acceptingParent, acceptsChildren, prepareSlotEdits } from '#core/editor/components/slots'
+import {
+  applyVariantRename,
+  captureVariantSnapshot,
+  recordSnapshotChange,
+  requestVariantRender,
+  restoreVariantSnapshot
+} from '#core/editor/components/variants/history'
 import { fitEnclosingGroupsWithUndo } from '#core/editor/structure/group-bounds'
 
 import { wrapInAutoLayout as wrapInAutoLayoutImpl } from './structure/auto-layout-wrap'
@@ -140,15 +148,42 @@ export function createStructureActions(ctx: EditorContext) {
     const before = new Map(nodes.map((node) => [node.id, node.name]))
     const preview = previewRenamedNodes(nodes, options)
     if (preview.error) return
+    const parentSets = new Set(
+      nodes
+        .filter((node) => node.type === 'COMPONENT')
+        .map((node) => node.parentId)
+        .filter((id): id is string => !!id)
+    )
+    const snapshots = () =>
+      new Map(
+        [...parentSets].flatMap((id) => {
+          const snapshot = captureVariantSnapshot(ctx, id)
+          return snapshot ? [[id, snapshot] as const] : []
+        })
+      )
+    const variantsBefore = snapshots()
     const applyNames = (names: ReadonlyMap<string, string>) => {
-      for (const [id, nextName] of names) ctx.graph.updateNode(id, { name: nextName })
+      for (const [id, nextName] of names) {
+        ctx.graph.updateNode(id, { name: nextName })
+        refreshRenamedVariant(ctx.graph, id)
+      }
     }
 
-    applyNames(preview.names)
+    applyVariantRename(ctx, variantsBefore, before, () => applyNames(preview.names))
+    const variantsAfter = snapshots()
+    const replay = (names: ReadonlyMap<string, string>, variants: typeof variantsBefore) => {
+      const prepared = structuredClone(variants)
+      ctx.graph.withBufferedEvents(() => {
+        applyNames(names)
+        for (const [id, snapshot] of prepared)
+          restoreVariantSnapshot(ctx, id, snapshot, { requestRender: false })
+      })
+      requestVariantRender(ctx)
+    }
     ctx.undo.push({
       label: 'Rename selection',
-      forward: () => applyNames(preview.names),
-      inverse: () => applyNames(before)
+      forward: () => replay(preview.names, variantsAfter),
+      inverse: () => replay(before, variantsBefore)
     })
   }
 
@@ -156,7 +191,16 @@ export function createStructureActions(ctx: EditorContext) {
     const node = ctx.graph.getNode(id)
     if (!node) return
     const trimmedName = name.trim()
-    ctx.graph.updateNode(id, { name: trimmedName || defaultNodeName(node.type) })
+    const parentId = node.type === 'COMPONENT' ? node.parentId : null
+    const before = parentId ? captureVariantSnapshot(ctx, parentId) : null
+    const snapshots = new Map(parentId && before ? [[parentId, before]] : [])
+    applyVariantRename(ctx, snapshots, new Map([[id, node.name]]), () => {
+      ctx.graph.updateNode(id, { name: trimmedName || defaultNodeName(node.type) })
+      refreshRenamedVariant(ctx.graph, id)
+    })
+    const after = parentId ? captureVariantSnapshot(ctx, parentId) : null
+    if (parentId && before && after && node.name !== before.variants.get(id)?.name)
+      recordSnapshotChange(ctx, parentId, 'Rename variant', before, after)
   }
 
   return {

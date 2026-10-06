@@ -17,10 +17,15 @@ export function loadPageTransaction(
     const id = state.sources.get(source)
     if (id) candidateIds.add(id)
   }
+  const candidates: SceneNode[] = []
   for (const id of candidateIds) {
     const node = graph.getNode(id)
-    if (node) snapshots.set(node, structuredClone(node))
+    if (node) candidates.push(node)
   }
+  // FIG subviews can share an archive-sized backing store. One clone preserves
+  // that sharing instead of copying the same store once per candidate node.
+  const copies = structuredClone(candidates)
+  for (const [index, node] of candidates.entries()) snapshots.set(node, copies[index])
   const sources = new Map(state.sources)
   const components = new Map(state.components)
   const componentIds = new Map(state.componentIds)

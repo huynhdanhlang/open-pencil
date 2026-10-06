@@ -12,6 +12,7 @@ import {
 } from '@open-pencil/scene-graph'
 import Matrix from '@open-pencil/scene-graph/matrix'
 import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
+import { refreshRenamedVariant } from '@open-pencil/scene-graph/variant-properties'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import {
@@ -107,6 +108,7 @@ export function installBasicNodeProxyAccessors(
       },
       set(this: ProxyThis, value: string) {
         updateNode(this, internals, { name: value })
+        refreshRenamedVariant(graph(this, internals), nodeId(this, internals))
       }
     },
     removed: {

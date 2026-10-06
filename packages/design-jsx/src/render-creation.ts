@@ -9,6 +9,7 @@ export class RenderCreationJournal {
       node: SceneNode
       values: Partial<SceneNode>
       absent: Set<keyof SceneNode>
+      editedFields?: string[]
     }
   >()
 
@@ -26,13 +27,24 @@ export class RenderCreationJournal {
   }
 
   layout(run: () => void): void {
+    this.recordUpdates(run, false)
+  }
+
+  /** Record bounded semantic completion, including its source-marker side effects. */
+  semantic(run: () => void): void {
+    this.recordUpdates(run, true)
+  }
+
+  private recordUpdates(run: () => void, semantic: boolean): void {
     this.graph.observeNodeMutationsDuring(run, {
       updated: (node, changes, absent) => {
+        if (this.created.has(node.id)) return
         let saved = this.layoutChanges.get(node.id)
         if (!saved) {
           saved = { node, values: {}, absent: new Set() }
           this.layoutChanges.set(node.id, saved)
         }
+        if (semantic && !saved.editedFields) saved.editedFields = [...node.source.editedFields]
         const keys = new Set([...(Object.keys(changes) as (keyof SceneNode)[]), ...absent])
         for (const key of keys) {
           if (Object.hasOwn(saved.values, key) || saved.absent.has(key)) continue
@@ -80,6 +92,8 @@ export class RenderCreationJournal {
           this.graph.restoreNodeProperties(id, saved.values, [...saved.absent])
         } catch (failure) {
           failures.push(failure)
+        } finally {
+          if (saved.editedFields) node.source.editedFields = saved.editedFields
         }
       }
     })

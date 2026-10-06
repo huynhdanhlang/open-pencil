@@ -1,7 +1,111 @@
 import { uniq } from 'es-toolkit/array'
+import { isEqual } from 'es-toolkit/predicate'
 
+import type { SceneGraph } from './index'
 import type { ComponentPropertyDefinition, SceneNode } from './types'
 import { buildVariantName, parseVariantName } from './variant-name'
+
+/** Refresh an existing definition's choices without replacing its identity or metadata. */
+export function reconcileVariantDefinitions(
+  definitions: readonly ComponentPropertyDefinition[],
+  values: readonly Record<string, string>[]
+): ComponentPropertyDefinition[] {
+  return definitions.map((definition) => {
+    if (definition.type !== 'VARIANT') return definition
+    const present = new Set(
+      values
+        .map((variant) => variant[definition.name])
+        .filter((value) => typeof value === 'string' && value.length > 0)
+    )
+    const options = [
+      ...(definition.variantOptions ?? []).filter((value) => present.has(value)),
+      ...[...present].filter((value) => !definition.variantOptions?.includes(value))
+    ]
+    return {
+      ...definition,
+      defaultValue: options.includes(definition.defaultValue)
+        ? definition.defaultValue
+        : (options[0] ?? ''),
+      variantOptions: options
+    }
+  })
+}
+
+/** Explicit authoring completion; import, layout and graph replay never call this owner. */
+export function refreshComponentSetVariants(
+  graph: SceneGraph,
+  setId: string,
+  createPropertyId?: () => string,
+  authoredIds?: readonly string[]
+): void {
+  const set = graph.getNode(setId)
+  if (set?.type !== 'COMPONENT_SET') return
+  const variants = graph.getChildren(setId).filter((node) => node.type === 'COMPONENT')
+  if (
+    variants.length === 0 ||
+    (authoredIds && !variants.some((node) => authoredIds.includes(node.id)))
+  )
+    return
+  const definitions = [...set.componentPropertyDefinitions]
+  const names = new Set(
+    definitions.filter((item) => item.type === 'VARIANT').map((item) => item.name)
+  )
+  const parsed = variants.map((variant) => parseVariantName(variant.name))
+  const authored = authoredIds ? new Set(authoredIds) : new Set(variants.map((node) => node.id))
+  if (createPropertyId) {
+    for (const [index, values] of parsed.entries()) {
+      if (!authored.has(variants[index].id)) continue
+      for (const name of Object.keys(values)) {
+        if (!name || !values[name].trim() || names.has(name)) continue
+        names.add(name)
+        definitions.push({
+          id: createPropertyId(),
+          name,
+          type: 'VARIANT',
+          defaultValue: values[name]
+        })
+      }
+    }
+  }
+  const values = variants.map((variant, index) =>
+    authored.has(variant.id)
+      ? {
+          ...variant.componentPropertyValues,
+          ...Object.fromEntries(
+            Object.entries(parsed[index]).filter(
+              ([name, value]) => names.has(name) && value.trim().length > 0
+            )
+          )
+        }
+      : variant.componentPropertyValues
+  )
+  for (const [index, variant] of variants.entries()) {
+    if (!isEqual(variant.componentPropertyValues, values[index]))
+      graph.updateNode(variant.id, { componentPropertyValues: values[index] })
+  }
+  const refreshed = reconcileVariantDefinitions(definitions, values)
+  if (!isEqual(set.componentPropertyDefinitions, refreshed))
+    graph.updateNode(setId, { componentPropertyDefinitions: refreshed })
+}
+
+/** A label rename only changes semantics when it names a known variant dimension. */
+export function refreshRenamedVariant(graph: SceneGraph, nodeId: string): void {
+  const node = graph.getNode(nodeId)
+  if (node?.type !== 'COMPONENT' || !node.parentId) return
+  const parent = graph.getNode(node.parentId)
+  if (parent?.type !== 'COMPONENT_SET') return
+  const parsed = parseVariantName(node.name)
+  if (
+    !parent.componentPropertyDefinitions.some(
+      (item) =>
+        item.type === 'VARIANT' &&
+        Object.hasOwn(parsed, item.name) &&
+        parsed[item.name].trim().length > 0
+    )
+  )
+    return
+  refreshComponentSetVariants(graph, parent.id, undefined, [node.id])
+}
 
 export interface DerivedVariantProperties {
   definitions: ComponentPropertyDefinition[]

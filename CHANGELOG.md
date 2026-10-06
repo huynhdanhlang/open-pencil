@@ -106,6 +106,9 @@
 
 ### Fixed
 
+- Page-load rollback snapshots preserve shared FIG backing buffers across candidate nodes instead of copying the same buffer for each node, while retaining isolated recovery data.
+- Appending JSX variants to an existing component set and renaming known variant dimensions refresh native choices without replacing property IDs or unrelated values. Native variant renames retain complete Undo/Redo state, and failed render completion restores metadata and source edit markers.
+
 - Host component synchronization preserves the appearance and size of an explicitly swapped nested instance, including scaled bindings and local paint overrides, instead of restoring the original slot's appearance.
 
 - Retain the owned immutable FIG payload across Undo snapshots when only source edit markers change, without aliasing live data or reducing history/recovery protection.

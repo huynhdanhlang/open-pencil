@@ -1,15 +1,13 @@
-import { compact } from 'es-toolkit/array'
-
 import {
   createComponentPropertyId,
   setInstanceOverride,
   type Color,
-  type ComponentPropertyDefinition,
   type NodeType,
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
 import { parseColor } from '@open-pencil/scene-graph/color'
+import { refreshComponentSetVariants } from '@open-pencil/scene-graph/variant-properties'
 
 import type { RekaScope } from './behaviours'
 import { renderRekaNode } from './behaviours/render'
@@ -68,8 +66,6 @@ export interface RenderResult {
   warnings?: string[]
 }
 
-/** Component property ids only need to be unique within a document. */
-
 /** The nodes a tree renders as: a fragment's children, or the tree itself. */
 function treeRoots(tree: TreeNode): TreeNode[] {
   return tree.type === FRAGMENT ? tree.children.filter(isTreeNode) : [tree]
@@ -110,6 +106,14 @@ export async function renderRoots<Artwork>(
     }
 
     journal.layout(() => services.layout(graph, parentId))
+    journal.semantic(() =>
+      refreshComponentSetVariants(
+        graph,
+        parentId,
+        createComponentPropertyId,
+        nodes.map((node) => node.id)
+      )
+    )
 
     return nodes.map((node) => ({
       id: node.id,
@@ -313,66 +317,6 @@ function renderSVGNode<Artwork>(
     throw new Error('<svg> requires SVG markup, a body prop, or supported SVG shape children')
   }
   return placeArtwork(services, graph, artwork, props, size, journal, parentId, position)
-}
-
-function parseVariantValues(name: string): Record<string, string> {
-  const entries = compact(name.split(',').map((part) => part.trim()))
-  const values: Record<string, string> = {}
-  for (const entry of entries) {
-    const [key = '', ...rest] = entry.split('=')
-    const property = key.trim()
-    const value = rest.join('=').trim()
-    if (property && value) values[property] = value
-  }
-  return values
-}
-
-function inferComponentSetProperties(graph: SceneGraph, componentSetId: string): void {
-  const componentSet = graph.getNode(componentSetId)
-  if (componentSet?.type !== 'COMPONENT_SET') return
-  const existingDefinitions = componentSet.componentPropertyDefinitions
-
-  const variants = graph.getChildren(componentSetId).filter((node) => node.type === 'COMPONENT')
-  const options = new Map<string, Set<string>>()
-  const valuesById = new Map<string, Record<string, string>>()
-
-  for (const variant of variants) {
-    const values = parseVariantValues(variant.name)
-    valuesById.set(variant.id, values)
-    for (const [property, value] of Object.entries(values)) {
-      let set = options.get(property)
-      if (!set) {
-        set = new Set()
-        options.set(property, set)
-      }
-      set.add(value)
-    }
-  }
-
-  const definitions: ComponentPropertyDefinition[] = [...options.entries()]
-    .filter(
-      ([name]) =>
-        !existingDefinitions.some(
-          (definition) => definition.type === 'VARIANT' && definition.name === name
-        )
-    )
-    .map(([name, values]) => {
-      const variantOptions = [...values]
-      return {
-        id: createComponentPropertyId(),
-        name,
-        type: 'VARIANT',
-        defaultValue: variantOptions[0] ?? '',
-        variantOptions
-      }
-    })
-
-  for (const [id, values] of valuesById) {
-    graph.updateNode(id, { componentPropertyValues: values })
-  }
-  graph.updateNode(componentSetId, {
-    componentPropertyDefinitions: [...existingDefinitions, ...definitions]
-  })
 }
 
 function findComponentByName(graph: SceneGraph, name: string): SceneNode | undefined {
@@ -633,7 +577,7 @@ async function renderNodeContent<Artwork>(
         elementParentId,
         elementParentId === parentId ? position : {}
       ),
-    finishSet: (setId) => inferComponentSetProperties(graph, setId)
+    finishSet: (setId) => refreshComponentSetVariants(graph, setId, createComponentPropertyId)
   })
   if (reka) return reka
 
@@ -653,7 +597,8 @@ async function renderNodeContent<Artwork>(
     }
   }
 
-  if (node.type === 'COMPONENT_SET') inferComponentSetProperties(graph, node.id)
+  if (node.type === 'COMPONENT_SET')
+    refreshComponentSetVariants(graph, node.id, createComponentPropertyId)
 
   return node
 }

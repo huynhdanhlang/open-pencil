@@ -1,15 +1,12 @@
 import type { ComponentPropertyDefinition, SceneNode } from '@open-pencil/scene-graph'
+import { CommittedGraphEventError } from '@open-pencil/scene-graph'
 import { buildVariantName } from '@open-pencil/scene-graph/variant-name'
+import { reconcileVariantDefinitions } from '@open-pencil/scene-graph/variant-properties'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import type { EditorContext } from '#core/editor/types'
 
-import {
-  collectVariantOptions,
-  getComponentSet,
-  getComponentSetVariants,
-  getVariantDefinitions
-} from './model'
+import { getComponentSet, getComponentSetVariants, getVariantDefinitions } from './model'
 
 /** A component set's property definitions and its variants' values and names, for undo. */
 export type VariantSnapshot = {
@@ -47,21 +44,31 @@ export function captureVariantSnapshot(
 export function restoreVariantSnapshot(
   ctx: EditorContext,
   componentSetId: string,
-  snapshot: VariantSnapshot
+  snapshot: VariantSnapshot,
+  options: { requestRender?: boolean } = {}
 ): void {
   const componentSet = getComponentSet(ctx.graph, componentSetId)
   if (!componentSet) return
-  ctx.graph.updateNode(componentSetId, {
-    componentPropertyDefinitions: structuredClone(snapshot.definitions)
-  })
-  for (const [variantId, variantSnapshot] of snapshot.variants) {
-    if (!ctx.graph.getNode(variantId)) continue
-    ctx.graph.updateNode(variantId, {
-      componentPropertyValues: structuredClone(variantSnapshot.componentPropertyValues),
-      name: variantSnapshot.name
+  const prepared = structuredClone(snapshot)
+  ctx.graph.withBufferedEvents(() => {
+    ctx.graph.updateNode(componentSetId, {
+      componentPropertyDefinitions: prepared.definitions
     })
+    for (const [variantId, variantSnapshot] of prepared.variants) {
+      if (!ctx.graph.getNode(variantId)) continue
+      ctx.graph.updateNode(variantId, variantSnapshot)
+    }
+  })
+  if (options.requestRender !== false) requestVariantRender(ctx)
+}
+
+/** Call only after the whole semantic mutation/replay has committed. */
+export function requestVariantRender(ctx: EditorContext): void {
+  try {
+    ctx.requestRender()
+  } catch (error) {
+    throw new CommittedGraphEventError([error])
   }
-  ctx.requestRender()
 }
 
 export function recordSnapshotChange(
@@ -76,7 +83,56 @@ export function recordSnapshotChange(
     forward: () => restoreVariantSnapshot(ctx, componentSetId, after),
     inverse: () => restoreVariantSnapshot(ctx, componentSetId, before)
   })
-  ctx.requestRender()
+  requestVariantRender(ctx)
+}
+
+/** Restore a failed native name edit through the existing bounded variant snapshot owner. */
+export function applyVariantRename(
+  ctx: EditorContext,
+  snapshots: ReadonlyMap<string, VariantSnapshot>,
+  names: ReadonlyMap<string, string>,
+  apply: () => void
+): void {
+  if (snapshots.size === 0) return apply()
+  const ids = new Set(names.keys())
+  for (const [id, snapshot] of snapshots) {
+    ids.add(id)
+    for (const variantId of snapshot.variants.keys()) ids.add(variantId)
+  }
+  const markers = new Map(
+    [...ids].flatMap((id) => {
+      const node = ctx.graph.getNode(id)
+      return node ? [[id, [...node.source.editedFields]] as const] : []
+    })
+  )
+  try {
+    apply()
+  } catch (error) {
+    const failures: unknown[] = []
+    ctx.graph.preserveSourceMetadataDuring(() => {
+      for (const [id, name] of names) {
+        try {
+          ctx.graph.updateNode(id, { name })
+        } catch (failure) {
+          failures.push(failure)
+        }
+      }
+      for (const [id, snapshot] of snapshots) {
+        try {
+          ctx.graph.withBufferedEvents(() => restoreVariantSnapshot(ctx, id, snapshot))
+        } catch (failure) {
+          failures.push(failure)
+        }
+      }
+    })
+    for (const [id, editedFields] of markers) {
+      const node = ctx.graph.getNode(id)
+      if (node) node.source.editedFields = [...editedFields]
+    }
+    if (failures.length)
+      throw new AggregateError([error, ...failures], 'Variant rename rollback delivery failed')
+    throw error
+  }
 }
 
 export function updateVariantName(
@@ -96,22 +152,12 @@ export function updateVariantName(
 export function refreshVariantOptions(ctx: EditorContext, componentSetId: string): void {
   const componentSet = getComponentSet(ctx.graph, componentSetId)
   if (!componentSet) return
-  const collected = collectVariantOptions(ctx.graph, componentSetId)
-  const definitions = componentSet.componentPropertyDefinitions.map((definition) => {
-    if (definition.type !== 'VARIANT') return definition
-    const present = collected.get(definition.name) ?? new Set<string>()
-    const options = [
-      ...(definition.variantOptions ?? []).filter((value) => present.has(value)),
-      ...[...present].filter((value) => !definition.variantOptions?.includes(value))
-    ]
-    return {
-      ...definition,
-      defaultValue: options.includes(definition.defaultValue)
-        ? definition.defaultValue
-        : (options[0] ?? ''),
-      variantOptions: options
-    }
-  })
+  const definitions = reconcileVariantDefinitions(
+    componentSet.componentPropertyDefinitions,
+    getComponentSetVariants(ctx.graph, componentSetId).map(
+      (variant) => variant.componentPropertyValues
+    )
+  )
   ctx.graph.updateNode(componentSetId, {
     componentPropertyDefinitions: definitions
   })
