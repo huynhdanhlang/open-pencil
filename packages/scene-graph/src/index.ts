@@ -812,8 +812,8 @@ export class SceneGraph {
     Instances.swapInstanceComponent(this, instanceId, componentId)
   }
 
-  syncInstances(componentId: string): void {
-    Instances.syncInstances(this, componentId)
+  syncInstances(componentId: string, removedSourceIds?: ReadonlySet<string>): void {
+    Instances.syncInstances(this, componentId, removedSourceIds)
   }
 
   detachInstance(instanceId: string): void {

@@ -36,7 +36,7 @@ function svgIconData({ body, elements, props }: SVGSource, size: number): IconDa
 }
 
 /** Design JSX rendering with OpenPencil's icons, SVG conversion, and layout. */
-export const { renderJSX, renderTree } = createDesignJSXRenderer<IconData>({
+export const { renderJSX, renderTree, renderTreeRoots } = createDesignJSXRenderer<IconData>({
   async icon(name, size) {
     const icon = (await fetchIcons([name], size)).get(name)
     return icon && icon.paths.length > 0 ? icon : null

@@ -1,12 +1,19 @@
-import { renderTree } from '@open-pencil/core/design-jsx'
+import {
+  finishRenderPlacement,
+  renderTreeRoots,
+  resolveRenderPlacement,
+  type RenderPlacementInput
+} from '@open-pencil/core/design-jsx'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import {
   ALL_TOOLS,
   registerComponentCatalog,
   isAtomicTool,
   isToolExposed,
+  parseToolArgs,
   toolChangesDocument
 } from '@open-pencil/core/tools'
+import { decodeTreeFromTransport } from '@open-pencil/design-jsx'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AutomationTarget } from '@/app/automation/bridge/target'
@@ -32,32 +39,51 @@ export function toolPreparesShownPage(args: Record<string, unknown>): boolean {
 export function createAutomationToolHandler(makeFigma: FigmaFactory) {
   async function handleToolRender(
     target: AutomationTarget,
-    toolArgs: Record<string, unknown>
+    toolArgs: Record<string, unknown>,
+    placementInput: RenderPlacementInput
   ): Promise<unknown> {
     const store = target.store
-    const tree = toolArgs.tree as Parameters<typeof renderTree>[1]
-    const parentId = (toolArgs.parent_id as string | undefined) ?? target.pageId
-    // A parent on another page puts the new layers there, so that page's history records them.
-    const undoPageId = pageIdOf(store.graph, parentId) ?? target.pageId
-    const result = await executeWithPageUndo(store, undoPageId, automationUndoLabel('render'), () =>
-      store.runMutationWithLayout(
-        () =>
-          renderTree(store.graph, tree, {
-            parentId,
-            x: toolArgs.x as number | undefined,
-            y: toolArgs.y as number | undefined
-          }),
-        target.pageId,
-        async (node) => {
-          await ensureGraphFonts(store.graph, [node.id], store.renderer)
-        }
-      )
+    const tree = decodeTreeFromTransport(toolArgs.tree)
+    const placement = resolveRenderPlacement(store.graph, placementInput, target.pageId)
+    const results = await executeWithPageUndo(
+      store,
+      placement.pageId,
+      automationUndoLabel('render'),
+      () =>
+        store.runMutationWithLayout(
+          async () => {
+            const rendered = await renderTreeRoots(store.graph, tree, placement)
+            finishRenderPlacement(store.graph, rendered, placement)
+            return rendered
+          },
+          placement.pageId,
+          async (nodes) => {
+            await ensureGraphFonts(
+              store.graph,
+              nodes.map((node) => node.id),
+              store.renderer
+            )
+          }
+        )
     )
     store.requestRender()
-    store.flashNodes([result.id])
+    store.flashNodes(results.map((node) => node.id))
+    const result = results[0]
     return {
       ok: true,
-      result: { id: result.id, name: result.name, type: result.type, children: result.childIds }
+      result: {
+        id: result.id,
+        name: result.name,
+        type: result.type,
+        children: result.childIds,
+        ...(results.length > 1
+          ? {
+              siblings: results
+                .slice(1)
+                .map((node) => ({ id: node.id, name: node.name, type: node.type }))
+            }
+          : {})
+      }
     }
   }
 
@@ -66,12 +92,15 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const toolArgs = (args as { args?: Record<string, unknown> }).args ?? {}
     if (!toolName) throw new Error('Missing "name" in args')
 
-    if (toolName === 'render' && toolArgs.tree) {
-      return handleToolRender(target, toolArgs)
-    }
-
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
+    if (toolName === 'render' && toolArgs.tree) {
+      const placementInput = parseToolArgs(def.name, def.input, {
+        ...toolArgs,
+        jsx: ''
+      }) as RenderPlacementInput
+      return handleToolRender(target, toolArgs, placementInput)
+    }
     const store = target.store
     const libraryService = useLibraryService()
     libraryService.bindEditor(store)
@@ -119,13 +148,6 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     }
     return { ok: true, result }
   }
-}
-
-function pageIdOf(graph: AutomationTarget['store']['graph'], nodeId: string): string | null {
-  let node = graph.getNode(nodeId)
-  while (node && node.type !== 'CANVAS')
-    node = node.parentId ? graph.getNode(node.parentId) : undefined
-  return node?.id ?? null
 }
 
 function extractNodeIds(result: unknown): string[] {

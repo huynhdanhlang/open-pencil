@@ -20,7 +20,7 @@ export type GraphEventRenderer = Pick<
 type GraphEventOptions = {
   getGraph: () => SceneGraph
   getRenderers: () => Iterable<GraphEventRenderer>
-  scheduleComponentSync: (nodeId: string) => void
+  scheduleComponentSync: (nodeId: string, removedSourceId?: string) => void
   requestRender: () => void
   emitEditorEvent: <K extends EmittedGraphEventName>(
     event: K,
@@ -101,12 +101,12 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
     options.emitEditorEvent('node:previewUpdated', id, changes)
   }
 
-  function onNodeStructureChanged(nodeId: string) {
+  function onNodeStructureChanged(nodeId: string, removedSourceId?: string) {
     for (const renderer of options.getRenderers()) {
       renderer.invalidateNodePicture(nodeId)
       renderer.tiledScene.invalidateStructure()
     }
-    options.scheduleComponentSync(nodeId)
+    options.scheduleComponentSync(nodeId, removedSourceId)
     options.requestRender()
   }
 
@@ -123,13 +123,18 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
         for (const renderer of options.getRenderers()) renderer.invalidateVectorPath(id)
         options.emitEditorEvent('node:deleted', id, _parentId)
         onNodeStructureChanged(id)
+        options.scheduleComponentSync(_parentId ?? id, id)
       },
       reparented: (nodeId, oldParentId, newParentId) => {
         options.emitEditorEvent('node:reparented', nodeId, oldParentId, newParentId)
+        if (oldParentId && oldParentId !== newParentId)
+          options.scheduleComponentSync(oldParentId, nodeId)
         onNodeStructureChanged(nodeId)
       },
       reordered: (nodeId, parentId, index, previousParentId) => {
         options.emitEditorEvent('node:reordered', nodeId, parentId, index, previousParentId)
+        if (previousParentId && previousParentId !== parentId)
+          options.scheduleComponentSync(previousParentId, nodeId)
         onNodeStructureChanged(nodeId)
       }
     })

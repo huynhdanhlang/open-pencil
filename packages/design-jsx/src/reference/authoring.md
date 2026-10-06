@@ -4,6 +4,7 @@ This reference describes scene creation, not React DOM output. Use the `render` 
 
 ## Composition and layout
 
+- `render` placement uses `parent_id` and optional `insert_index`; `replace_id` takes the existing node's parent, sibling position and local coordinates unless `x`/`y` override them. Replacement creates new IDs and deletes the target, so use property tools for edits that must retain identity. Fragment roots occupy consecutive sibling positions and are returned through the first result plus `siblings`.
 - `flex="row"` / `flex="col"` enables auto-layout. Use it for content; reserve explicit `x`/`y` or `position="absolute"` for intentional overlays and artwork. Without layout, children share the origin unless positioned.
 - `w` / `h` accept pixels, `"hug"` (content-sized), or `"fill"` (available space in a supported layout parent). Use Hug for notes, cards, and long pages instead of guessing heights. Fixed viewport sizes and artwork geometry are intentional exceptions.
 - `gap` controls spacing. `p`, `px`, `py`, and `pt`/`pr`/`pb`/`pl` control padding; longhands override shorthands. There is no margin shorthand.
@@ -27,7 +28,7 @@ This reference describes scene creation, not React DOM output. Use the `render` 
 
 ## Variables and components
 
-- Create document variables before referencing them with `designVar('id-or-name')`. `defineVars` groups references; it does not create variable collections.
+- Create document variables before referencing them with `designVar('id-or-name')`. `defineVars` groups references; it does not create variable collections. A matched MCP/editor build preserves these references through JSON preprocessing, including nested `bind`, paint and scalar props; inspect actual `boundVariables` and saved-file bindings after authoring. Plain objects with `id`/`name`/`value` are not variable references.
 - COLOR references work in paint props. FLOAT references work in `w`, `h`, `gap`, padding, corner radii, `strokeWidth`, `opacity`, text `size`/`fontSize`, `lineHeight`, and `letterSpacing`. Grid `columnGap`/`rowGap` and wrapped flex `rowGap` also support FLOAT references; grid `gap` overrides both axis-specific gaps. Use numbers or FLOAT references for these scalar props, not CSS unit strings.
 - References preserve real graph bindings, not just copied values. Set the intended collection mode on the parent before creating scalar-bound content: initial scalar layout resolves that inherited mode. This does not guarantee automatic scalar layout recomputation after a later mode switch. Verify resulting geometry as well as paint when changing modes. Missing or incorrectly typed scalar variables are errors.
 - `bind` maps supported scene-field paths to variable IDs or references when no shorthand exists. Use semantic tokens consistently rather than declaring unused collections.

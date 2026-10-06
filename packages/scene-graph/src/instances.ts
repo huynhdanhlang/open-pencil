@@ -124,7 +124,11 @@ export function swapInstanceComponent(
 
 const syncingComponentsByGraph = new WeakMap<SceneGraph, Set<string>>()
 
-export function syncInstances(graph: SceneGraph, componentId: string): void {
+export function syncInstances(
+  graph: SceneGraph,
+  componentId: string,
+  removedSourceIds?: ReadonlySet<string>
+): void {
   const component = graph.nodes.get(componentId)
   if (component?.type !== 'COMPONENT') return
   let syncing = syncingComponentsByGraph.get(graph)
@@ -148,7 +152,7 @@ export function syncInstances(graph: SceneGraph, componentId: string): void {
         copyProp(updates, source, key)
       }
       updateSyncedProps(graph, instance, updates)
-      syncChildren(graph, component.id, instance.id, instance.instanceOverrides)
+      syncChildren(graph, component.id, instance.id, instance.instanceOverrides, removedSourceIds)
     }
   } finally {
     syncing.delete(componentId)

@@ -147,7 +147,10 @@ export function createDesignJSXRenderer<Artwork>(services: DesignJSXServices<Art
       renderJSX(services, graph, jsxString, options),
     /** Render a tree built with the element functions into the graph. */
     renderTree: (graph: SceneGraph, tree: TreeNode, options?: RenderJSXOptions) =>
-      renderTree(services, graph, tree, options)
+      renderTree(services, graph, tree, options),
+    /** Render every root of a resolved tree, including fragment siblings. */
+    renderTreeRoots: (graph: SceneGraph, tree: TreeNode, options?: RenderJSXOptions) =>
+      renderRoots(services, graph, tree, options)
   }
 }
 

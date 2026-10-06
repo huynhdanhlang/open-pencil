@@ -171,7 +171,7 @@ function recordPreview(
   before: ReturnType<EditorStore['snapshotPage']>,
   selectionBefore: string[]
 ): void {
-  const after = store.snapshotPage()
+  const after = store.snapshotPage(store.state.currentPageId, before)
   const rootIds = [...session.rootIds]
   store.pushUndoEntry({
     label: session.originalSelectionIds.length > 0 ? 'Edit JSX' : 'Insert JSX',

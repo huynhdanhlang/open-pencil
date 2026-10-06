@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { expectDefined } from '#core-tests/helpers/assert'
+
 import { createEditor, graphFromPageSnapshot } from '@open-pencil/core/editor'
 import {
   comparePNGs,
@@ -7,8 +9,6 @@ import {
   initCanvasKit,
   renderRegionToImage
 } from '@open-pencil/core/io/formats/raster'
-
-import { expectDefined } from '#core-tests/helpers/assert'
 
 function setup() {
   const editor = createEditor()
@@ -19,6 +19,19 @@ function setup() {
 }
 
 describe('page snapshot graphs', () => {
+  test('keeps captured foreign instance forests out of a page preview', () => {
+    const editor = createEditor()
+    const page = editor.state.currentPageId
+    const component = editor.graph.createNode('COMPONENT', page)
+    editor.graph.createNode('RECTANGLE', component.id)
+    const other = editor.graph.addPage('Other')
+    const instance = expectDefined(editor.graph.createInstance(component.id, other.id), 'instance')
+    const snapshot = editor.snapshotPage(page)
+    expect(snapshot.has(instance.id)).toBe(true)
+    const preview = expectDefined(graphFromPageSnapshot(editor.graph, snapshot), 'preview')
+    expect(preview.getNode(instance.id)).toBeUndefined()
+    expect(preview.getNode(component.id)).toBeDefined()
+  })
   test('rebuilds the past page apart from the live document', () => {
     const { editor, pageId, label } = setup()
     const before = editor.snapshotPage(pageId)

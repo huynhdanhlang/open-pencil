@@ -57,7 +57,7 @@ export async function executeWithPageUndo<T>(
   try {
     return await run()
   } finally {
-    const after = store.snapshotPage(pageId)
+    const after = store.snapshotPage(pageId, before)
     // Read-only scripts and no-op edits must not leave empty steps in the user's history.
     if (!isEqual(before, after)) {
       store.pushUndoEntry({

@@ -70,12 +70,16 @@ export function createComponentSyncScheduler(
 ) {
   let pendingComponentSync: Set<string> | null = null
   let isFlushingComponentSync = false
+  let removedSourceIds = new Set<string>()
 
   function flushComponentSync() {
     const ids = pendingComponentSync
     if (!ids) return
     pendingComponentSync = null
     isFlushingComponentSync = true
+    const removed = removedSourceIds
+    removedSourceIds = new Set()
+    activeRemovedSourceIds = removed
     try {
       const graph = getGraph()
       const componentIds = new Set<string>()
@@ -83,24 +87,30 @@ export function createComponentSyncScheduler(
         const component = graph.closest(id, isComponent)
         if (component) componentIds.add(component.id)
       }
-      for (const compId of componentSyncOrder(graph, componentIds)) {
-        graph.syncInstances(compId)
+      const ordered = componentSyncOrder(graph, componentIds)
+      for (const compId of ordered) {
+        graph.syncInstances(compId, removed)
       }
       if (componentIds.size > 0) {
-        const pageIds = affectedPageIds(graph, ids, componentIds)
+        const pageIds = affectedPageIds(graph, ids, ordered)
         if (pageIds.size === 0) computeLayouts(graph)
         else for (const pageId of pageIds) computeLayouts(graph, pageId)
         requestRender()
       }
     } finally {
+      activeRemovedSourceIds = null
       isFlushingComponentSync = false
     }
   }
 
-  function scheduleComponentSync(nodeId: string) {
+  let activeRemovedSourceIds: Set<string> | null = null
+
+  function scheduleComponentSync(nodeId: string, removedSourceId?: string) {
     // Import/materialization has already resolved component overrides. These updates
     // are not authored component edits and must not reset instances to their defaults.
-    if (isFlushingComponentSync || getGraph().isApplyingImportedState) return
+    if (getGraph().isApplyingImportedState) return
+    if (removedSourceId) (activeRemovedSourceIds ?? removedSourceIds).add(removedSourceId)
+    if (isFlushingComponentSync) return
     if (!pendingComponentSync) {
       pendingComponentSync = new Set()
       queueMicrotask(flushComponentSync)

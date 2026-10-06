@@ -20,6 +20,68 @@ test('consecutive page snapshots share unchanged copies, never mutable live node
   expect(before.get(a.id)?.name).not.toBe('Changed')
 })
 
+test('dependent instance history shares binary copies and leaves unrelated foreign page nodes outside the snapshot', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const component = editor.graph.createNode('COMPONENT', page)
+  const bytes = new Uint8Array([1, 2, 3])
+  const child = editor.graph.createNode('TEXT', component.id, { textPicture: bytes })
+  const other = editor.graph.addPage('Instances')
+  const instance = expectDefined(editor.graph.createInstance(component.id, other.id), 'instance')
+  const derived = expectDefined(editor.graph.getChildren(instance.id)[0], 'derived text')
+  editor.graph.updateNode(derived.id, { textPicture: bytes })
+  const unrelated = editor.graph.createNode('RECTANGLE', other.id)
+  const before = editor.snapshotPage(page)
+  const after = editor.snapshotPage(page, before)
+  expect(before.has(unrelated.id)).toBe(false)
+  expect(before.has(other.id)).toBe(false)
+  expect(before.get(child.id)?.textPicture).toBe(before.get(derived.id)?.textPicture)
+  expect(after.get(derived.id)).toBe(before.get(derived.id))
+  expect(before.get(derived.id)).not.toBe(derived)
+})
+
+test('dependent history reparenting owns the captured instance, never a new foreign component ancestor', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const main = editor.graph.createNode('COMPONENT', page)
+  editor.graph.createNode('RECTANGLE', main.id)
+  const other = editor.graph.addPage('Other')
+  const instance = expectDefined(editor.graph.createInstance(main.id, other.id), 'instance')
+  const foreign = editor.graph.createNode('COMPONENT', other.id)
+  const untouched = editor.graph.createNode('RECTANGLE', foreign.id)
+  const before = editor.snapshotPage(page)
+  editor.graph.reparentNode(instance.id, foreign.id)
+  const after = editor.snapshotPage(page, before)
+  editor.restorePageFromSnapshot(before)
+  expect(editor.graph.getNode(foreign.id)).toBe(foreign)
+  expect(editor.graph.getNode(untouched.id)).toBe(untouched)
+  expect(editor.graph.getNode(instance.id)?.parentId).toBe(other.id)
+  editor.restorePageFromSnapshot(after)
+  expect(editor.graph.getNode(instance.id)?.parentId).toBe(foreign.id)
+  expect(editor.graph.getChildren(foreign.id).map((node) => node.id)).toEqual([
+    untouched.id,
+    instance.id
+  ])
+})
+
+test('a captured ordinary subtree moved across pages restores both history directions', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const other = editor.graph.addPage('Other')
+  const moved = editor.graph.createNode('FRAME', page)
+  const child = editor.graph.createNode('RECTANGLE', moved.id)
+  const untouched = editor.graph.createNode('RECTANGLE', other.id)
+  const before = editor.snapshotPage(page)
+  editor.graph.reparentNode(moved.id, other.id)
+  const after = editor.snapshotPage(page, before)
+  editor.restorePageFromSnapshot(before)
+  expect(editor.graph.getNode(moved.id)?.parentId).toBe(page)
+  editor.restorePageFromSnapshot(after)
+  expect(editor.graph.getNode(moved.id)?.parentId).toBe(other.id)
+  expect(editor.graph.getNode(child.id)?.parentId).toBe(moved.id)
+  expect(editor.graph.getNode(untouched.id)).toBe(untouched)
+})
+
 test('restoring a page does not alias nested history data into the live graph', () => {
   const editor = createEditor()
   const a = editor.graph.createNode('RECTANGLE', editor.state.currentPageId, {
@@ -39,7 +101,7 @@ test('restoring a page does not alias nested history data into the live graph', 
 test('alternating page edits preserve unchanged history copies on each page', () => {
   const editor = createEditor()
   const page = editor.state.currentPageId
-  const otherPage = editor.graph.createNode('CANVAS', null)
+  const otherPage = editor.graph.addPage('Other')
   const a = editor.graph.createNode('RECTANGLE', page)
   const before = editor.snapshotPage(page)
   editor.snapshotPage(otherPage.id)

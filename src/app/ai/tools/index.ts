@@ -108,7 +108,7 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
         try {
           return await runTool(def, figma, args, pageId)
         } finally {
-          const after = store.snapshotPage(pageId)
+          const after = store.snapshotPage(pageId, before)
           // Atomic tools record their own undo entry.
           if (!isAtomicTool(def)) {
             store.pushUndoEntry({

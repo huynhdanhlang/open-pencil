@@ -19,7 +19,15 @@ export function graphFromPageSnapshot(
   graph.images = new Map(source.images)
   graph.variables = structuredClone(source.variables)
   graph.variableCollections = structuredClone(source.variableCollections)
-  for (const node of structuredClone(snapshot).values()) graph.nodes.set(node.id, node)
+  const pageNodes = new Map<string, typeof page>()
+  const visit = (id: string) => {
+    const node = snapshot.get(id)
+    if (!node || pageNodes.has(id)) return
+    pageNodes.set(id, node)
+    for (const childId of node.childIds) visit(childId)
+  }
+  visit(page.id)
+  for (const node of structuredClone(pageNodes).values()) graph.nodes.set(node.id, node)
   graph.clearAbsPosCache()
   return graph
 }

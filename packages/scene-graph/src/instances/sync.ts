@@ -127,21 +127,25 @@ function cloneChildInCoordinates(
   src: SceneNode,
   sourceParent: SceneNode,
   targetParent: SceneNode,
-  mode: NodeCloneMode = 'deep'
+  mode: NodeCloneMode = 'deep',
+  overrides: InstanceOverrideState = targetParent.instanceOverrides
 ): SceneNode {
   const componentScale =
     (src.componentScale * targetParent.componentScale) / sourceParent.componentScale
-  return graph.createNode(src.type, targetParent.id, {
+  const clone = graph.createNode(src.type, targetParent.id, {
     ...cloneNodeProps(sourceInTargetCoordinates(src, componentScale), src.id, mode),
     componentScale
   })
+  if (clone.type === 'INSTANCE') linkMatchedChild(overrides, targetParent.id, clone, src.id)
+  return clone
 }
 
 export function cloneChildrenWithMapping(
   graph: SceneGraph,
   sourceParentId: string,
   destParentId: string,
-  mode: NodeCloneMode = 'deep'
+  mode: NodeCloneMode = 'deep',
+  overrides?: InstanceOverrideState
 ): void {
   // Guard against cloning a subtree into itself or its own descendant. Without this,
   // a self-referential or cyclic component (e.g. an INSTANCE whose componentId points
@@ -151,15 +155,16 @@ export function cloneChildrenWithMapping(
   const sourceParent = graph.nodes.get(sourceParentId)
   const targetParent = graph.nodes.get(destParentId)
   if (!sourceParent || !targetParent) return
+  const mappings = overrides ?? targetParent.instanceOverrides
 
   for (const childId of sourceParent.childIds) {
     const src = graph.nodes.get(childId)
     if (!src) continue
 
-    const clone = cloneChildInCoordinates(graph, src, sourceParent, targetParent, mode)
+    const clone = cloneChildInCoordinates(graph, src, sourceParent, targetParent, mode, mappings)
 
     if (src.childIds.length > 0) {
-      cloneChildrenWithMapping(graph, childId, clone.id, mode)
+      cloneChildrenWithMapping(graph, childId, clone.id, mode, mappings)
     }
   }
 }
@@ -408,7 +413,8 @@ export function syncChildren(
   graph: SceneGraph,
   compParentId: string,
   instParentId: string,
-  overrides: InstanceOverrideState
+  overrides: InstanceOverrideState,
+  removedSourceIds?: ReadonlySet<string>
 ): void {
   // Guard against cyclic sync: if the instance parent is inside the component's own
   // subtree, syncing would clone the component into itself — a self-referential cycle
@@ -418,6 +424,20 @@ export function syncChildren(
   const compParent = graph.nodes.get(compParentId)
   const instParent = graph.nodes.get(instParentId)
   if (!compParent || !instParent) return
+
+  // Only authored/replayed deletions are authoritative. Unresolved imported links and
+  // unlinked local children remain intact; a missing source alone is not deletion evidence.
+  for (const child of graph.getChildren(instParentId)) {
+    const nestedSource = getInstanceOverride(overrides, instParentId, child.id, 'sourceComponentId')
+    const sourceId =
+      typeof nestedSource === 'string'
+        ? nestedSource
+        : child.type === 'INSTANCE'
+          ? null
+          : child.componentId
+    if (sourceId && removedSourceIds?.has(sourceId) && !compParent.childIds.includes(sourceId))
+      graph.deleteNode(child.id)
+  }
 
   const instChildMap = new Map<string, SceneNode>()
   const usedInstChildIds = new Set<string>()
@@ -450,9 +470,9 @@ export function syncChildren(
     if (!instChildMap.has(compChildId)) {
       const src = graph.nodes.get(compChildId)
       if (!src) continue
-      const clone = cloneChildInCoordinates(graph, src, compParent, instParent)
+      const clone = cloneChildInCoordinates(graph, src, compParent, instParent, 'deep', overrides)
       if (src.childIds.length > 0) {
-        cloneChildrenWithMapping(graph, compChildId, clone.id)
+        cloneChildrenWithMapping(graph, compChildId, clone.id, 'deep', overrides)
       }
       applyEnclosingAssignments(graph, clone)
       instChildMap.set(compChildId, clone)
@@ -488,13 +508,12 @@ export function syncChildren(
     updateSyncedProps(graph, instChild, updates)
 
     if (
-      compChild.childIds.length > 0 &&
       !hasNodeInstanceOverride(overrides, instParentId, instChild.id, 'componentId') &&
       // The component's frame is the authority on which slot this is; instance copies of
       // its bindings are not synced.
       !ownsSlotContent(graph, instChild, slotPropertyId(compChild))
     ) {
-      syncChildren(graph, compChildId, instChild.id, overrides)
+      syncChildren(graph, compChildId, instChild.id, overrides, removedSourceIds)
     }
   }
 

@@ -32,6 +32,7 @@ export {
 } from './tree'
 
 export type { RenderResult } from './renderer'
+export { encodeTreeForTransport, decodeTreeFromTransport } from './tree-transport'
 
 export {
   backgroundBlur,

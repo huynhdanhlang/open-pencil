@@ -102,6 +102,7 @@
 
 ### Fixed
 
+- MCP design JSX respects replacement and insertion placement, keeps variable bindings through the desktop bridge, and restores dependent component instances on other pages with their original layer IDs and overrides when a structural edit is undone.
 - `figma.combineAsVariants` derives variant properties from components named as Figma names variants, such as `State=On, Size=Large`, as Combine as variants in the editor now does too; before, only slash-separated names gave the set any properties.
 - HTML and Tailwind export place layers of frames without auto layout at their coordinates instead of stacking them, leave the size of hugging auto layout frames and auto-sizing text to their content, and round ellipses.
 - Show the blinking caret in a new, empty text layer before the first character is typed.

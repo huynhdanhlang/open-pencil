@@ -4,7 +4,11 @@ import type { SceneGraph } from './index'
 import type { SceneNode } from './types'
 
 /** Replay page history without replacing unchanged nodes or cloning the entire page. */
-export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<string, SceneNode>) {
+export function restorePageCheckpoint(
+  graph: SceneGraph,
+  snapshot: ReadonlyMap<string, SceneNode>,
+  dependentRoots: ReadonlyMap<string, { parentId: string; index: number }> = new Map()
+) {
   const page = snapshot.values().next().value
   const livePage = page && graph.nodes.get(page.id)
   if (!page || !livePage) return new Set<string>()
@@ -25,6 +29,19 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
     for (const childId of node.childIds) visit(childId, id)
   }
   visit(page.id, page.parentId)
+  for (const [id, root] of dependentRoots) {
+    const node = snapshot.get(id)
+    if (!node) continue
+    if (
+      node.type === 'CANVAS' ||
+      id === graph.rootId ||
+      node.parentId !== root.parentId ||
+      (!graph.nodes.has(root.parentId) && !snapshot.has(root.parentId))
+    )
+      throw new Error('Invalid dependent history root')
+    if (targetIds.has(id) || snapshot.has(root.parentId)) continue
+    visit(id, root.parentId)
+  }
   if (targetIds.size !== snapshot.size) throw new Error('Disconnected page history nodes')
 
   const current = new Map<string, SceneNode>()
@@ -35,12 +52,14 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
     for (const childId of node.childIds) walk(childId)
   }
   walk(page.id)
+  for (const id of dependentRoots.keys()) walk(id)
   const removed = [...current.values()].filter((node) => !snapshot.has(node.id))
   const changed = [...snapshot.values()].filter((node) => !isEqual(graph.nodes.get(node.id), node))
   // Clone before changing the graph; one batch preserves shared imported payloads.
   const copies = structuredClone(changed)
   const updates: Array<{ node: SceneNode; changes: Partial<SceneNode>; created: boolean }> = []
   const externalParents = new Set<SceneNode>()
+  const moved: Array<{ id: string; oldParentId: string | null; newParentId: string }> = []
   const removeIndex = (node: SceneNode) => {
     if (node.type === 'INSTANCE' && node.componentId)
       graph.instanceIndex.get(node.componentId)?.delete(node.id)
@@ -49,6 +68,13 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
     graph.preserveSourceMetadataDuring(() => {
       for (const node of removed) {
         removeIndex(node)
+        if (node.parentId && !current.has(node.parentId)) {
+          const parent = graph.nodes.get(node.parentId)
+          if (parent) {
+            parent.childIds = parent.childIds.filter((id) => id !== node.id)
+            externalParents.add(parent)
+          }
+        }
         // Delete membership only: retained descendants may move out of a removed ancestor.
         graph.nodes.delete(node.id)
       }
@@ -57,6 +83,8 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
         const changes: Partial<SceneNode> = { ...saved }
         if (live) {
           removeIndex(live)
+          if (saved.parentId && live.parentId !== saved.parentId)
+            moved.push({ id: live.id, oldParentId: live.parentId, newParentId: saved.parentId })
           if (live.parentId && live.parentId !== saved.parentId && !snapshot.has(live.parentId)) {
             const parent = graph.nodes.get(live.parentId)
             if (parent) {
@@ -80,6 +108,16 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
         }
         updates.push({ node, changes, created: !live })
       }
+      for (const [id, root] of dependentRoots) {
+        const node = graph.nodes.get(id)
+        const saved = snapshot.get(id)
+        if (!saved || !node || (saved.parentId && targetIds.has(saved.parentId))) continue
+        const parent = graph.nodes.get(root.parentId)
+        if (parent && !parent.childIds.includes(id)) {
+          graph.insertChildAt(id, parent.id, root.index)
+          externalParents.add(parent)
+        }
+      }
       graph.clearAbsPosCache()
       // Consumers observe complete parent links, exact sibling arrays and component indexes.
       for (const node of removed) graph.emitter.emit('node:deleted', node.id, node.parentId)
@@ -89,9 +127,15 @@ export function restorePageCheckpoint(graph: SceneGraph, snapshot: ReadonlyMap<s
         if (created) graph.emitter.emit('node:created', node)
         else graph.emitter.emit('node:updated', node.id, changes)
       }
+      for (const { id, oldParentId, newParentId } of moved)
+        graph.emitter.emit('node:reparented', id, oldParentId, newParentId)
     })
   )
   const layoutPages = new Set([page.id])
+  for (const id of dependentRoots.keys()) {
+    const ancestor = graph.closest(id, (node) => node.type === 'CANVAS')
+    if (ancestor) layoutPages.add(ancestor.id)
+  }
   for (const parent of externalParents) {
     const ancestor = graph.closest(parent.id, (node) => node.type === 'CANVAS')
     if (ancestor) layoutPages.add(ancestor.id)
