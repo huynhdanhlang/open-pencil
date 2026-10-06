@@ -366,6 +366,8 @@ Read [Design authoring](references/design-authoring.md) before creating or modif
 
 Use the `render` tool for JSX strings. Use only the APIs exposed by the installed `eval` environment; native library exports are not automatically scripting globals. The connected server's `get_codegen_prompt` provides its version's codegen and authoring guidance.
 
+For editable controls, inspect native property declarations and references together. Keep BOOLEAN/TEXT/SLOT IDs and defaults stable; use Root `parts` to bind existing named slots, including implicit containers. A Checkbox's `modelValue="Checked"` names a property, not a literal checked value. General instance JSX remains flattened: do not use it as proof of retained master identity, assignments, swaps or custom slot contents. Save the native `.fig` and verify generated application interaction separately.
+
 ## Tips
 
 - Omit the file path to work with the document open in the running OpenPencil editor.

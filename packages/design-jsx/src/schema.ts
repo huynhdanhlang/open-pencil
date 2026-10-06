@@ -177,6 +177,7 @@ export const DESIGN_JSX_SUPPORTED_PROPERTY_NAMES = [
   'disabled',
   'filled',
   'states',
+  'parts',
   'min',
   'max',
   'step',

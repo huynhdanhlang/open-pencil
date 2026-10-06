@@ -54,8 +54,7 @@ function rootProps(graph: SceneGraph, owner: SceneNode): JSXProp[] {
   if (!behaviour) return []
   const spec = behaviourToSpec(graph, owner, behaviour)
   const props: JSXProp[] = []
-  const textProperties = owner.componentPropertyDefinitions.filter((item) => item.type === 'TEXT')
-  if (textProperties.length) props.push(['properties', plainValue(textProperties)])
+  if (spec.parts && Object.keys(spec.parts).length) props.push(['parts', plainValue(spec.parts)])
   const valueProp = (value: NonNullable<typeof spec.values>[string]): JSXValue =>
     typeof value === 'string' ? value : { property: value.property, on: value.on, off: value.off }
   for (const [valueId, value] of Object.entries(spec.values ?? {})) {
@@ -127,13 +126,6 @@ export function rekaExport(graph: SceneGraph, owner: SceneNode): RekaExport | nu
   )
   for (const layer of descendants(graph, owner)) {
     if (layer.type === 'INSTANCE') continue
-    if (layer.type === 'COMPONENT') {
-      const textProperties = layer.componentPropertyDefinitions.filter(
-        (item) => item.type === 'TEXT'
-      )
-      if (textProperties.length)
-        result.props.set(layer.id, [['properties', plainValue(textProperties)]])
-    }
     const partId = Object.entries(behaviour.parts).find(
       ([, id]) => id === slotPropertyId(layer)
     )?.[0]
@@ -152,7 +144,15 @@ export function rekaExport(graph: SceneGraph, owner: SceneNode): RekaExport | nu
       )
       if (tag) {
         result.tags.set(layer.id, tag)
-        result.props.set(layer.id, [['propertyRefs', plainValue([reference])]])
+        result.props.set(layer.id, [
+          [
+            'propertyRefs',
+            plainValue([
+              ...layer.componentPropertyReferences.filter((item) => item.field !== 'TEXT'),
+              reference
+            ])
+          ]
+        ])
       }
     }
   }

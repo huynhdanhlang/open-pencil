@@ -64,7 +64,9 @@ function nodeToJSX(
   // An item names its component; the instance's own layers are the component's to write.
   if (ownProps?.some(([name]) => name === 'of'))
     return [jsx.element(tag, ownProps.map(propAttribute), [], depth)]
-  const attributes = [...collectProps(node, graph), ...(ownProps ?? [])].map(propAttribute)
+  const attributes = [...new Map([...collectProps(node, graph), ...(ownProps ?? [])])].map(
+    propAttribute
+  )
   if (node.type === 'TEXT') {
     return [jsx.element(tag, attributes, node.text ? [jsx.text(node.text)] : [], depth, true)]
   }

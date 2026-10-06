@@ -12,6 +12,58 @@ import {
 } from '@open-pencil/scene-graph'
 
 describe('.fig round trip of behaviours', () => {
+  test('Checkbox metadata survives JSX and two native saves without duplicate slots', async () => {
+    await initCodec()
+    const editor = createEditor()
+    await renderJSX(
+      editor.graph,
+      `<Checkbox.Root name="Protection" modelValue="Checked" properties={[
+      {id:"checked",name:"Checked",type:"BOOLEAN",defaultValue:"true"},
+      {id:"label",name:"Label",type:"TEXT",defaultValue:"Ánh sáng"},
+      {id:"slot",name:"Chosen by creator",type:"SLOT",defaultValue:"",description:"Protected choice",
+       preferredValues:[],slotSettings:{minChildren:0,maxChildren:1,allowPreferredValuesOnly:false,
+       displayEmptyByDefault:false,stretchChildOnInsert:true}}
+    ]} parts={{indicator:"Chosen by creator"}}>
+      <Checkbox.Indicator propertyRefs={[
+        {propertyId:"checked",field:"VISIBLE"},{propertyId:"slot",field:"SLOT_CONTENT"}
+      ]} />
+      <Text propertyRefs={[{propertyId:"label",field:"TEXT"}]}>Ánh sáng</Text>
+    </Checkbox.Root>`
+    )
+    let graph = editor.graph
+    let savedIds: string[] | undefined
+    for (let generation = 0; generation < 2; generation++) {
+      graph = await parseFigFile((await exportFigFile(graph)).slice().buffer)
+      const owner = [...graph.nodes.values()].find((node) => node.name === 'Protection')
+      if (!owner) throw new Error('Checkbox lost')
+      const definitions = owner.componentPropertyDefinitions
+      expect(definitions.map((item) => [item.name, item.type, item.defaultValue])).toEqual([
+        ['Checked', 'BOOLEAN', 'true'],
+        ['Label', 'TEXT', 'Ánh sáng'],
+        ['Chosen by creator', 'SLOT', '']
+      ])
+      expect(definitions[2]).toMatchObject({
+        description: 'Protected choice',
+        slotSettings: {
+          minChildren: 0,
+          maxChildren: 1,
+          allowPreferredValuesOnly: false,
+          displayEmptyByDefault: false,
+          stretchChildOnInsert: true
+        }
+      })
+      if (savedIds) expect(definitions.map((item) => item.id)).toEqual(savedIds)
+      savedIds = definitions.map((item) => item.id)
+      const fresh = createEditor()
+      const [result] = await renderJSX(fresh.graph, sceneNodeToJSX(owner.id, graph))
+      const again = fresh.graph.getNode(result.id)
+      expect(again?.componentPropertyDefinitions).toEqual(definitions)
+      expect(again && readBehaviour(again)).toEqual(readBehaviour(owner))
+      expect(
+        fresh.graph.getChildren(result.id).map((node) => node.componentPropertyReferences)
+      ).toEqual(graph.getChildren(owner.id).map((node) => node.componentPropertyReferences))
+    }
+  })
   for (const namespace of ['TextField', 'Textarea']) {
     test(`${namespace} keeps its declared value and Input through two saves`, async () => {
       await initCodec()

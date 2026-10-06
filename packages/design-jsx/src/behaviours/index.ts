@@ -1,8 +1,10 @@
 import {
+  behaviourSpecSchema,
   behaviourFromSpec,
   behaviourProperties,
   createComponentPropertyId,
   createSlotProperty,
+  slotOwner,
   withBehaviour,
   type BehaviourKind,
   type BehaviourSpec,
@@ -10,7 +12,9 @@ import {
   type SceneNode
 } from '@open-pencil/scene-graph'
 
+import { componentPropertyScope } from '../component-properties'
 import { node, type TreeNode } from '../tree'
+import { parseScriptInput } from '../validation'
 
 /** What a Reka UI element is to the component it builds. */
 export type RekaRole =
@@ -143,6 +147,7 @@ export interface RekaScope {
   /** Text property ids by value, defined once on the root. */
   texts: Map<string, string>
   values: NonNullable<BehaviourSpec['values']>
+  parts: NonNullable<BehaviourSpec['parts']>
 }
 
 export function createScope(
@@ -150,19 +155,55 @@ export function createScope(
   ownerId: string,
   props: Record<string, unknown>
 ): RekaScope {
+  const spec = rootSpec(kind, props)
   return {
     kind,
     ownerId,
     slots: new Map(),
     texts: new Map(),
-    values: rootSpec(kind, props).values ?? {}
+    values: spec.values ?? {},
+    parts: spec.parts ?? {}
   }
 }
 
 /** Make a rendered part frame its part's slot, with the id the part has in this component. */
 export function bindPart(graph: SceneGraph, scope: RekaScope, frame: SceneNode, partId: string) {
-  const id = scope.slots.get(partId) ?? createComponentPropertyId()
-  if (!createSlotProperty(graph, frame.id, id))
+  const owner = graph.getNode(scope.ownerId)
+  if (!owner || frame.type !== 'FRAME') throw new Error(`<${partId}> needs a component frame`)
+  const definitions = behaviourProperties(graph, owner)
+  const name = scope.parts[partId]
+  const declared =
+    name === undefined
+      ? undefined
+      : definitions.find((item) => item.name === name && item.type === 'SLOT')
+  if (name !== undefined && !declared) throw new Error(`Missing SLOT property "${name}"`)
+  const references = frame.componentPropertyReferences.filter(
+    (item) => item.field === 'SLOT_CONTENT'
+  )
+  for (const reference of references)
+    if (!definitions.some((item) => item.id === reference.propertyId && item.type === 'SLOT'))
+      throw new Error(`Missing SLOT property "${reference.propertyId}"`)
+  const ids = new Set([
+    ...references.map((item) => item.propertyId),
+    ...[declared?.id, scope.slots.get(partId)].filter((id): id is string => id !== undefined)
+  ])
+  if (ids.size > 1) throw new Error(`Conflicting slot bindings for "${partId}"`)
+  const id = [...ids][0] ?? createComponentPropertyId()
+  const definition = definitions.find((item) => item.id === id && item.type === 'SLOT')
+  if (definition) {
+    const localOwner = slotOwner(graph, frame)
+    if (!localOwner) throw new Error(`<${partId}> must be inside a main component`)
+    if (!componentPropertyScope(graph, frame.parentId ?? '')?.some((item) => item.id === id))
+      graph.updateNode(localOwner.id, {
+        componentPropertyDefinitions: [...localOwner.componentPropertyDefinitions, definition]
+      })
+    graph.updateNode(frame.id, {
+      componentPropertyReferences: [
+        ...frame.componentPropertyReferences.filter((item) => item.field !== 'SLOT_CONTENT'),
+        { propertyId: id, field: 'SLOT_CONTENT' }
+      ]
+    })
+  } else if (!createSlotProperty(graph, frame.id, id))
     throw new Error(`<${partId}> must be inside a main component`)
   scope.slots.set(partId, id)
 }
@@ -224,7 +265,8 @@ export const BEHAVIOUR_PROPS = [
   'min',
   'max',
   'step',
-  'defaultValue'
+  'defaultValue',
+  'parts'
 ] as const
 
 type BindingProp = string | { property: string; on?: string; off?: string }
@@ -256,7 +298,8 @@ function rootSpec(kind: BehaviourKind, props: Record<string, unknown>): Behaviou
   if (Object.keys(values).length) spec.values = values
   if (Object.keys(range).length) spec.numbers = { value: range }
   if (typeof props.states === 'string') spec.states = props.states
-  return spec
+  if (props.parts !== undefined) spec.parts = props.parts as BehaviourSpec['parts']
+  return parseScriptInput('Invalid behaviour props', behaviourSpecSchema, spec)
 }
 
 /** Store the behaviour a rendered root describes, with the slots and texts its parts made. */

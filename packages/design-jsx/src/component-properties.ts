@@ -13,14 +13,24 @@ import { parseScriptInput } from './validation'
 const definitionSchema = v.object({
   id: v.string(),
   name: v.string(),
-  type: v.picklist(['VARIANT', 'TEXT', 'BOOLEAN', 'INSTANCE_SWAP']),
+  type: v.picklist(['VARIANT', 'TEXT', 'BOOLEAN', 'INSTANCE_SWAP', 'SLOT']),
   defaultValue: v.string(),
   variantOptions: v.optional(v.array(v.string())),
-  preferredValues: v.optional(v.array(v.string()))
+  preferredValues: v.optional(v.array(v.string())),
+  description: v.optional(v.string()),
+  slotSettings: v.optional(
+    v.object({
+      minChildren: v.optional(v.number()),
+      maxChildren: v.optional(v.number()),
+      allowPreferredValuesOnly: v.boolean(),
+      displayEmptyByDefault: v.boolean(),
+      stretchChildOnInsert: v.boolean()
+    })
+  )
 }) satisfies v.GenericSchema<ComponentPropertyDefinition>
 const referenceSchema = v.object({
   propertyId: v.string(),
-  field: v.picklist(['VISIBLE', 'TEXT', 'INSTANCE_SWAP'])
+  field: v.picklist(['VISIBLE', 'TEXT', 'INSTANCE_SWAP', 'SLOT_CONTENT'])
 }) satisfies v.GenericSchema<ComponentPropertyReference>
 
 /** Accept the native graph contracts, without introducing a second property model. */
@@ -58,11 +68,15 @@ export function componentMetadata(
         throw new Error('TEXT properties require a text node')
       if (reference.field === 'INSTANCE_SWAP' && type !== 'INSTANCE')
         throw new Error('INSTANCE_SWAP properties require an instance')
+      if (reference.field === 'SLOT_CONTENT' && type !== 'FRAME')
+        throw new Error('SLOT_CONTENT properties require a frame')
       if (definitions) {
         const definition = definitions.find((item) => item.id === reference.propertyId)
         if (!definition)
           throw new Error(`Unknown component property reference: ${reference.propertyId}`)
-        const expectedField = definition.type === 'BOOLEAN' ? 'VISIBLE' : definition.type
+        let expectedField: string = definition.type
+        if (definition.type === 'BOOLEAN') expectedField = 'VISIBLE'
+        if (definition.type === 'SLOT') expectedField = 'SLOT_CONTENT'
         if (reference.field !== expectedField)
           throw new Error(`Component property ${definition.id} cannot bind ${reference.field}`)
       }

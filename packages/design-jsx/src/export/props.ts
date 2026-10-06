@@ -2,6 +2,7 @@ import type { SceneGraph, SceneNode, NodeType } from '@open-pencil/scene-graph'
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/scene-graph/constants'
 import { resolveNodeTextDirection } from '@open-pencil/scene-graph/text-direction'
 
+import { componentPropertyScope } from '../component-properties'
 import {
   collectCornerRadii,
   collectPadding,
@@ -11,7 +12,7 @@ import {
 } from './helpers'
 import { collectEffectProps, collectFillProps, collectStrokeProps } from './paint'
 import { collectStateProps } from './state'
-import type { JSXProp } from './value'
+import { plainValue, type JSXProp } from './value'
 
 export type { JSXProp } from './value'
 
@@ -29,7 +30,7 @@ export const NODE_TYPE_TO_TAG: Partial<Record<NodeType, string>> = {
   GROUP: 'Group',
   SECTION: 'Section',
   COMPONENT: 'Component',
-  COMPONENT_SET: 'Frame',
+  COMPONENT_SET: 'ComponentSet',
   INSTANCE: 'Frame'
 }
 
@@ -259,12 +260,44 @@ function collectShapeNodeProps(node: SceneNode, props: JSXProp[]): void {
   }
 }
 
+/** Metadata that the exported component scope can author again. */
+function collectComponentProps(node: SceneNode, graph: SceneGraph, props: JSXProp[]): void {
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+    if (node.componentPropertyDefinitions.length)
+      props.push(['properties', plainValue(node.componentPropertyDefinitions)])
+  }
+  // Instances currently export as flattened frames. Their inherited reference IDs
+  // have no component scope in that representation and cannot be re-authored there.
+  let scope: SceneNode | undefined = node
+  while (scope && !['INSTANCE', 'COMPONENT', 'COMPONENT_SET'].includes(scope.type))
+    scope = scope.parentId ? graph.getNode(scope.parentId) : undefined
+  let references = node.componentPropertyReferences
+  if (scope?.type === 'INSTANCE') {
+    references = []
+    let enclosing = node.parentId ? graph.getNode(node.parentId) : undefined
+    while (enclosing && !['INSTANCE', 'COMPONENT', 'COMPONENT_SET'].includes(enclosing.type))
+      enclosing = enclosing.parentId ? graph.getNode(enclosing.parentId) : undefined
+    if (node.type === 'INSTANCE' && enclosing && enclosing.type !== 'INSTANCE') {
+      const definitions = componentPropertyScope(graph, node.parentId ?? '')
+      references = node.componentPropertyReferences.filter(
+        (reference) =>
+          reference.field === 'VISIBLE' &&
+          definitions?.some(
+            (definition) => definition.id === reference.propertyId && definition.type === 'BOOLEAN'
+          )
+      )
+    }
+  }
+  if (references.length) props.push(['propertyRefs', plainValue(references)])
+}
+
 /** The props of `node`, in the order they are printed. */
 export function collectProps(node: SceneNode, graph: SceneGraph): JSXProp[] {
   const props: JSXProp[] = []
   const ctx = getNodeContext(node, graph)
 
   if (node.name && node.name !== node.type) props.push(['name', node.name])
+  collectComponentProps(node, graph, props)
 
   collectPositionProps(node, ctx, props)
   collectSizingProps(node, ctx, graph, props)
