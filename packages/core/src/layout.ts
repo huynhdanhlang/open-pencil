@@ -13,7 +13,7 @@ import {
 
 import { resolveNodeLayoutDirection } from '@open-pencil/scene-graph/text-direction'
 
-import { applyYogaLayout } from './layout/apply'
+import { applyYogaLayout, retainedFrameLayoutSize } from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
@@ -103,14 +103,10 @@ function buildYogaTree(
   const root = createYogaNode()
   const direction = resolveNodeLayoutDirection(frame, inheritedDirection)
 
-  if (frame.primaryAxisSizing === 'FIXED') {
-    if (frame.layoutMode === 'HORIZONTAL') root.setWidth(frame.width)
-    else root.setHeight(frame.height)
-  }
-  if (frame.counterAxisSizing === 'FIXED') {
-    if (frame.layoutMode === 'HORIZONTAL') root.setHeight(frame.height)
-    else root.setWidth(frame.width)
-  }
+  const width = retainedFrameLayoutSize(graph, frame, 'width')
+  const height = retainedFrameLayoutSize(graph, frame, 'height')
+  if (width !== undefined) root.setWidth(width)
+  if (height !== undefined) root.setHeight(height)
 
   configureFlexContainer(root, frame, direction)
 

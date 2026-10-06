@@ -424,8 +424,13 @@ function forVisibleStrokes(
   draw: (stroke: SceneNode['strokes'][number], color: Color) => void
 ): void {
   for (let index = 0; index < node.strokes.length; index++) {
-    const stroke = node.strokes[index]
-    if (!stroke.visible) continue
+    const local = node.strokes[index]
+    if (!local.visible) continue
+    // Undefined inherits the node default; an explicit empty local pattern stays solid.
+    const stroke =
+      local.dashPattern === undefined && node.dashPattern.length > 0
+        ? { ...local, dashPattern: node.dashPattern }
+        : local
     applyStrokeShader(r, stroke, index, node, graph)
     try {
       draw(stroke, r.resolveStrokeColor(stroke, index, node, graph))

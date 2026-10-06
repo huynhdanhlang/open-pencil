@@ -35,6 +35,20 @@ function preservesImportedHugCrossSize(
     )
 }
 
+/** The dimension layout application retains must also constrain Yoga's child placement. */
+export function retainedFrameLayoutSize(
+  graph: SceneGraph,
+  frame: SceneNode,
+  axis: 'width' | 'height'
+): number | undefined {
+  const primary = (frame.layoutMode === 'HORIZONTAL') === (axis === 'width')
+  const sizing = primary ? frame.primaryAxisSizing : frame.counterAxisSizing
+  if (sizing === 'FIXED') return frame[axis]
+  if (sizing !== 'HUG') return undefined
+  if (!primary && preservesImportedHugCrossSize(graph, frame, axis)) return frame[axis]
+  return frame.derivedLayout?.[axis]
+}
+
 function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode): void {
   if (frame.layoutMode === 'GRID') {
     if (frame.gridTemplateRows.length === 0) {
@@ -49,20 +63,16 @@ function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode)
   const computedH = yogaNode.getComputedHeight()
   const updates: Partial<SceneNode> = {}
 
-  const derived = frame.derivedLayout
   if (frame.primaryAxisSizing === 'HUG') {
-    if (frame.layoutMode === 'HORIZONTAL') updates.width = derived?.width ?? computedW
-    else updates.height = derived?.height ?? computedH
+    if (frame.layoutMode === 'HORIZONTAL')
+      updates.width = retainedFrameLayoutSize(graph, frame, 'width') ?? computedW
+    else updates.height = retainedFrameLayoutSize(graph, frame, 'height') ?? computedH
   }
   if (frame.counterAxisSizing === 'HUG') {
     if (frame.layoutMode === 'HORIZONTAL') {
-      updates.height = preservesImportedHugCrossSize(graph, frame, 'height')
-        ? frame.height
-        : (derived?.height ?? computedH)
+      updates.height = retainedFrameLayoutSize(graph, frame, 'height') ?? computedH
     } else {
-      updates.width = preservesImportedHugCrossSize(graph, frame, 'width')
-        ? frame.width
-        : (derived?.width ?? computedW)
+      updates.width = retainedFrameLayoutSize(graph, frame, 'width') ?? computedW
     }
   }
 

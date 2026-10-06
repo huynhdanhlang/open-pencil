@@ -1,4 +1,5 @@
 import { beforeAll, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import { expectDefined } from '#core-tests/helpers/assert'
 import type { Path, PathEffect } from 'canvaskit-wasm'
@@ -9,6 +10,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { SkiaRenderer } from '#core/canvas/renderer'
 import { renderShapeUncached } from '#core/canvas/scene'
 import { drawDashedRRectWithSolidCorners, drawStyledRRectStroke } from '#core/canvas/strokes'
+import { renderJSX } from '#core/design-jsx'
+import { exportFigFile, parseFigFile } from '#core/io/formats/fig'
 
 let ck: Awaited<ReturnType<typeof initCanvasKit>>
 beforeAll(async () => {
@@ -24,6 +27,44 @@ const stroke = {
   visible: true,
   align: 'CENTER' as const
 }
+
+test('node-level JSX ellipse dashes keep identical live and Save/import pixels', async () => {
+  const graph = new SceneGraph()
+  const [result] = await renderJSX(
+    graph,
+    '<Ellipse name="Observed ornament" w={24} h={24} fills={[]} stroke="#22D3EE" strokeWidth={3} dashPattern={[4,3]} />'
+  )
+  const node = expectDefined(graph.getNode(result.id))
+  const surface = expectDefined(ck.MakeSurface(32, 32))
+  const renderer = new SkiaRenderer(ck, surface)
+  const capture = (n: typeof node, g: SceneGraph) => {
+    const canvas = surface.getCanvas()
+    canvas.clear(ck.TRANSPARENT)
+    canvas.save()
+    canvas.translate(4, 4)
+    renderShapeUncached(renderer, canvas, n, g)
+    canvas.restore()
+    surface.flush()
+    const image = surface.makeImageSnapshot()
+    try {
+      return createHash('sha256').update(expectDefined(image.encodeToBytes())).digest('hex')
+    } finally {
+      image.delete()
+    }
+  }
+  try {
+    const before = capture(node, graph)
+    const bytes = await exportFigFile(graph, ck)
+    const reopened = await parseFigFile(bytes.buffer as ArrayBuffer, { populate: 'all' })
+    const imported = expectDefined([...reopened.getAllNodes()].find((n) => n.name === node.name))
+    expect(capture(imported, reopened)).toBe(before)
+    // An explicit local empty pattern remains a solid override of a node default.
+    const solid = { ...node, strokes: node.strokes.map((s) => ({ ...s, dashPattern: [] })) }
+    expect(capture(solid, graph)).not.toBe(before)
+  } finally {
+    renderer.destroy()
+  }
+})
 
 test('uncached vector redraw releases every native stroke outline', () => {
   const graph = new SceneGraph()
