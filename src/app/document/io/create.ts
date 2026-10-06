@@ -99,6 +99,7 @@ export function createDocumentIOActions(
       disposeFileWatcher()
       sourceActions.disposeDocumentIO()
     },
+    runDocumentOperation: sourceActions.runDocumentOperation,
     openFigFile,
     openDOMFile,
     importDOMText,

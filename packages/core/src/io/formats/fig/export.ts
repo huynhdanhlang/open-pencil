@@ -42,6 +42,7 @@ import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
 import { populateReaderExport } from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
+import { exportFigInWorker } from './isolated-export'
 import { encodeNativeFigPayload } from './native-payload'
 import {
   appendVariableNodeChanges,
@@ -344,6 +345,7 @@ export async function exportFigFile(
   const originalArchive = await originalFigArchive(sourceGraph)
   if (originalArchive) return originalArchive.slice()
   if (options.rendering === 'none') {
+    if (canUseWorker()) return exportFigInWorker(sourceGraph, pageId)
     return writeFigFile(
       sourceGraph,
       EMPTY_EXPORT_RUNTIME,

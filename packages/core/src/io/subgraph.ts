@@ -54,11 +54,11 @@ function cloneIntoGraph(source: SceneGraph, ids: Set<string>): SceneGraph {
     return aDepth - bDepth
   })
 
-  for (const id of sortedIds) {
+  const nodes = sortedIds.flatMap((id) => {
     const node = source.getNode(id)
-    if (!node) continue
-    graph.nodes.set(id, structuredClone(node))
-  }
+    return node ? [node] : []
+  })
+  for (const node of structuredClone(nodes)) graph.nodes.set(node.id, node)
 
   const rootClone = graph.getNode(source.rootId)
   if (rootClone) {

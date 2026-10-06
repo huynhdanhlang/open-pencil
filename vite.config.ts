@@ -42,6 +42,8 @@ export default defineConfig(async ({ command }) => {
     },
     // Dynamic browser fixtures must not trigger a dependency-optimizer reload mid-test.
     optimizeDeps: { include: ['ai/test'] },
+    // Module workers share the app's supported baseline and Yoga's top-level await.
+    worker: { format: 'es' },
     plugins: [
       rawMarkdownPlugin(),
       copyCanvasKitAssetsPlugin(),

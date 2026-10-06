@@ -24,7 +24,9 @@ function setupGlobals() {
     removeEventListener: vi.fn()
   })
   globalThis.document = asDouble<Document>({
-    fonts: { add: vi.fn(), ready: Promise.resolve() }
+    fonts: { add: vi.fn(), ready: Promise.resolve() },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn()
   })
   globalThis.requestAnimationFrame = window.requestAnimationFrame
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame

@@ -70,9 +70,11 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
       throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
     }
     const handler = commandHandlers[command]
-    const result = handler
-      ? await handler(target, args)
-      : await handleRPCFallback(target, command, args)
+    const run = () => (handler ? handler(target, args) : handleRPCFallback(target, command, args))
+    // File lifecycle handlers already own their FIG queue; do not nest that queue.
+    const result = ['undo', 'redo', 'export'].includes(command)
+      ? await target.store.runDocumentOperation(run)
+      : await run()
     return responseWithTarget(result, target)
   }
 

@@ -32,12 +32,19 @@ export function snapshotPage(
   }
   const previous = pages.get(page)
   const changed: SceneNode[] = []
+  const sharedFields = new WeakMap<object, unknown>()
   const walk = (id: string) => {
     const node = graph.getNode(id)
     if (!node || snapshot.has(id)) return
     const saved = previous?.get(id)
     snapshot.set(id, saved && isEqual(saved, node) ? saved : node)
     if (snapshot.get(id) === node) changed.push(node)
+    else if (saved) {
+      for (const [key, value] of Object.entries(node)) {
+        if (value && typeof value === 'object')
+          sharedFields.set(value, saved[key as keyof SceneNode])
+      }
+    }
     for (const childId of node.childIds) walk(childId)
   }
   walk(pageId)
@@ -75,12 +82,10 @@ export function snapshotPage(
       const parent = graph.getNode(live.parentId)
       if (!parent) continue
       roots.set(live.id, { parentId: live.parentId, index: parent.childIds.indexOf(live.id) })
-      dependentRoots
-        .get(before)
-        ?.set(live.id, {
-          parentId: saved.parentId,
-          index: before.get(saved.parentId)?.childIds.indexOf(saved.id) ?? 0
-        })
+      dependentRoots.get(before)?.set(live.id, {
+        parentId: saved.parentId,
+        index: before.get(saved.parentId)?.childIds.indexOf(saved.id) ?? 0
+      })
       walk(live.id)
     }
   }
@@ -92,9 +97,39 @@ export function snapshotPage(
     else roots.set(id, placement)
   }
   dependentRoots.set(snapshot, roots)
-  // Imported nodes share glyph/geometry/source payloads. One clone preserves that sharing;
-  // cloning each node separately amplifies every common buffer across the entire page.
-  for (const node of structuredClone(changed)) snapshot.set(node.id, node)
+  // Layout changes must not re-copy immutable glyph/geometry/source payloads. Reuse
+  // equal fields from owned history, never from mutable live nodes. Clone all new
+  // fields together so shared imported payloads remain shared within this snapshot.
+  const reusedFields: Record<string, unknown>[] = []
+  const changedFields = changed.map((node) => {
+    const saved = previous?.get(node.id)
+    const reused: Record<string, unknown> = {}
+    const fresh: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(node)) {
+      if (saved && Object.hasOwn(saved, key) && isEqual(saved[key as keyof SceneNode], value)) {
+        reused[key] = saved[key as keyof SceneNode]
+        if (value && typeof value === 'object') sharedFields.set(value, reused[key])
+      } else fresh[key] = value
+    }
+    reusedFields.push(reused)
+    return fresh
+  })
+  // New instances can borrow live payloads from older nodes. Resolve those aliases
+  // to the owned history copy before cloning the remaining new fields together.
+  changedFields.forEach((fields, index) => {
+    for (const [key, value] of Object.entries(fields)) {
+      if (value && typeof value === 'object' && sharedFields.has(value)) {
+        const reused = reusedFields[index]
+        if (reused) reused[key] = sharedFields.get(value)
+        delete fields[key]
+      }
+    }
+  })
+  const clonedFields = structuredClone(changedFields)
+  changed.forEach((node, index) => {
+    // Every own field is replaced by an immutable reused value or an owned clone.
+    snapshot.set(node.id, { ...node, ...reusedFields[index], ...clonedFields[index] })
+  })
   pages.set(page, snapshot)
   return snapshot
 }

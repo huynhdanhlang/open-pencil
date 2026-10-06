@@ -94,59 +94,65 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
 
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
-    if (toolName === 'render' && toolArgs.tree) {
-      const placementInput = parseToolArgs(def.name, def.input, {
-        ...toolArgs,
-        jsx: ''
-      }) as RenderPlacementInput
-      return handleToolRender(target, toolArgs, placementInput)
-    }
-    const store = target.store
-    const libraryService = useLibraryService()
-    libraryService.bindEditor(store)
-    registerComponentCatalog(store.graph, libraryService)
-    if (def.execution.mutation === 'view' && store.state.currentPageId !== target.pageId) {
-      await store.switchPage(target.pageId)
-    }
-    const figma = makeFigma(store, target.pageId)
-    let result: unknown
-    if (def.execution.mutation === 'view') {
-      const initialPageId = figma.currentPageId
-      result = await def.execute(figma, toolArgs)
-      if (figma.currentPageId !== initialPageId) {
-        if (store.state.currentPageId !== initialPageId) {
-          throw new Error('The shown page changed while the automation view command was running')
-        }
-        await store.switchPage(figma.currentPageId)
+    const run = async () => {
+      if (toolName === 'render' && toolArgs.tree) {
+        const placementInput = parseToolArgs(def.name, def.input, {
+          ...toolArgs,
+          jsx: ''
+        }) as RenderPlacementInput
+        return handleToolRender(target, toolArgs, placementInput)
       }
-    } else if (isAtomicTool(def)) {
-      result = await executeAtomicEditorTool(store, figma, def, toolArgs, {
-        label: AUTOMATION_UNDO_LABEL
-      })
-    } else if (def.mutates) {
-      const pageId = figma.currentPageId
-      const mutate = () =>
-        store.runMutationWithLayout(
-          () => def.execute(figma, toolArgs),
-          figma.currentPageId,
-          async () => {
-            const pageNode = store.graph.getNode(figma.currentPageId)
-            if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
+      const store = target.store
+      const libraryService = useLibraryService()
+      libraryService.bindEditor(store)
+      registerComponentCatalog(store.graph, libraryService)
+      if (def.execution.mutation === 'view' && store.state.currentPageId !== target.pageId) {
+        await store.switchPage(target.pageId)
+      }
+      const figma = makeFigma(store, target.pageId)
+      let result: unknown
+      if (def.execution.mutation === 'view') {
+        const initialPageId = figma.currentPageId
+        result = await def.execute(figma, toolArgs)
+        if (figma.currentPageId !== initialPageId) {
+          if (store.state.currentPageId !== initialPageId) {
+            throw new Error('The shown page changed while the automation view command was running')
           }
-        )
-      // View tools (selection, viewport, pages) leave the document and its history alone.
-      result = toolChangesDocument(def)
-        ? await executeWithPageUndo(store, pageId, automationUndoLabel(def.name), mutate)
-        : await mutate()
-    } else {
-      result = await def.execute(figma, toolArgs)
-    }
+          await store.switchPage(figma.currentPageId)
+        }
+      } else if (isAtomicTool(def)) {
+        result = await executeAtomicEditorTool(store, figma, def, toolArgs, {
+          label: AUTOMATION_UNDO_LABEL
+        })
+      } else if (def.mutates) {
+        const pageId = figma.currentPageId
+        const mutate = () =>
+          store.runMutationWithLayout(
+            () => def.execute(figma, toolArgs),
+            figma.currentPageId,
+            async () => {
+              const pageNode = store.graph.getNode(figma.currentPageId)
+              if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
+            }
+          )
+        // View tools (selection, viewport, pages) leave the document and its history alone.
+        result = toolChangesDocument(def)
+          ? await executeWithPageUndo(store, pageId, automationUndoLabel(def.name), mutate)
+          : await mutate()
+      } else {
+        result = await def.execute(figma, toolArgs)
+      }
 
-    if (def.mutates && def.execution.mutation !== 'view') {
-      store.requestRender()
-      store.flashNodes(extractNodeIds(result))
+      if (def.mutates && def.execution.mutation !== 'view') {
+        store.requestRender()
+        store.flashNodes(extractNodeIds(result))
+      }
+      return { ok: true, result }
     }
-    return { ok: true, result }
+    // Raster exports share the renderer and must not overlap a full FIG build.
+    return def.execution.mutation === 'none' && def.name !== 'export_image'
+      ? run()
+      : target.store.runDocumentOperation(run)
   }
 }
 

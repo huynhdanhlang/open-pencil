@@ -95,11 +95,22 @@ const describe = defineCommand({
   }
 })
 
-async function readToolArgs(args: {
-  args?: string
-  'args-file'?: string
-}): Promise<Record<string, unknown>> {
-  const source = args['args-file'] ? await readTextSource(args['args-file']) : args.args
+async function readToolArgs(
+  args: {
+    args?: string
+    'args-file'?: string
+  },
+  rawArgs: string[]
+): Promise<Record<string, unknown>> {
+  // citty treats a standalone '-' as an option and leaves its string value empty.
+  // Only the explicitly supplied stdin spelling may resolve that empty value.
+  const file =
+    args['args-file'] === '' &&
+    rawArgs.some((arg, index) => arg === '--args-file' && rawArgs[index + 1] === '-')
+      ? '-'
+      : args['args-file']
+  if (file === '') throw new Error('--args-file requires a path or - for stdin')
+  const source = file !== undefined ? await readTextSource(file) : args.args
   if (!source) return {}
   const value: unknown = JSON.parse(source)
   // Valibot records accept arrays as index-keyed objects; tools never take them.
@@ -139,7 +150,7 @@ const call = defineCommand({
     ...appTargetOptions,
     json
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     try {
       if (!args.file && (args.write || args.output)) {
         throw new Error(
@@ -147,7 +158,7 @@ const call = defineCommand({
         )
       }
       const def = findTool(args.name)
-      const toolArgs = await readToolArgs(args)
+      const toolArgs = await readToolArgs(args, rawArgs)
       const { result, graph } = await runToolData(args.file, def.name, toolArgs, args)
       if (args.json) console.log(JSON.stringify(result, null, 2))
       else printResult(result)

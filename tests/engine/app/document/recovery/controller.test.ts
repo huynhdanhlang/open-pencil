@@ -45,26 +45,54 @@ function setup(
 ) {
   const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Agent draft' })
   const store = injectedStore ?? createMemoryRecoveryStore()
-  let writable = false
   const enabled = ref(initialEnabled)
   const recovery = createDocumentRecovery({
     state,
+    getRevision: () => state.sceneVersion,
     store,
     recoveryId: 'recovery-1',
-    hasWritableSource: () => writable,
     isEnabled: () => enabled.value,
     buildFigFile
   })
   return {
     state,
+    getRevision: () => state.sceneVersion,
     store,
     recovery,
-    setWritable: (value: boolean) => (writable = value),
     setEnabled: (value: boolean) => (enabled.value = value)
   }
 }
 
 describe('document recovery controller', () => {
+  test('page/render revisions do not export clean or unchanged dirty content', async () => {
+    const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Draft' })
+    const revision = ref(0)
+    const store = createMemoryRecoveryStore()
+    let builds = 0
+    const recovery = createDocumentRecovery({
+      state,
+      getRevision: () => revision.value,
+      store,
+      recoveryId: 'content-only',
+      buildFigFile: () => {
+        builds++
+        return new Uint8Array([builds])
+      }
+    })
+    state.sceneVersion = 100
+    await recovery.persistNow()
+    expect(builds).toBe(0)
+    revision.value = 1
+    await recovery.persistNow()
+    expect(builds).toBe(1)
+    expect((await store.read('content-only'))?.sceneVersion).toBe(100)
+    state.sceneVersion = 200
+    await recovery.persistNow()
+    expect(builds).toBe(1)
+    await recovery.markProtectedVersion(1)
+    expect(await store.list()).toEqual([])
+    recovery.disposeRecovery()
+  })
   test('persists source-less changes and skips untouched documents', async () => {
     const { state, store, recovery } = setup()
     await recovery.persistNow()
@@ -130,12 +158,55 @@ describe('document recovery controller', () => {
     recovery.disposeRecovery()
   })
 
-  test('does not persist documents with writable sources', async () => {
-    const { state, store, recovery, setWritable } = setup()
-    setWritable(true)
+  test('persists unsaved writable documents independently of canonical autosave', async () => {
+    const { state, store, recovery } = setup()
     state.sceneVersion = 1
     await recovery.persistNow()
+    expect((await store.read('recovery-1'))?.sceneVersion).toBe(1)
+    await recovery.markProtectedVersion(1)
     expect(await store.list()).toEqual([])
+    recovery.disposeRecovery()
+  })
+
+  test('a Save of an older version resumes a newer recovery export cancelled during encoding', async () => {
+    let release: (() => void) | null = null
+    let builds = 0
+    const { state, store, recovery } = setup(async () => {
+      builds++
+      if (builds === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      return new Uint8Array([builds])
+    })
+    state.sceneVersion = 2
+    const writing = recovery.persistNow()
+    await Promise.resolve()
+    const saved = recovery.markProtectedVersion(1)
+    const releaseFirst = () => {
+      if (release) release()
+    }
+    releaseFirst()
+    await Promise.all([writing, saved])
+    expect((await store.read('recovery-1'))?.sceneVersion).toBe(2)
+    expect(builds).toBe(2)
+    await recovery.persistNow()
+    expect(builds).toBe(2)
+    recovery.disposeRecovery()
+  })
+
+  test('adopted recovery versions are rebased before a Save in a fresh editor', async () => {
+    const { state, store, recovery } = setup()
+    await store.write({
+      id: 'old-session',
+      documentName: 'Draft',
+      sceneVersion: 100,
+      figBytes: new Uint8Array([1])
+    })
+    state.sceneVersion = 2
+    await recovery.adoptRecoverySnapshot('old-session')
+    await recovery.markProtectedVersion(2)
+    expect(await store.read('old-session')).toBeNull()
     recovery.disposeRecovery()
   })
 
@@ -181,9 +252,9 @@ describe('document recovery controller', () => {
     }
     const recovery = createDocumentRecovery({
       state,
+      getRevision: () => state.sceneVersion,
       store,
       recoveryId: 'recovery-1',
-      hasWritableSource: () => false,
       buildFigFile: () => new Uint8Array([1])
     })
     state.sceneVersion = 1
@@ -211,9 +282,9 @@ describe('document recovery controller', () => {
     const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Draft' })
     const recovery = createDocumentRecovery({
       state,
+      getRevision: () => state.sceneVersion,
       store: deferred.store,
       recoveryId: 'recovery-1',
-      hasWritableSource: () => false,
       buildFigFile: () => new Uint8Array([1])
     })
     state.sceneVersion = 1
@@ -232,9 +303,9 @@ describe('document recovery controller', () => {
     const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Draft' })
     const recovery = createDocumentRecovery({
       state,
+      getRevision: () => state.sceneVersion,
       store: deferred.store,
       recoveryId: 'recovery-1',
-      hasWritableSource: () => false,
       buildFigFile: () => new Uint8Array([1])
     })
     state.sceneVersion = 1
@@ -253,15 +324,15 @@ describe('document recovery controller', () => {
     const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Draft' })
     const recovery = createDocumentRecovery({
       state,
+      getRevision: () => state.sceneVersion,
       store: deferred.store,
       recoveryId: 'previous',
-      hasWritableSource: () => false,
       buildFigFile: () => new Uint8Array([1])
     })
     state.sceneVersion = 1
     const write = recovery.persistNow()
     await Promise.resolve()
-    const adoption = recovery.adoptRecoverySnapshot('recovered', 7)
+    const adoption = recovery.adoptRecoverySnapshot('recovered')
     deferred.release()
     await Promise.all([write, adoption])
 

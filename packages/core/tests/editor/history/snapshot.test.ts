@@ -20,6 +20,36 @@ test('consecutive page snapshots share unchanged copies, never mutable live node
   expect(before.get(a.id)?.name).not.toBe('Changed')
 })
 
+test('scalar edits reuse immutable payload fields across history while payload edits stay isolated', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const bytes = new Uint8Array([1, 2, 3])
+  const a = editor.graph.createNode('TEXT', page, { textPicture: bytes })
+  const b = editor.graph.createNode('TEXT', page, { textPicture: bytes })
+  const before = editor.snapshotPage(page)
+  editor.graph.updateNode(a.id, { x: 10, name: 'Moved text' })
+  editor.graph.updateNode(b.id, { x: 20 })
+  const after = editor.snapshotPage(page, before)
+  expect(after.get(a.id)).not.toBe(before.get(a.id))
+  expect(after.get(a.id)?.textPicture).toBe(before.get(a.id)?.textPicture)
+  expect(after.get(b.id)?.textPicture).toBe(before.get(a.id)?.textPicture)
+  expect(after.get(a.id)?.textPicture).not.toBe(bytes)
+  const added = editor.graph.createNode('TEXT', page, { textPicture: bytes })
+  const extended = editor.snapshotPage(page, after)
+  expect(extended.get(added.id)?.textPicture).toBe(after.get(a.id)?.textPicture)
+  bytes[0] = 9
+  const changed = editor.snapshotPage(page, extended)
+  expect(changed.get(a.id)?.textPicture).not.toBe(after.get(a.id)?.textPicture)
+  expect(changed.get(a.id)?.textPicture).toBe(changed.get(b.id)?.textPicture)
+  expect(changed.get(a.id)?.textPicture?.[0]).toBe(9)
+  expect(before.get(a.id)?.textPicture?.[0]).toBe(1)
+  editor.restorePageFromSnapshot(after)
+  expect(editor.graph.getNode(a.id)?.x).toBe(10)
+  expect(editor.graph.getNode(a.id)?.textPicture?.[0]).toBe(1)
+  editor.restorePageFromSnapshot(before)
+  expect(editor.graph.getNode(a.id)?.x).toBe(0)
+})
+
 test('dependent instance history shares binary copies and leaves unrelated foreign page nodes outside the snapshot', () => {
   const editor = createEditor()
   const page = editor.state.currentPageId

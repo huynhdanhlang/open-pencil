@@ -3,6 +3,7 @@ import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 
 import { createAutosave } from '@/app/document/autosave'
 import { createDocumentChanges } from '@/app/document/io/changes'
+import { createFigBuildQueue } from '@/app/document/io/fig-build-queue'
 import {
   documentNameFromFigPath,
   downloadNameFromPath,
@@ -54,11 +55,24 @@ export function createDocumentSourceActions({
   const changes = createDocumentChanges(editor)
   let renderingFailed = false
   let rendererIndependentVersion: number | null = null
+  const figBuildQueue = createFigBuildQueue(() => editor.graph)
+
+  async function protectSavedRevision(revision: number) {
+    try {
+      await recovery.markProtectedVersion(revision)
+    } catch (error) {
+      // The canonical write has already succeeded; recovery failure is separate.
+      console.warn('[Recovery] Cleanup after document write failed:', error)
+    }
+  }
 
   async function saveAndTrack(save: () => Promise<boolean>) {
     const revision = changes.capture()
     const saved = await save()
-    if (saved) changes.markSaved(revision)
+    if (saved) {
+      changes.markSaved(revision)
+      await protectSavedRevision(revision)
+    }
     return saved
   }
 
@@ -101,9 +115,9 @@ export function createDocumentSourceActions({
 
   const recovery = createDocumentRecovery({
     state,
+    getRevision: changes.capture,
     isEnabled: () => recoveryEnabled.value,
-    buildFigFile: buildRecoveryFigFile,
-    hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding()
+    buildFigFile: () => figBuildQueue.run(buildRecoveryFigFile)
   })
 
   async function markProtectedVersion(version: number) {
@@ -111,12 +125,11 @@ export function createDocumentSourceActions({
       rendererIndependentVersion = null
       toast.warning(notificationMessages.get().savedWithoutPreview)
     }
-    await recovery.markProtectedVersion(version)
   }
 
   const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({
     state,
-    buildFigFile,
+    buildFigFile: () => figBuildQueue.run(buildFigFile),
     getFilePath,
     setFilePath,
     getFileHandle,
@@ -141,8 +154,11 @@ export function createDocumentSourceActions({
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding(),
     saveCurrentDocument: async (version) => {
       const revision = changes.capture()
-      const data = await buildFigFile()
-      if (await writeFile(data, version)) changes.markSaved(revision)
+      const data = await figBuildQueue.run(buildFigFile)
+      if (await writeFile(data, version)) {
+        changes.markSaved(revision)
+        await protectSavedRevision(revision)
+      }
     }
   })
 
@@ -161,7 +177,7 @@ export function createDocumentSourceActions({
     setSourceIdentity({ handle: handle ?? null, path: path ?? null })
     setSavedVersion(state.sceneVersion)
     changes.markSaved()
-    void recovery.markProtectedVersion(state.sceneVersion)
+    void protectSavedRevision(changes.capture())
     if (isFig && (handle || path)) {
       void startWatchingFile()
     }
@@ -178,7 +194,7 @@ export function createDocumentSourceActions({
     state.autosaveEnabled = true
     setSavedVersion(state.sceneVersion)
     changes.markSaved()
-    void recovery.markProtectedVersion(state.sceneVersion)
+    void protectSavedRevision(changes.capture())
   }
 
   function setPlannedFilePath(path: string) {
@@ -225,6 +241,7 @@ export function createDocumentSourceActions({
   }
 
   function disposeDocumentIO() {
+    figBuildQueue.dispose()
     changes.dispose()
     stopWatchingFile()
     autosave.disposeAutosave()
@@ -238,15 +255,20 @@ export function createDocumentSourceActions({
     saveFigFileToPath,
     startWatchingCurrentFile,
     disposeDocumentIO,
+    runDocumentOperation: <T>(run: () => Promise<T>) => figBuildQueue.run(run),
     saveFigFile: () => saveAndTrack(saveFigFile),
     saveFigFileAs: () => saveAndTrack(saveFigFileAs),
     hasUnsavedChanges: changes.hasUnsavedChanges,
-    markDocumentSaved: changes.markSaved,
+    markDocumentSaved: () => {
+      const revision = changes.capture()
+      changes.markSaved(revision)
+      void protectSavedRevision(revision)
+    },
     getStorageBinding,
     getRecoveryId: () => recovery.getRecoveryId(),
-    adoptRecoverySnapshot: (id: string, version: number) => {
+    adoptRecoverySnapshot: (id: string) => {
       changes.markChanged()
-      return recovery.adoptRecoverySnapshot(id, version)
+      return recovery.adoptRecoverySnapshot(id)
     },
     persistRecoveryNow: () => recovery.persistNow(),
     discardRecovery: () => recovery.discardRecovery()

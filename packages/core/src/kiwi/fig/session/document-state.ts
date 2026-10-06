@@ -16,6 +16,15 @@ interface ReaderState {
 }
 const states = new WeakMap<SceneGraph, ReaderState>()
 
+/** Immutable archive and current population boundary for an isolated export. */
+export function readerExportState(graph: SceneGraph) {
+  const state = states.get(graph)
+  if (!state) return undefined
+  const checkpoint = state.session?.checkpoint() ?? state.checkpoint
+  if (!checkpoint) throw new Error('Missing reader checkpoint')
+  return { bytes: state.bytes, checkpoint: checkpointForLiveGraph(graph, checkpoint) }
+}
+
 /** The imported checkpoint predates live component deletion; the live graph owns that edit. */
 function checkpointForLiveGraph(
   graph: SceneGraph,

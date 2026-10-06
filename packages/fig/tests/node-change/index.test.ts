@@ -9,6 +9,7 @@ import {
   convertLetterSpacing,
   convertLineHeight,
   convertStrokes,
+  fillToKiwiPaint,
   decodeVectorNetworkBlob,
   encodePathCommandsBlob,
   encodeVectorNetworkBlob,
@@ -20,6 +21,21 @@ import {
 import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
 
 describe('@open-pencil/fig NodeChange policy', () => {
+  test('maps crop image transforms to the archive STRETCH mode and back', () => {
+    const transform = { m00: 0.5, m01: 0, m02: 0.25, m10: 0, m11: 0.75, m12: 0.1 }
+    const fill = {
+      type: 'IMAGE' as const,
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      opacity: 1,
+      visible: true,
+      imageScaleMode: 'CROP' as const,
+      imageTransform: transform
+    }
+    const paint = fillToKiwiPaint(fill)
+    expect(paint.imageScaleMode).toBe('STRETCH')
+    expect(convertFills([paint])[0]).toMatchObject(fill)
+  })
+
   test('converts normalized text values', () => {
     expect(convertLineHeight({ value: 120, units: 'PERCENT' }, 20)).toBe(24)
     expect(convertLetterSpacing({ value: 10, units: 'PERCENT' }, 20)).toBe(2)

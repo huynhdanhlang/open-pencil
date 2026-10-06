@@ -31,6 +31,23 @@ function setup() {
 }
 
 describe('selected-node preview projections', () => {
+  test('shares detached binary payloads across selected nodes', () => {
+    const fixture = setup()
+    const { editor, first, second, selection } = fixture
+    try {
+      const payload = new Uint8Array([1, 2, 3])
+      first.textPicture = payload
+      second.textPicture = payload
+      editor.select([first.id, second.id])
+      const copies = selection.nodes.value
+      expect(copies[0].textPicture).toBe(copies[1].textPicture)
+      expect(copies[0].textPicture).not.toBe(payload)
+      copies[0].textPicture![0] = 99
+      expect(payload[0]).toBe(1)
+    } finally {
+      fixture.dispose()
+    }
+  })
   for (const phase of ['initial', 'preview'] as const) {
     test(`detaches nested ${phase} values from the graph`, () => {
       const fixture = setup()

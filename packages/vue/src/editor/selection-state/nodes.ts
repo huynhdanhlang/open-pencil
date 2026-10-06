@@ -31,7 +31,7 @@ export function createSelectedNodeState(
     void revision.value
     void editor.state.sceneVersion
     void editor.state.currentPageId
-    return editor.getSelectedNodes().map((node) => shallowReactive(structuredClone(node)))
+    return structuredClone(editor.getSelectedNodes()).map((node) => shallowReactive(node))
   })
   const byId = computed(() => new Map(nodes.value.map((node) => [node.id, node])))
   const node = computed(() => (nodes.value.length === 1 ? nodes.value[0] : null))

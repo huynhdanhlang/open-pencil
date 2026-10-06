@@ -36,7 +36,9 @@ export function fillToKiwiPaint(fill: Fill): Paint {
   }
   if (fill.gradientTransform) paint.transform = fill.gradientTransform
   if (fill.imageHash) paint.image = { hash: hexToBytes(fill.imageHash) }
-  if (fill.imageScaleMode) paint.imageScaleMode = fill.imageScaleMode
+  // The archive calls transform-based image cropping STRETCH; CROP is the editor API name.
+  if (fill.imageScaleMode)
+    paint.imageScaleMode = fill.imageScaleMode === 'CROP' ? 'STRETCH' : fill.imageScaleMode
   if (fill.imageTransform) paint.transform = fill.imageTransform
   if (fill.sourceNodeId) paint.sourceNodeId = stringToGuid(fill.sourceNodeId)
   if (fill.scale) paint.scale = fill.scale
@@ -124,7 +126,9 @@ function applyImagePaintFields(fill: Fill, p: Paint): void {
       fill.imageHash = img.hash
     }
   }
-  fill.imageScaleMode = (p.imageScaleMode ?? 'FILL') as ImageScaleMode
+  fill.imageScaleMode = (
+    p.imageScaleMode === 'STRETCH' ? 'CROP' : (p.imageScaleMode ?? 'FILL')
+  ) as ImageScaleMode
   if (p.transform) fill.imageTransform = convertGradientTransform(p.transform)
 }
 
