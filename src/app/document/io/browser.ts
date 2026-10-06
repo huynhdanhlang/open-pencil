@@ -1,4 +1,8 @@
+import { yieldToUI } from '@open-pencil/core/scheduling'
+
 import type { ViewportSize } from '@/app/document/io/types'
+
+export { yieldToUI }
 
 /**
  * Ceiling on a document fetched from a URL. Both the browser link and the automation
@@ -75,24 +79,6 @@ export function resolveBrowserFileURL(path: string): URL {
   const url = new URL(path, window.location.href)
   url.hash = ''
   return url
-}
-
-export function yieldToUI(): Promise<void> {
-  return new Promise((resolve) => {
-    // Hidden WebViews can suspend display frames and throttle timers. A port
-    // message yields the current task without making loading depend on either.
-    const channel = new MessageChannel()
-    let frame: number | undefined
-    const finish = () => {
-      channel.port1.close()
-      channel.port2.close()
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      resolve()
-    }
-    channel.port1.onmessage = finish
-    frame = requestAnimationFrame(finish)
-    channel.port2.postMessage(null)
-  })
 }
 
 type ViewportEditor = {

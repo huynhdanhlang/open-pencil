@@ -4,6 +4,7 @@ import { onScopeDispose } from 'vue'
 import type { Ref } from 'vue'
 
 import { getCanvasKit } from '@open-pencil/core/canvaskit'
+import { yieldToUI } from '@open-pencil/core/scheduling'
 
 type CanvasKitLoaderOptions = {
   canvasRef: Ref<HTMLCanvasElement | null>
@@ -33,9 +34,8 @@ export function useCanvasKitLoader({
     setCanvasKit(await getCanvasKit())
     if (isDestroyed()) return
 
-    await new Promise((resolve) => {
-      requestAnimationFrame(resolve)
-    })
+    await yieldToUI()
+    if (isDestroyed()) return
     createSurface(canvas)
     await loadFonts()
     if (isDestroyed()) return

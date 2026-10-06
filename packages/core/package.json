@@ -138,6 +138,11 @@
       "import": "./dist/xpath.js",
       "default": "./dist/xpath.js"
     },
+    "./scheduling": {
+      "types": "./dist/scheduling.d.ts",
+      "import": "./dist/scheduling.js",
+      "default": "./dist/scheduling.js"
+    },
     "./canvaskit": {
       "types": "./dist/canvaskit.d.ts",
       "import": "./dist/canvaskit.js",
