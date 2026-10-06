@@ -23,7 +23,7 @@ async function getFontDigest(family: string, style: string): Promise<Uint8Array 
   return digest
 }
 
-export async function buildFontDigestMap(graph: SceneGraph): Promise<Map<string, Uint8Array>> {
+export function fontKeysForGraph(graph: SceneGraph): string[] {
   const fontKeys = new Set<string>()
   for (const node of graph.getAllNodes()) {
     if (node.type !== 'TEXT') continue
@@ -37,11 +37,21 @@ export async function buildFontDigestMap(graph: SceneGraph): Promise<Map<string,
     }
   }
 
+  return [...fontKeys]
+}
+
+export async function buildFontDigestMapFromKeys(
+  keys: Iterable<string>
+): Promise<Map<string, Uint8Array>> {
   const result = new Map<string, Uint8Array>()
-  for (const key of fontKeys) {
+  for (const key of keys) {
     const [family, style] = key.split('|')
     const digest = await getFontDigest(family, style)
     if (digest) result.set(key, digest)
   }
   return result
+}
+
+export function buildFontDigestMap(graph: SceneGraph): Promise<Map<string, Uint8Array>> {
+  return buildFontDigestMapFromKeys(fontKeysForGraph(graph))
 }

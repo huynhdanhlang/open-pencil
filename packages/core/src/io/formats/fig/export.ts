@@ -27,11 +27,12 @@ import { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
-import { withFigExportRuntime } from '#core/canvas/text/shape'
+import { withFigExportRuntime, withFigExportRuntimeForNodes } from '#core/canvas/text/shape'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-metadata'
 import { findFigThumbnailPageId } from '#core/io/formats/fig/thumbnail-page'
 import { renderThumbnail } from '#core/io/formats/raster'
+import { buildFontDigestMapFromKeys } from '#core/kiwi/fig/node-change/font/digests'
 import {
   sceneNodeToKiwi,
   buildFontDigestMap,
@@ -39,10 +40,10 @@ import {
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
 import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
-import { populateReaderExport } from '#core/kiwi/fig/session/document-state'
+import { isReaderPagePending, populateReaderExport } from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
-import { exportFigInWorker } from './isolated-export'
+import { exportFigInWorker, type PreparedFigResources } from './isolated-export'
 import { encodeNativeFigPayload } from './native-payload'
 import {
   appendVariableNodeChanges,
@@ -58,6 +59,13 @@ const THUMBNAIL_1X1 = toUint8Array(
 
 type KiwiNodeChange = NodeChange & Record<string, unknown>
 type FigExportPage = ReturnType<SceneGraph['getPages']>[number]
+
+interface FigWriteOptions {
+  rendering?: 'none'
+  /** Already shaped by the host's faithful font runtime for this isolated write. */
+  prepared?: PreparedFigResources & { thumbnailPNG?: Uint8Array }
+  packNative?: (payload: Uint8Array) => Promise<Uint8Array>
+}
 
 interface CanvasExportEntry {
   page: FigExportPage
@@ -82,7 +90,7 @@ async function renderFigThumbnail(
   ck?: CanvasKit,
   renderer?: SkiaRenderer,
   renderHeadless = false,
-  options: { rendering?: 'none' } = {}
+  options: FigWriteOptions = {}
 ): Promise<Uint8Array> {
   if (options.rendering === 'none' || !pageId) return THUMBNAIL_1X1
   if (ck && renderer) {
@@ -340,7 +348,7 @@ export async function exportFigFile(
   renderer?: SkiaRenderer,
   pageId?: string,
   renderHeadlessThumbnail = false,
-  options: { rendering?: 'none' } = {}
+  options: FigWriteOptions = {}
 ): Promise<Uint8Array> {
   const originalArchive = await originalFigArchive(sourceGraph)
   if (originalArchive) return originalArchive.slice()
@@ -356,6 +364,38 @@ export async function exportFigFile(
       options
     )
   }
+  const thumbnailPage = pageId ?? findFigThumbnailPageId(sourceGraph.getPages())
+  // The editor supplies its shown page. An API-selected unopened cover still needs
+  // the existing isolated full-graph renderer to preserve its exact thumbnail.
+  const pendingThumbnail = !!thumbnailPage && isReaderPagePending(sourceGraph, thumbnailPage)
+  if (canUseWorker() && !pendingThumbnail) {
+    const thumbnailPNG = await renderFigThumbnail(sourceGraph, thumbnailPage, ck, renderer)
+    return exportFigInWorker(sourceGraph, pageId, {
+      thumbnailPNG,
+      prepare: (nodes, fontKeys) =>
+        withFigExportRuntimeForNodes(nodes, ck, async (runtime) => {
+          const shapedText: PreparedFigResources['shapedText'] = new Map()
+          for (const node of nodes) {
+            try {
+              shapedText.set(node.id, runtime.shapeText(node))
+            } catch (error) {
+              // Match the writer's existing derived-glyph policy, preserving editable text.
+              console.warn(`Writing "${node.name}" without glyphs; text shaping failed:`, error)
+              shapedText.set(node.id, null)
+            }
+          }
+          return { shapedText, fontDigests: await buildFontDigestMapFromKeys(fontKeys) }
+        }),
+      packNative: IS_TAURI
+        ? async (payload) => {
+            const { invoke } = await import('@tauri-apps/api/core')
+            return new Uint8Array(await invoke<ArrayBuffer>('build_fig_file_binary', payload))
+          }
+        : undefined
+    })
+  }
+  if (canUseWorker() && pendingThumbnail)
+    console.info('[FIG] Unopened thumbnail page uses the existing isolated renderer export')
   return withFigExportRuntime(sourceGraph, ck, (runtime) =>
     writeFigFile(sourceGraph, runtime, ck, renderer, pageId, renderHeadlessThumbnail)
   )
@@ -368,7 +408,7 @@ async function writeFigFile(
   renderer: SkiaRenderer | undefined,
   pageId: string | undefined,
   renderHeadlessThumbnail: boolean,
-  options: { rendering?: 'none' } = {}
+  options: FigWriteOptions = {}
 ): Promise<Uint8Array> {
   const graph = cloneSceneGraphForFigExport(sourceGraph)
   populateReaderExport(sourceGraph, graph)
@@ -411,7 +451,11 @@ async function writeFigFile(
   const varIdToGuid = new Map<string, GUID>()
   const modeIdToGuid = new Map<string, GUID>()
   const propertyIdToGuid = new Map<string, GUID>()
-  const fontDigestMap = await buildFontDigestMap(graph)
+  const fontDigestMap = options.prepared?.fontDigests ?? (await buildFontDigestMap(graph))
+  if (options.prepared) {
+    const shapedText = options.prepared.shapedText
+    runtime = { shapeText: (node) => shapedText.get(node.id) ?? null }
+  }
   const glyphBlobMap = new Map<string, number>()
   const blobIndexByHex = new Map<string, number>()
   const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
@@ -537,14 +581,9 @@ async function writeFigFile(
   const kiwiData = compiled.encodeMessage(msg)
 
   const currentPageId = pageId ?? findFigThumbnailPageId(pages)
-  const thumbnailPNG = await renderFigThumbnail(
-    graph,
-    currentPageId,
-    ck,
-    renderer,
-    renderHeadlessThumbnail,
-    options
-  )
+  const thumbnailPNG =
+    options.prepared?.thumbnailPNG ??
+    (await renderFigThumbnail(graph, currentPageId, ck, renderer, renderHeadlessThumbnail, options))
 
   const metaJSON = JSON.stringify({
     version: 1,
@@ -555,6 +594,19 @@ async function writeFigFile(
   const imageEntries = collectImageEntries(graph)
 
   const version = graph.figKiwiVersion ?? undefined
+
+  if (options.packNative) {
+    return options.packNative(
+      encodeNativeFigPayload(
+        schemaDeflated,
+        kiwiData,
+        thumbnailPNG,
+        metaJSON,
+        imageEntries,
+        version
+      )
+    )
+  }
 
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core')

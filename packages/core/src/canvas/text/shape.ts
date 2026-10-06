@@ -206,8 +206,8 @@ export function shapeParagraph(
   }
 }
 
-function needsShaping(graph: SceneGraph): boolean {
-  for (const node of graph.nodes.values()) {
+function needsShaping(nodes: Iterable<SceneNode>): boolean {
+  for (const node of nodes) {
     if (node.type === 'TEXT' && node.text && !node.derivedTextGlyphs?.length) return true
   }
   return false
@@ -222,9 +222,18 @@ export async function withFigExportRuntime<T>(
   ck: CanvasKit | undefined,
   write: (runtime: FigNodeChangeExportRuntime) => Promise<T>
 ): Promise<T> {
-  if (!needsShaping(graph)) return write(EMPTY_EXPORT_RUNTIME)
+  return withFigExportRuntimeForNodes([...graph.nodes.values()], ck, write)
+}
+
+/** Includes newly populated worker-owned text before registering faithful font faces. */
+export async function withFigExportRuntimeForNodes<T>(
+  nodes: readonly SceneNode[],
+  ck: CanvasKit | undefined,
+  write: (runtime: FigNodeChangeExportRuntime) => Promise<T>
+): Promise<T> {
+  if (!needsShaping(nodes)) return write(EMPTY_EXPORT_RUNTIME)
   const canvasKit = ck ?? fontManager.providerCanvasKit() ?? (await getCanvasKit())
-  const runtime = createTextShapeRuntime(canvasKit, graph.nodes.values())
+  const runtime = createTextShapeRuntime(canvasKit, nodes)
   try {
     return await write(runtime)
   } finally {

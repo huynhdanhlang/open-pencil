@@ -90,6 +90,7 @@ export function populateReaderExport(source: SceneGraph, target: SceneGraph): bo
   if (!state) return false
   const checkpoint = state.session?.checkpoint() ?? state.checkpoint
   if (!checkpoint) throw new Error('Missing reader checkpoint')
+  const retainedPageIds = new Set(source.getPages(true).map((page) => page.id))
   const session = createFigDocumentSession(state.bytes, readerSessionOptions(state.diagnostics), {
     graph: target,
     checkpoint: checkpointForLiveGraph(source, checkpoint)
@@ -100,7 +101,7 @@ export function populateReaderExport(source: SceneGraph, target: SceneGraph): bo
     const graphId = session.graphPageId(page.id)
     if (!graphId) throw new Error(`Missing reader page mapping ${page.id}`)
     // A removed page must not be populated from the pre-edit archive during Save.
-    if (source.getNode(graphId)) session.loadPage(page.id)
+    if (retainedPageIds.has(graphId)) session.loadPage(page.id)
   }
   return true
 }

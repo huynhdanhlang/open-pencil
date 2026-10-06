@@ -39,13 +39,35 @@ test('isolated recovery preserves unopened FIG pages and releases its worker', a
     if (!store) throw new Error('Store missing')
     const first = store.createShape('RECTANGLE', 20, 40, 120, 80)
     store.updateNode(first, { name: 'Saved first page' })
+    const text = store.createShape('TEXT', 20, 140, 260, 40)
+    store.updateNode(text, {
+      name: 'Owned shaped text',
+      text: 'Faithful worker Save',
+      fontFamily: 'Inter',
+      fontSize: 17
+    })
     const later = store.graph.addPage('Unopened original page')
     store.graph.createNode('RECTANGLE', later.id, {
       name: 'Preserved unopened content',
       width: 180,
       height: 90
     })
+    store.graph.createNode('TEXT', later.id, {
+      name: 'Pending shaped text',
+      text: 'Preserved pending text',
+      fontFamily: 'Inter',
+      fontSize: 17,
+      width: 260,
+      height: 40
+    })
+    await store.preparePageNodes(store.state.currentPageId)
     if (!(await store.saveFigFileAs())) throw new Error('Owned Save failed')
+    const saveStats = (
+      window as typeof window & { __recoveryWorkerStats: { started: number; active: number } }
+    ).__recoveryWorkerStats
+    const saveWorkerStarted = saveStats.started
+    if (saveWorkerStarted < 1 || saveStats.active !== 0)
+      throw new Error('Canonical Save did not release its isolated worker')
     const handle = await (await navigator.storage.getDirectory()).getFileHandle('lazy-owned.fig')
     await store.openFigFile(
       new File([await (await handle.getFile()).arrayBuffer()], 'lazy-owned.fig'),
@@ -86,10 +108,20 @@ test('isolated recovery preserves unopened FIG pages and releases its worker', a
     const pendingRetained = store.graph
       .getChildren(restoredPage.id)
       .some((n) => n.name === 'Preserved unopened content')
+    const pendingGlyphs =
+      store.graph.getChildren(restoredPage.id).find((n) => n.name === 'Pending shaped text')
+        ?.derivedTextGlyphs?.length ?? 0
     const stats = (
       window as typeof window & { __recoveryWorkerStats: { started: number; active: number } }
     ).__recoveryWorkerStats
-    return { liveStillPending, editRetained, pendingRetained, ...stats }
+    return {
+      liveStillPending,
+      editRetained,
+      pendingRetained,
+      pendingGlyphs,
+      saveWorkerStarted,
+      ...stats
+    }
   })
   expect(result).toMatchObject({
     liveStillPending: true,
@@ -97,6 +129,8 @@ test('isolated recovery preserves unopened FIG pages and releases its worker', a
     pendingRetained: true,
     active: 0
   })
+  expect(result.saveWorkerStarted).toBeGreaterThan(0)
+  expect(result.pendingGlyphs).toBeGreaterThan(0)
   expect(result.started).toBeGreaterThan(0)
   await context.close()
 })
