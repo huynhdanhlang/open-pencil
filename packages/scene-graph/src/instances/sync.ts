@@ -13,7 +13,10 @@ import {
 import { scaleNodeChanges } from '../scaling/node'
 import { ownsSlotContent, slotPropertyId } from '../slots/frames'
 import { scaleVariableBindingUnits } from '../variables/units'
-import { INSTANCE_SYNC_FIELDS } from './fields'
+import { INSTANCE_SYNC_FIELDS, INSTANCE_SYNC_PROPS } from './fields'
+import { instanceMainComponent } from './main-component'
+
+const componentSyncProps = new Set(INSTANCE_SYNC_PROPS)
 
 function setSceneProp<K extends keyof SceneNode>(
   target: Partial<SceneNode>,
@@ -280,7 +283,20 @@ function childBindingProtection(
 ) {
   const fields = enclosingInstanceOverrideFields(graph, child)
   fields.push(new Set(overrides.descendants.get(child.id)?.keys()))
+  if (child.type === 'INSTANCE') fields.push(new Set(child.instanceOverrides.self.keys()))
   return bindingProtection(fields)
+}
+
+function swappedComponentSource(
+  graph: SceneGraph,
+  child: SceneNode,
+  original: SceneNode,
+  scale: number
+): SceneNode | undefined {
+  if (child.type !== 'INSTANCE' || original.type !== 'INSTANCE') return
+  const selected = instanceMainComponent(graph, child)
+  if (!selected || selected.id === instanceMainComponent(graph, original)?.id) return
+  return sourceInTargetCoordinates(selected, scale)
 }
 
 function linkMatchedChild(
@@ -409,6 +425,56 @@ function matchLinkedChildren(
   }
 }
 
+function syncMatchedChildren(
+  graph: SceneGraph,
+  compParent: SceneNode,
+  instParent: SceneNode,
+  instChildMap: Map<string, SceneNode>,
+  overrides: InstanceOverrideState,
+  removedSourceIds?: ReadonlySet<string>
+): void {
+  for (const compChildId of compParent.childIds) {
+    const compChild = graph.nodes.get(compChildId)
+    const instChild = instChildMap.get(compChildId)
+    if (!compChild || !instChild) continue
+
+    const protectedField = childBindingProtection(graph, instChild, overrides)
+    const driven = propertyDrivenFields(graph, instChild, compChild)
+    const componentScale =
+      (compChild.componentScale * instParent.componentScale) / compParent.componentScale
+    const source = sourceInTargetCoordinates(compChild, componentScale)
+    // A swapped occurrence inherits appearance from its selected master, while the
+    // enclosing component still owns its placement, visibility and property references.
+    const selectedSource =
+      protectedField('componentId') || driven.has('componentId')
+        ? swappedComponentSource(graph, instChild, compChild, componentScale)
+        : undefined
+    const updates: Partial<SceneNode> = {
+      componentScale,
+      componentPropertyReferences: structuredClone(compChild.componentPropertyReferences)
+    }
+    syncBindingFields(instChild, selectedSource ?? source, updates, protectedField)
+    for (const key of INSTANCE_SYNC_FIELDS) {
+      if (key === 'boundVariables') continue
+      if (driven.has(key)) continue
+      if (isProtectedSyncField(instChild, key, protectedField)) continue
+      copyProp(
+        updates,
+        selectedSource && componentSyncProps.has(key) ? selectedSource : source,
+        key
+      )
+    }
+    updateSyncedProps(graph, instChild, updates)
+
+    if (
+      !hasNodeInstanceOverride(overrides, instParent.id, instChild.id, 'componentId') &&
+      !ownsSlotContent(graph, instChild, slotPropertyId(compChild))
+    ) {
+      syncChildren(graph, compChildId, instChild.id, overrides, removedSourceIds)
+    }
+  }
+}
+
 export function syncChildren(
   graph: SceneGraph,
   compParentId: string,
@@ -429,12 +495,8 @@ export function syncChildren(
   // unlinked local children remain intact; a missing source alone is not deletion evidence.
   for (const child of graph.getChildren(instParentId)) {
     const nestedSource = getInstanceOverride(overrides, instParentId, child.id, 'sourceComponentId')
-    const sourceId =
-      typeof nestedSource === 'string'
-        ? nestedSource
-        : child.type === 'INSTANCE'
-          ? null
-          : child.componentId
+    if (child.type === 'INSTANCE' && typeof nestedSource !== 'string') continue
+    const sourceId = typeof nestedSource === 'string' ? nestedSource : child.componentId
     if (sourceId && removedSourceIds?.has(sourceId) && !compParent.childIds.includes(sourceId))
       graph.deleteNode(child.id)
   }
@@ -481,41 +543,7 @@ export function syncChildren(
   }
 
   // Pass 4: Synchronize properties and recurse
-  for (const compChildId of compParent.childIds) {
-    const compChild = graph.nodes.get(compChildId)
-    const instChild = instChildMap.get(compChildId)
-    if (!compChild || !instChild) continue
-
-    const protectedField = childBindingProtection(graph, instChild, overrides)
-    const driven = propertyDrivenFields(graph, instChild, compChild)
-    const componentScale =
-      (compChild.componentScale * instParent.componentScale) / compParent.componentScale
-    const source = sourceInTargetCoordinates(compChild, componentScale)
-    // Which properties a layer serves is the component's to say; a slot or exposed layer
-    // created on the component becomes one in every instance.
-    const updates: Partial<SceneNode> = {
-      componentScale,
-      componentPropertyReferences: structuredClone(compChild.componentPropertyReferences)
-    }
-    syncBindingFields(instChild, source, updates, protectedField)
-    for (const key of INSTANCE_SYNC_FIELDS) {
-      if (key === 'boundVariables') continue
-      if (driven.has(key)) continue
-      if (isProtectedSyncField(instChild, key, protectedField)) continue
-
-      copyProp(updates, source, key)
-    }
-    updateSyncedProps(graph, instChild, updates)
-
-    if (
-      !hasNodeInstanceOverride(overrides, instParentId, instChild.id, 'componentId') &&
-      // The component's frame is the authority on which slot this is; instance copies of
-      // its bindings are not synced.
-      !ownsSlotContent(graph, instChild, slotPropertyId(compChild))
-    ) {
-      syncChildren(graph, compChildId, instChild.id, overrides, removedSourceIds)
-    }
-  }
+  syncMatchedChildren(graph, compParent, instParent, instChildMap, overrides, removedSourceIds)
 
   // Pass 5: Sort instance children to match component child order
   sortInstanceChildren(graph, instParent, instParentId, compParent.childIds, overrides)

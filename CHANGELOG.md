@@ -106,6 +106,8 @@
 
 ### Fixed
 
+- Host component synchronization preserves the appearance and size of an explicitly swapped nested instance, including scaled bindings and local paint overrides, instead of restoring the original slot's appearance.
+
 - Retain the owned immutable FIG payload across Undo snapshots when only source edit markers change, without aliasing live data or reducing history/recovery protection.
 - Roll back JSX creation and initial layout failures without leaking partial layers; preserve unrelated concurrent content and report rollback conflicts. Free Yoga trees when layout application throws.
 - Remap local preferred component IDs through FIG export/import and preserve actual library asset keys, including keys shaped like GUIDs.
