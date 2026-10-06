@@ -46,6 +46,7 @@ export function parseFigFileViaWorker(
     const worker = createFigSessionWorker()
     const channel = new MessageChannel()
     const pendingArchives = new Map<string, (bytes: Uint8Array) => void>()
+    let visiblePageIds: string[] | undefined
     const abort = () => {
       channel.port1.postMessage({ type: 'dispose' })
       channel.port1.close()
@@ -66,6 +67,9 @@ export function parseFigFileViaWorker(
     })
     channel.port1.onmessage = (e: MessageEvent<FigSessionResponse>) => {
       if (e.data.type === 'page-manifest') {
+        visiblePageIds = e.data.pages
+          .filter((page) => !page.internalOnly)
+          .map((page) => page.sourceId)
         options.onPages?.(e.data.pages)
         return
       }
@@ -82,8 +86,8 @@ export function parseFigFileViaWorker(
         if (options.populate === 'first-page' || options.populate === 'none') {
           cleanupAbort()
           if (!e.data.checkpoint) throw new Error('Missing reader checkpoint')
-          registerReaderRecovery(graph, buffer.slice(0), e.data.checkpoint)
-          registerFigPopulationWorker(graph, worker, channel.port1)
+          const archive = buffer.slice(0)
+          registerReaderRecovery(graph, archive, e.data.checkpoint)
           registerOriginalArchiveRequest(
             graph,
             () =>
@@ -97,6 +101,18 @@ export function parseFigFileViaWorker(
                 resolveArchive(new Uint8Array())
               pendingArchives.clear()
             }
+          )
+          registerFigPopulationWorker(
+            graph,
+            worker,
+            channel.port1,
+            visiblePageIds === undefined
+              ? undefined
+              : {
+                  pageIds: visiblePageIds,
+                  loadedPageIds: e.data.checkpoint.loadedPageIds,
+                  originalArchive: async () => new Uint8Array(archive.slice(0))
+                }
           )
         } else {
           cleanupAbort()

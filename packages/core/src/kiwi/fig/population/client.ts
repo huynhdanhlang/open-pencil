@@ -21,9 +21,20 @@ interface OriginalArchiveRequest {
 }
 const originalArchiveRequests = new WeakMap<SceneGraph, OriginalArchiveRequest>()
 
+interface PopulationCompletion {
+  pageIds: readonly string[]
+  loadedPageIds: readonly string[]
+  originalArchive: () => Promise<Uint8Array>
+}
+
+function pagesComplete(pageIds: readonly string[], loadedPageIds: readonly string[]): boolean {
+  const loaded = new Set(loadedPageIds)
+  return pageIds.every((id) => loaded.has(id))
+}
+
 export interface FigPopulationWorkerTelemetry {
   event: 'registered' | 'populate' | 'fallback' | 'stale' | 'terminated'
-  reason?: 'oversized' | 'graph-mutation' | 'worker-error'
+  reason?: 'oversized' | 'graph-mutation' | 'worker-error' | 'fully-populated'
   durationMs?: number
   applyMs?: number
   created?: number
@@ -39,8 +50,17 @@ function emitTelemetry(detail: FigPopulationWorkerTelemetry): void {
 export function registerFigPopulationWorker(
   graph: SceneGraph,
   worker: Worker,
-  port?: MessagePort
+  port?: MessagePort,
+  completion?: PopulationCompletion
 ): void {
+  if (completion && pagesComplete(completion.pageIds, completion.loadedPageIds)) {
+    registerOriginalArchiveRequest(graph, completion.originalArchive)
+    port?.postMessage({ type: 'dispose' })
+    port?.close()
+    worker.terminate()
+    emitTelemetry({ event: 'terminated', reason: 'fully-populated' })
+    return
+  }
   if (graph.nodes.size > MAX_FIG_POPULATION_WORKER_NODES) {
     emitTelemetry({ event: 'fallback', reason: 'oversized' })
     if (!port) {
@@ -50,7 +70,15 @@ export function registerFigPopulationWorker(
     populationWorkers.set(graph, createDisposalOnlyWorker(worker, port))
     return
   }
-  const client = createPopulationWorkerClient(graph, worker, port)
+  const client = createPopulationWorkerClient(
+    graph,
+    worker,
+    port,
+    completion && {
+      pageIds: completion.pageIds,
+      originalArchive: completion.originalArchive
+    }
+  )
   populationWorkers.set(graph, client)
   emitTelemetry({ event: 'registered' })
 }
@@ -64,8 +92,7 @@ export function registerOriginalArchiveRequest(
   request: () => Promise<Uint8Array>,
   cancel?: () => void
 ): void {
-  invalidateOriginalArchiveRequest(graph)
-  originalArchiveRequests.get(graph)?.unbind()
+  const previous = originalArchiveRequests.get(graph)
   let resolveInvalidated: (value: null) => void = () => undefined
   const invalidated = new Promise<null>((resolve) => {
     resolveInvalidated = resolve
@@ -93,6 +120,9 @@ export function registerOriginalArchiveRequest(
     reordered: invalidate
   })
   originalArchiveRequests.set(graph, entry)
+  // Bind the successor before cancellation callbacks can cause a real live edit.
+  previous?.unbind()
+  previous?.invalidate()
 }
 
 function invalidateOriginalArchiveRequest(graph: SceneGraph): void {
@@ -146,7 +176,8 @@ export function createFigPopulationWorker(graph: SceneGraph): FigPopulationWorke
 export function createPopulationWorkerClient(
   graph: SceneGraph,
   worker: Pick<Worker, 'postMessage' | 'terminate' | 'onerror' | 'onmessage'>,
-  port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage'>
+  port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage'>,
+  completion?: { pageIds: readonly string[]; originalArchive: () => Promise<Uint8Array> }
 ): FigPopulationWorker {
   const pending = new Map<
     string,
@@ -179,24 +210,24 @@ export function createPopulationWorkerClient(
     unbind?.()
     unbind = undefined
   }
-  const fail = (emit = true) => {
+  const fail = (emit = true, originalArchive?: () => Promise<Uint8Array>) => {
     if (disposed) return
     disposed = true
     stale = true
     if (emit) emitTelemetry({ event: 'fallback', reason: 'worker-error' })
+    releaseSubscription()
+    if (originalArchive) registerOriginalArchiveRequest(graph, originalArchive)
+    else invalidateOriginalArchiveRequest(graph)
+    port?.close()
+    worker.terminate()
+    populationWorkers.delete(graph)
     for (const request of pending.values()) {
       clearTimeout(request.timeout)
       request.abort?.()
       request.resolve(null)
     }
     pending.clear()
-    releaseSubscription()
-    // Resolve archive waiters before retiring their transport, including errors/timeouts.
-    invalidateOriginalArchiveRequest(graph)
-    port?.close()
-    worker.terminate()
-    populationWorkers.delete(graph)
-    emitTelemetry({ event: 'terminated' })
+    emitTelemetry({ event: 'terminated', reason: originalArchive ? 'fully-populated' : undefined })
   }
   unbind = graph.onNodeEvents({
     created: invalidate,
@@ -228,7 +259,15 @@ export function createPopulationWorkerClient(
     } finally {
       applyingDelta = false
     }
-    request.resolve(result.populated)
+    if (
+      !stale &&
+      !disposed &&
+      completion &&
+      result.checkpoint &&
+      pagesComplete(completion.pageIds, result.checkpoint.loadedPageIds)
+    ) {
+      fail(false, completion.originalArchive)
+    }
     emitTelemetry({
       event: 'populate',
       durationMs: performance.now() - request.startedAt,
@@ -237,6 +276,7 @@ export function createPopulationWorkerClient(
       updated: result.delta.updated.length,
       deleted: result.delta.deleted.length
     })
+    request.resolve(result.populated)
   }
   if (port) {
     port.onmessage = (event: MessageEvent<WorkerResult>) => receive(event.data)
