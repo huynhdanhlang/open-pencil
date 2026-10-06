@@ -276,6 +276,8 @@ For repeated lag or disconnects, discover the fork's read-only `get_runtime_stat
 
 Native FIG Save sends a raw binary payload to Rust to avoid expanding design/image bytes into JSON number arrays. Keep the frontend and native binary matched; an unknown binary-save command means incompatible builds, not permission to change authentication or filesystem scope. The transfer has an explicit 512 MiB limit and preserves the existing serialized Rust archive/compression owner.
 
+Closing a document also detaches its library-catalog binding and releases owned CanvasKit typeface/vector-overlay handles. Other open documents retain their bindings and history. After reopening, resolve a fresh document/page target even when the file path is the same.
+
 Chat-turn Revert tracks only a fresh direct-model tool run belonging to the same chat and document. ACP/Codex replies do not inherit an earlier direct run's Undo entries; use the dedicated scoped `undo`/`redo` tools for your own MCP changes. Closing a document releases its turn records and rejects late reply retention, while other documents keep their history.
 
 ### Optional design review helper

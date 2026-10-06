@@ -31,6 +31,7 @@ import {
 import { scopedStoreFactory } from '@/app/editor/session/scope'
 import { createInitialAppEditorState, type AppEditorState } from '@/app/editor/session/types'
 import { notificationMessages } from '@/app/i18n/notifications'
+import { disposeLibraryEditor } from '@/app/libraries/service'
 import { createDeferred } from '@/app/runtime/deferred'
 import { toast } from '@/app/shell/ui'
 import { IS_BROWSER, IS_TAURI } from '@/constants'
@@ -243,6 +244,7 @@ function buildEditorStore(initialGraph?: SceneGraph) {
     ...modules,
     dispose() {
       disposeTurnsForStore(store)
+      disposeLibraryEditor(store)
       stopColorSpaceSync()
       recentPages.dispose()
       disposeSelection()

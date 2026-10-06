@@ -10,9 +10,12 @@ export class HudController {
 
   constructor(private ck: CanvasKit) {}
 
+  /** Takes ownership of the original handle; SkFonts hold their own native references. */
   setTypeface(typeface: Typeface): void {
-    this.typeface = typeface
+    if (this.typeface === typeface) return
     this.hud?.setTypeface(typeface)
+    this.typeface?.delete()
+    this.typeface = typeface
   }
 
   draw(canvas: Canvas, stats: FrameStats, phases: PhaseTimer, showRulers: boolean): void {
@@ -26,5 +29,7 @@ export class HudController {
   destroy(): void {
     this.hud?.destroy()
     this.hud = null
+    this.typeface?.delete()
+    this.typeface = null
   }
 }

@@ -2,13 +2,16 @@ import { expect, mock, test } from 'bun:test'
 
 import type { Font, Paint, Surface } from 'canvaskit-wasm'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { drawNodeEditOverlay } from '#core/canvas/node-edit-overlay'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { EffectRasterCache } from '#core/canvas/renderer/effect-raster-cache'
 import { destroyRenderer } from '#core/canvas/renderer/lifecycle'
 import { createGlyphSilhouetteCache } from '#core/canvas/text/derived'
 import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
 
-import { asDouble, asRenderer } from './helpers'
+import { asCanvas, asCanvasKit, asDouble, asRenderer } from './helpers'
 
 function deletable<T>() {
   return { delete: mock() } as T & { delete: ReturnType<typeof mock> }
@@ -98,4 +101,36 @@ test('destroyRenderer deletes all renderer-owned paints and label fonts', () => 
   expect(parentOutlinePaint.delete).toHaveBeenCalled()
   expect(sectionTitleFont?.delete).toHaveBeenCalled()
   expect(componentLabelFont?.delete).toHaveBeenCalled()
+})
+
+test('renderer disposal deletes lazy vector-edit paints even after the overlay is no longer shown', () => {
+  const renderer = createRenderer()
+  const paints: EditPaint[] = []
+  class EditPaint {
+    delete = mock()
+    constructor() {
+      paints.push(this)
+    }
+    setStyle() {}
+    setStrokeWidth() {}
+    setColor() {}
+    setAntiAlias() {}
+  }
+  Object.assign(renderer, {
+    ck: asCanvasKit({ Paint: EditPaint, PaintStyle: { Stroke: 1, Fill: 0 }, Color4f: () => [] }),
+    zoom: 1,
+    panX: 0,
+    panY: 0
+  })
+  drawNodeEditOverlay(renderer, asCanvas({ drawCircle: mock() }), new SceneGraph(), {
+    nodeId: 'missing-node',
+    vertices: [{ x: 0, y: 0 }],
+    segments: [],
+    regions: [],
+    selectedVertexIndices: new Set()
+  })
+  expect(paints).toHaveLength(10)
+  destroyRenderer(renderer)
+  destroyRenderer(renderer)
+  expect(paints.every((paint) => paint.delete.mock.calls.length === 1)).toBe(true)
 })

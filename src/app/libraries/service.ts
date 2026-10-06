@@ -41,6 +41,8 @@ import type { LibraryAssetUpdateGroup } from '@/app/libraries/update-groups'
 
 export type EnabledLibraryAsset = ComponentCatalogLibraryAsset
 
+const disposedEditors = new WeakSet<EditorStore>()
+
 export class LibraryService implements ComponentCatalog {
   readonly #catalog: LibraryCatalog
   readonly #routedCatalog: RoutedLibraryCatalog | null
@@ -131,7 +133,11 @@ export class LibraryService implements ComponentCatalog {
   }
 
   bindEditor(editor: EditorStore): void {
-    this.#activeEditor = editor
+    if (!disposedEditors.has(editor)) this.#activeEditor = editor
+  }
+
+  unbindEditor(editor: EditorStore): void {
+    if (this.#activeEditor === editor) this.#activeEditor = null
   }
 
   async insertComponent(
@@ -156,7 +162,8 @@ export class LibraryService implements ComponentCatalog {
   }
 
   async refresh(editor: EditorStore): Promise<void> {
-    this.#activeEditor = editor
+    if (disposedEditors.has(editor)) return
+    this.bindEditor(editor)
     this.#summaries.value = await this.#catalog.listLibraries()
     const assets: EnabledLibraryAsset[] = []
     for (const binding of editor.graph.enabledLibraries.values()) {
@@ -561,4 +568,10 @@ let service: LibraryService | undefined
 export function useLibraryService(): LibraryService {
   service ??= new LibraryService()
   return service
+}
+
+/** Drop only this document's binding; pending work cannot bind it again. */
+export function disposeLibraryEditor(editor: EditorStore): void {
+  disposedEditors.add(editor)
+  service?.unbindEditor(editor)
 }

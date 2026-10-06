@@ -196,6 +196,14 @@ const paintCache = new WeakMap<
   }
 >()
 
+/** Release native handles explicitly: WeakMap keys do not dispose CanvasKit paints. */
+export function disposeNodeEditPaints(r: SkiaRenderer): void {
+  const paints = paintCache.get(r)
+  if (!paints) return
+  paintCache.delete(r)
+  for (const paint of Object.values(paints)) paint.delete()
+}
+
 function ensureNodeEditPaints(r: SkiaRenderer) {
   if (paintCache.has(r)) return
   const ck = r.ck

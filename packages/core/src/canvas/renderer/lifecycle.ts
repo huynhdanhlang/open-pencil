@@ -1,3 +1,4 @@
+import { disposeNodeEditPaints } from '#core/canvas/node-edit-overlay'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { clearSubtreePictureCache } from '#core/canvas/renderer/state'
 import { fontManager } from '#core/text/fonts'
@@ -32,6 +33,7 @@ export function destroyRenderer(r: SkiaRenderer): void {
   r.transientPreviews.clear()
 
   r.imageCache.clear()
+  disposeNodeEditPaints(r)
   disposePathCaches(r)
   r.fillPaint.delete()
   r.diamondGradientEffect?.delete()
