@@ -9,11 +9,12 @@ import {
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { buildParagraph, textVerticalOffset } from '#core/canvas/text'
-import { resolveParagraphFontFamilies } from '#core/canvas/text/font-families'
 import { getCanvasKit } from '#core/canvaskit'
 import { transformTextCase } from '#core/text/case'
 import { fontManager, weightToStyle } from '#core/text/fonts'
 import { glyphOutlineSourceSync, type GlyphOutlineSource } from '#core/text/opentype'
+
+import { createParagraphFontScope } from './font-scope'
 
 type GlyphRun = ReturnType<Paragraph['getShapedLines']>[number]['runs'][number]
 
@@ -110,7 +111,9 @@ function shapedCharacterOffsets(
   let index = 0
   for (const character of text) {
     const code = character.charCodeAt(0)
-    const bytes = code < 0x80 ? 1 : code < 0x800 ? 2 : character.length === 2 ? 4 : 3
+    let bytes = 3
+    if (character.length === 2) bytes = 4
+    else if (code < 0x800) bytes = code < 0x80 ? 1 : 2
     for (let byte = 0; byte < bytes; byte++) offsets.push(index)
     index += character.length
   }
@@ -243,48 +246,10 @@ export async function withFigExportRuntimeForNodes<T>(
 
 /** One clean font scope, shared by export and bounded saved-paragraph preparation. */
 export function createTextShapeRuntime(canvasKit: CanvasKit, nodes: Iterable<SceneNode>) {
-  const provider = canvasKit.TypefaceFontProvider.Make()
-  const fontData = new Map<string, ArrayBuffer>()
-  try {
-    const registerFace = (family: string, weight: number, italic: boolean) => {
-      const style = weightToStyle(weight, italic)
-      const key = `${family}|${style}`
-      if (fontData.has(key)) return
-      const data = fontManager.loadedData(family, style)
-      if (!data) return
-      fontData.set(key, data)
-      provider.registerFont(data, family)
-    }
-    const registerStyle = (family: string, weight: number, italic: boolean) => {
-      registerFace(family, weight, italic)
-      // Use the renderer's existing fallback stack, while missing requested-face outlines
-      // remain unavailable rather than assigning fallback glyph IDs to that requested font.
-      for (const fallback of resolveParagraphFontFamilies(family, weightToStyle(weight, italic))) {
-        if (fallback !== family) registerFace(fallback, 400, false)
-      }
-    }
-    const registerNode = (node: SceneNode) => {
-      if (node.type !== 'TEXT') return
-      registerStyle(node.fontFamily, node.fontWeight, node.italic)
-      for (const run of node.styleRuns) {
-        registerStyle(
-          run.style.fontFamily ?? node.fontFamily,
-          run.style.fontWeight ?? node.fontWeight,
-          run.style.italic ?? node.italic
-        )
-      }
-    }
-    for (const node of nodes) registerNode(node)
-    return {
-      provider,
-      fontData,
-      registerNode,
-      shapeText: (node: SceneNode) => shapeText(canvasKit, provider, node, fontData),
-      dispose: () => provider.delete()
-    }
-  } catch (error) {
-    provider.delete()
-    throw error
+  const scope = createParagraphFontScope(canvasKit, nodes)
+  return {
+    ...scope,
+    shapeText: (node: SceneNode) => shapeText(canvasKit, scope.provider, node, scope.fontData)
   }
 }
 

@@ -6,7 +6,8 @@ export const INSTANCE_SYNC_TEXT_PROPS = [
   'fontSize',
   'fontWeight',
   'fontFamily',
-  'textDirection'
+  'textDirection',
+  'textAutoResize'
 ] as const
 
 export const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
@@ -63,5 +64,8 @@ export const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
 export const INSTANCE_SYNC_FIELDS = [
   ...INSTANCE_SYNC_PROPS,
   ...INSTANCE_SYNC_TEXT_PROPS,
+  // Child coordinates belong to the component; root instance placement belongs to its page.
+  'x',
+  'y',
   'visible'
 ] as const

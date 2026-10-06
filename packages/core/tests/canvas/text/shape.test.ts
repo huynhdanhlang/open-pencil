@@ -1,14 +1,16 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
-import { withFigExportRuntime } from '#core/canvas/text/shape'
-import { getCanvasKit } from '#core/canvaskit'
-import { fontManager } from '#core/text/fonts'
-import { getGlyphOutlineMetricsSync } from '#core/text/opentype'
 
 import type { ShapedText } from '@open-pencil/fig/node-change'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
+
+import { createParagraphFontScope } from '#core/canvas/text/font-scope'
+import { withFigExportRuntime } from '#core/canvas/text/shape'
+import { getCanvasKit } from '#core/canvaskit'
+import { fontManager } from '#core/text/fonts'
+import { getGlyphOutlineMetricsSync } from '#core/text/opentype'
 
 const SENTENCE = 'A sentence long enough that it has to wrap onto a second line.'
 
@@ -35,6 +37,26 @@ describe('text shaping for saved glyphs', () => {
       'bundled Inter font'
     )
     fontManager.markLoaded('Inter', 'Regular', inter)
+  })
+
+  test('registers the requested default-family face for an empty primary family', async () => {
+    fontManager.markLoaded(
+      'Inter',
+      'Medium',
+      expectDefined(await fontManager.fetchBundledFont('/Inter-Medium.ttf'))
+    )
+    const graph = new SceneGraph()
+    const node = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: 'Default face',
+      fontFamily: '',
+      fontWeight: 500
+    })
+    const scope = createParagraphFontScope(await getCanvasKit(), [node])
+    try {
+      expect(scope.fontData.has('Inter|Medium')).toBe(true)
+    } finally {
+      scope.dispose()
+    }
   })
 
   test('breaks lines at the layer width (#914)', async () => {

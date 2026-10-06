@@ -4,6 +4,36 @@ import { SceneGraph, setInstanceOverride } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '../helpers/assert'
 
+test('updates existing child placement and text sizing without moving the instance root', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const component = graph.createNode('COMPONENT', page.id, { x: 10, y: 20 })
+  const label = graph.createNode('TEXT', component.id, {
+    text: 'Xem nhân vật',
+    x: 44,
+    y: 11,
+    width: 88,
+    textAutoResize: 'HEIGHT'
+  })
+  const instance = expectDefined(graph.createInstance(component.id, page.id, { x: 500, y: 600 }))
+  const clone = graph.getChildren(instance.id)[0]
+  graph.updateNode(label.id, { x: 49.5, y: 13, width: 101, textAutoResize: 'WIDTH_AND_HEIGHT' })
+  graph.syncInstances(component.id)
+  expect([clone.x, clone.y, clone.width, clone.textAutoResize]).toEqual([
+    49.5,
+    13,
+    101,
+    'WIDTH_AND_HEIGHT'
+  ])
+  expect([instance.x, instance.y]).toEqual([500, 600])
+  graph.updateNode(clone.id, { x: 77, textAutoResize: 'NONE' })
+  setInstanceOverride(instance.instanceOverrides, instance.id, clone.id, 'x', true)
+  setInstanceOverride(instance.instanceOverrides, instance.id, clone.id, 'textAutoResize', true)
+  graph.updateNode(label.id, { x: 52, y: 15 })
+  graph.syncInstances(component.id)
+  expect([clone.x, clone.y, clone.textAutoResize]).toEqual([77, 15, 'NONE'])
+})
+
 for (const protectedField of ['width', 'text'] as const) {
   test(`component synchronization preserves ${protectedField} without freezing other fields`, () => {
     const graph = new SceneGraph()

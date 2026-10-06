@@ -7,6 +7,7 @@ import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { SkiaRenderer } from '#core/canvas/renderer'
 import { renderText } from '#core/canvas/scene'
+import { buildParagraph } from '#core/canvas/text'
 import { drawDerivedText } from '#core/canvas/text/derived'
 import { getCanvasKit } from '#core/canvaskit'
 import { exportFigFile, parseFigFile } from '#core/io/formats/fig'
@@ -68,6 +69,7 @@ describe('saved paragraph raster continuity', () => {
       }
       try {
         const live = capture(node)
+        const liveMeasurement = renderer.measureTextNode(node)
         const saved = await exportFigFile(graph, ck)
         const reopened = await parseFigFile(saved.buffer as ArrayBuffer, {
           populate: 'all'
@@ -94,6 +96,10 @@ describe('saved paragraph raster continuity', () => {
         polluted.registerFont(wrongFace, 'Inter')
         renderer.fontProvider = polluted
         try {
+          // Authored text must use the same current face as Save, even if the renderer
+          // retains an older same-family registration from earlier font resolution.
+          expect(renderer.measureTextNode(node)).toEqual(liveMeasurement)
+          expect(capture(node)).toEqual(live)
           expect(capture(imported)).toEqual(live)
         } finally {
           renderer.fontProvider = originalProvider
@@ -101,7 +107,7 @@ describe('saved paragraph raster continuity', () => {
         }
 
         // Changing the saved array must expire the proof, even while paragraph inputs match.
-        imported.derivedTextGlyphs = imported.derivedTextGlyphs!.map((glyph, i) =>
+        imported.derivedTextGlyphs = expectDefined(imported.derivedTextGlyphs).map((glyph, i) =>
           i === 0 ? { ...glyph, x: glyph.x + 3 } : glyph
         )
         expect(capture(imported)).toEqual(capture(imported, true))
@@ -123,4 +129,52 @@ describe('saved paragraph raster continuity', () => {
     },
     15000
   )
+
+  test('keeps supplemental-only coverage when the current face lacks the characters', async () => {
+    const ck = await getCanvasKit()
+    const graph = new SceneGraph()
+    const node = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: 'مرحبا',
+      fontFamily: 'Inter',
+      fontSize: 17,
+      width: 200,
+      height: 40
+    })
+    const surface = expectDefined(ck.MakeSurface(200, 40))
+    const renderer = new SkiaRenderer(ck, surface)
+    await renderer.loadFonts()
+    const originalProvider = renderer.fontProvider
+    const supplemental = ck.TypefaceFontProvider.Make()
+    supplemental.registerFont(
+      expectDefined(await fontManager.fetchBundledFont('/NotoNaskhArabic-Regular.ttf')),
+      'Inter'
+    )
+    renderer.fontProvider = supplemental
+    const capture = (cached: boolean) => {
+      const paragraph = buildParagraph(
+        cached ? renderer : { ck, fontProvider: supplemental, fontsLoaded: true },
+        node
+      )
+      try {
+        surface.getCanvas().clear(ck.TRANSPARENT)
+        surface.getCanvas().drawParagraph(paragraph, 0, 0)
+        surface.flush()
+        const image = surface.makeImageSnapshot()
+        try {
+          return createHash('sha256').update(expectDefined(image.encodeToBytes())).digest('hex')
+        } finally {
+          image.delete()
+        }
+      } finally {
+        paragraph.delete()
+      }
+    }
+    try {
+      expect(capture(true)).toEqual(capture(false))
+    } finally {
+      renderer.fontProvider = originalProvider
+      supplemental.delete()
+      renderer.destroy()
+    }
+  })
 })

@@ -10,8 +10,8 @@ import type { missingGlyphOccurrences } from '#core/text/resolver'
 const MAX_PREPARED_PARAGRAPHS = 1024
 const MAX_PREPARED_TEXT_UNITS = 262_144
 
+import type { ParagraphFontScope } from './font-scope'
 import { PARAGRAPH_INPUT_KEYS } from './paragraph-inputs'
-import type { TextShapeRuntime } from './shape'
 
 type PreparationInput = SceneNode[(typeof PARAGRAPH_INPUT_KEYS)[number]]
 
@@ -38,7 +38,7 @@ export class TextPreparationCache {
   private readonly invalidatedCoverage = new Set<string>()
   private generation = -1
   private provider: TypefaceFontProvider | null = null
-  private pinnedShapeRuntime: TextShapeRuntime | null = null
+  private pinnedShapeRuntime: ParagraphFontScope | null = null
 
   constructor(
     private readonly maxEntries = MAX_PREPARED_PARAGRAPHS,
@@ -66,11 +66,7 @@ export class TextPreparationCache {
     build: () => Paragraph | PreparedText,
     consume: (prepared: PreparedText) => T
   ): T {
-    if (this.generation !== generation || this.provider !== provider) {
-      this.clear()
-      this.generation = generation
-      this.provider = provider
-    }
+    this.synchronizeScope(generation, provider)
     if (node.text.length > this.maxTextUnits || this.maxEntries <= 0) {
       const built = build()
       const prepared = 'paragraph' in built ? built : { paragraph: built }
@@ -110,8 +106,16 @@ export class TextPreparationCache {
     return consume(entry)
   }
 
+  /** Expire paragraphs before their pinned provider when a renderer's font scope changes. */
+  synchronizeScope(generation: number, provider: TypefaceFontProvider): void {
+    if (this.generation === generation && this.provider === provider) return
+    this.clear()
+    this.generation = generation
+    this.provider = provider
+  }
+
   /** One pinned provider per font scope, not one font-data copy per cached text node. */
-  shapeRuntime(create: () => TextShapeRuntime): TextShapeRuntime {
+  shapeRuntime(create: () => ParagraphFontScope): ParagraphFontScope {
     return (this.pinnedShapeRuntime ??= create())
   }
 

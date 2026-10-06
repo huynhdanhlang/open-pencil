@@ -30,6 +30,7 @@ import { pushParagraphStyle, type ParagraphPaintStyle, type ParagraphBuildOption
 import { withPreparedText } from './prepared'
 export { withTextParagraph } from './prepared'
 export type { ParagraphBuildOptions } from './paint'
+import { paragraphFontProvider } from './font-scope'
 import type { ParagraphNode } from './paragraph-inputs'
 import type { TextPreparationCache } from './preparation-cache'
 
@@ -539,8 +540,10 @@ export function buildParagraph(
     textStyle: baseTextStyle
   })
 
-  if (!r.fontProvider) throw new Error('Font provider not initialized')
-  const builder = ck.ParagraphBuilder.MakeFromFontProvider(paraStyle, r.fontProvider)
+  const builder = ck.ParagraphBuilder.MakeFromFontProvider(
+    paraStyle,
+    paragraphFontProvider(r, node)
+  )
 
   let background: Paint | undefined
   try {
