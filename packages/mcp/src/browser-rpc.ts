@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import * as v from 'valibot'
 import type { WebSocket } from 'ws'
 
+import { AUTOMATION_CLOSE_CODES } from '@open-pencil/core/rpc'
+
 import { isAuthorized } from '#mcp/auth'
 import type { RPCJSONObject } from '#mcp/json'
 import type { PendingRequest } from '#mcp/rpc-types'
@@ -239,7 +241,7 @@ export function createBrowserRPCBridge({
   function registerBrowser(ws: WebSocket, token: string | null) {
     if (bridgeClosed) return
     if (!isAuthorized(token, authToken)) {
-      ws.close()
+      ws.close(AUTOMATION_CLOSE_CODES.unauthorized, 'Unauthorized')
       return
     }
     // Mark this client as authenticated — it can now send requests.
@@ -254,7 +256,7 @@ export function createBrowserRPCBridge({
       // set to the new socket, so browserWs !== previousBrowserWs).
       rejectAllPending('Browser reconnected')
       if (previousBrowserWs.readyState === ws.OPEN) {
-        previousBrowserWs.close()
+        previousBrowserWs.close(AUTOMATION_CLOSE_CODES.replaced, 'Editor connection replaced')
       }
     }
     notifyConnectionWaiters()
@@ -307,7 +309,7 @@ export function createBrowserRPCBridge({
       } else if (isAuthorized(token, authToken)) {
         authenticatedClients.add(ws)
       } else {
-        ws.close()
+        ws.close(AUTOMATION_CLOSE_CODES.unauthorized, 'Unauthorized')
       }
       return
     }

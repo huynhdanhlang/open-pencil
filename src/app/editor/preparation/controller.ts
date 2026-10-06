@@ -127,13 +127,26 @@ export function createEditorPreparationController(
     },
     waitForPresentation(id, sceneVersion) {
       if (!isActive(id) || presentedSceneVersion >= sceneVersion) return Promise.resolve()
+      // A hidden WebView cannot present frames. Its document model is ready;
+      // keep the pending render for visibility without claiming it was painted.
+      const view = typeof document === 'undefined' ? undefined : document
+      if (view?.hidden) return Promise.resolve()
+      const onVisibilityChange = () => {
+        if (!view?.hidden) return
+        presentationWaiters.get(id)?.resolve()
+        presentationWaiters.delete(id)
+      }
       return withTimeout(
         () =>
           new Promise<void>((resolve) => {
             presentationWaiters.set(id, { sceneVersion, resolve })
+            view?.addEventListener('visibilitychange', onVisibilityChange)
           }),
         presentationTimeoutMs
-      ).finally(() => presentationWaiters.delete(id))
+      ).finally(() => {
+        view?.removeEventListener('visibilitychange', onVisibilityChange)
+        presentationWaiters.delete(id)
+      })
     },
     dispose() {
       activeCancel?.('tab-closed')

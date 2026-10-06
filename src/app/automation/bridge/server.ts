@@ -6,6 +6,7 @@
  */
 import * as v from 'valibot'
 
+import { AUTOMATION_CLOSE_CODES } from '@open-pencil/core/rpc'
 import { randomHex } from '@open-pencil/scene-graph/random'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -91,8 +92,13 @@ export function connectAutomation(
 
     socket.onclose = (event) => {
       if (ws === socket) ws = null
-      if (intentionalDisconnect || event.code === 1000) return
+      if (intentionalDisconnect) return
       console.warn('[Automation] WebSocket closed:', `code=${event.code} reason=${event.reason}`)
+      if (
+        event.code === AUTOMATION_CLOSE_CODES.unauthorized ||
+        event.code === AUTOMATION_CLOSE_CODES.replaced
+      )
+        return
       scheduleReconnect()
     }
 

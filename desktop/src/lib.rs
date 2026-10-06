@@ -5,7 +5,6 @@ mod fonts;
 mod http;
 mod menu;
 mod menu_events;
-#[cfg(target_os = "macos")]
 mod window;
 
 use credentials::{
@@ -24,7 +23,6 @@ use std::{
 };
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
-#[cfg(target_os = "macos")]
 use window::show_main_window;
 
 #[derive(Clone, serde::Serialize)]
@@ -214,9 +212,7 @@ fn queue_pending<R: tauri::Runtime>(app: &tauri::AppHandle<R>, files: Vec<Pendin
     }
 
     let _ = app.emit("open-associated-files", ());
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_focus();
-    }
+    show_main_window(app);
 }
 
 fn queue_open_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<PathBuf>) {

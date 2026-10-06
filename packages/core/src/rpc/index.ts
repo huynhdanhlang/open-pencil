@@ -1,5 +1,6 @@
 export { executeRPCCommand, ALL_RPC_COMMANDS } from './commands'
 export * from './agent-tasks'
+export { AUTOMATION_CLOSE_CODES } from './types'
 export type {
   InfoResult,
   PageItem,

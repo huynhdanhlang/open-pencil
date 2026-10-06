@@ -6,6 +6,43 @@ import type { EditorPreparationResult } from '@/app/editor/preparation/types'
 import { createInitialAppEditorState } from '@/app/editor/session/types'
 
 describe('editor preparation controller', () => {
+  test('hidden presentation finishes without acknowledging an unpainted scene', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'document')
+    const view = Object.assign(new EventTarget(), { hidden: true })
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: view })
+    const state = createInitialAppEditorState('page')
+    const controller = createEditorPreparationController(state)
+    const handle = controller.begin({ kind: 'page-switch' })
+    try {
+      await controller.waitForPresentation(handle.id, 7)
+      view.hidden = false
+      let finished = false
+      const waiting = controller.waitForPresentation(handle.id, 7).then(() => {
+        finished = true
+      })
+      await Promise.resolve()
+      expect(finished).toBe(false)
+      view.hidden = true
+      view.dispatchEvent(new Event('visibilitychange'))
+      await waiting
+      expect(finished).toBe(true)
+
+      view.hidden = false
+      finished = false
+      const visible = controller.waitForPresentation(handle.id, 7).then(() => {
+        finished = true
+      })
+      await Promise.resolve()
+      expect(finished).toBe(false)
+      controller.acknowledgePresentation(7)
+      await visible
+      expect(finished).toBe(true)
+    } finally {
+      controller.dispose()
+      if (original) Object.defineProperty(globalThis, 'document', original)
+      else Reflect.deleteProperty(globalThis, 'document')
+    }
+  })
   test('keeps one reactive preparation snapshot until its owner finishes', () => {
     const state = createInitialAppEditorState('page')
     const controller = createEditorPreparationController(state)

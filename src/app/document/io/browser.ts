@@ -79,7 +79,19 @@ export function resolveBrowserFileURL(path: string): URL {
 
 export function yieldToUI(): Promise<void> {
   return new Promise((resolve) => {
-    requestAnimationFrame(() => resolve())
+    // Hidden WebViews can suspend display frames and throttle timers. A port
+    // message yields the current task without making loading depend on either.
+    const channel = new MessageChannel()
+    let frame: number | undefined
+    const finish = () => {
+      channel.port1.close()
+      channel.port2.close()
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      resolve()
+    }
+    channel.port1.onmessage = finish
+    frame = requestAnimationFrame(finish)
+    channel.port2.postMessage(null)
   })
 }
 
