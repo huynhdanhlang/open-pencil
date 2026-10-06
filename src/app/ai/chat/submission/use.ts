@@ -18,6 +18,7 @@ import { useRevertRecords } from '@/app/ai/chat/submission/reverts'
 import type { ChatInstance, ChatSubmission } from '@/app/ai/chat/submission/types'
 import { recordTurn, restoreTurn, revertTurn } from '@/app/ai/chat/turns'
 import { runUndoEntries, runRevision } from '@/app/ai/tools'
+import { releaseRunCapture } from '@/app/ai/tools/run'
 import type { EditorStore } from '@/app/editor/active-store'
 
 interface SubmissionMessages {
@@ -66,12 +67,17 @@ export function useChatSubmission(options: SubmissionOptions) {
     const editor = options.getEditor()
     const beforeRun = runRevision(editor)
     const previous = lastAssistantId(chat)
-    await send()
-    const reply = lastAssistantId(chat)
-    // Never attach a prior direct run or a different chat's edits to an ACP reply.
-    if (!reply || reply === previous || options.chat.value !== chat) return
-    if (runRevision(editor) !== beforeRun + 1) return
-    recordTurn(reply, editor, runUndoEntries(editor))
+    try {
+      await send()
+      const reply = lastAssistantId(chat)
+      // Never attach a prior direct run or a different chat's edits to an ACP reply.
+      if (!reply || reply === previous || options.chat.value !== chat) return
+      if (runRevision(editor) !== beforeRun + 1) return
+      recordTurn(reply, editor, runUndoEntries(editor))
+    } finally {
+      // A failed, cancelled or superseded reply also releases its capture, never a newer run.
+      if (runRevision(editor) === beforeRun + 1) releaseRunCapture(editor)
+    }
   }
 
   async function sendText(currentChat: ChatInstance, submission: ChatSubmission): Promise<void> {

@@ -9,7 +9,7 @@ import type { EditorStore } from '@/app/editor/active-store'
 interface TurnRecord {
   store: EditorStore
   /** The turn's undo entries, oldest first. */
-  entries: readonly UndoEntry[]
+  entries: readonly WeakRef<UndoEntry>[]
   /** Set by `revertTurn`; cleared when Redo puts the entries back on top of the undo stack. */
   reverted: boolean
 }
@@ -39,12 +39,18 @@ const restoredListeners = new Set<(messageId: string) => void>()
 
 /** Whether a reverted turn's entries are the next ones Redo applies, oldest first. */
 function nextToRedo({ entries, store }: TurnRecord): boolean {
-  return entries.every((entry, index) => store.undo.peekRedo(index) === entry)
+  return entries.every((entry, index) => {
+    const retained = entry.deref()
+    return retained !== undefined && store.undo.peekRedo(index) === retained
+  })
 }
 
 /** Whether the turn's entries are the newest on its store's undo stack, oldest deepest. */
 function onTopOfUndo({ entries, store }: TurnRecord): boolean {
-  return entries.every((entry, index) => store.undo.peekUndo(entries.length - 1 - index) === entry)
+  return entries.every((entry, index) => {
+    const retained = entry.deref()
+    return retained !== undefined && store.undo.peekUndo(entries.length - 1 - index) === retained
+  })
 }
 
 function noticeRestoredTurns(store: EditorStore): void {
@@ -68,7 +74,13 @@ export function recordTurn(
 ): void {
   if (disposedStores.has(store)) return
   if (entries.length === 0) turns.delete(messageId)
-  else turns.set(messageId, { store, entries: [...entries], reverted: false })
+  // History owns replay payloads. Chat must not keep entries alive after eviction/redo-clear.
+  else
+    turns.set(messageId, {
+      store,
+      entries: entries.map((entry) => new WeakRef(entry)),
+      reverted: false
+    })
 }
 
 export interface TurnEdits {

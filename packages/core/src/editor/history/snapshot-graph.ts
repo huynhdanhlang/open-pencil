@@ -19,7 +19,7 @@ export function graphFromPageSnapshot(
   graph.images = new Map(source.images)
   graph.variables = structuredClone(source.variables)
   graph.variableCollections = structuredClone(source.variableCollections)
-  for (const node of snapshot.values()) graph.nodes.set(node.id, structuredClone(node))
+  for (const node of structuredClone(snapshot).values()) graph.nodes.set(node.id, node)
   graph.clearAbsPosCache()
   return graph
 }

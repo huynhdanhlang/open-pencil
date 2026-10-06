@@ -128,6 +128,13 @@ export function runUndoEntries(store: EditorStore): readonly UndoEntry[] {
   return getRunState(store).undoEntries
 }
 
+/** The completed reply has handed its entries to chat; history is their remaining owner. */
+export function releaseRunCapture(store: EditorStore): void {
+  const run = getRunState(store)
+  run.undoEntries = []
+  run.baselines.clear()
+}
+
 /** Identifies a fresh direct-tool run; ACP replies do not own this collector. */
 export function runRevision(store: EditorStore): number {
   return getRunState(store).revision

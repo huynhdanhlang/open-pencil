@@ -19,7 +19,8 @@ import {
   revertTurn,
   turnEdits
 } from '@/app/ai/chat/turns'
-import { createAITools, startRun } from '@/app/ai/tools'
+import { createAITools, startRun, runUndoEntries } from '@/app/ai/tools'
+import { runBaseline } from '@/app/ai/tools/run'
 import * as figmaFactory from '@/app/automation/bridge/figma-factory'
 import { createEditorStore } from '@/app/editor/session/create'
 import { appPreferences } from '@/app/settings/preferences/store'
@@ -326,3 +327,51 @@ test('disposing a document releases its turn records and rejects late replies wi
     other.dispose()
   }
 })
+
+test('completed replies release their run capture while retaining turn undo and redo', async () => {
+  const { card, actions } = setup()
+  await actions.submit(send('Wider'))
+  expect(runUndoEntries(store)).toEqual([])
+  expect(runBaseline(store, store.state.currentPageId)).toBeNull()
+  expect(revertTurn('reply-1')).toBe(true)
+  expect(width(card.id)).toBe(100)
+  expect(restoreTurn('reply-1')).toBe(true)
+  expect(width(card.id)).toBe(200)
+})
+
+test('turn records do not retain entries forgotten by the history owner', async () => {
+  const weak = (() => {
+    const entry = { label: 'AI: collectible', forward: () => undefined, inverse: () => undefined }
+    store.pushUndoEntry(entry)
+    recordTurn('collectible', store, [entry])
+    return new WeakRef(entry)
+  })()
+  store.undo.clear()
+  await Bun.sleep(0)
+  Bun.gc(true)
+  await Bun.sleep(0)
+  expect(weak.deref()).toBeUndefined()
+  expect(turnEdits('collectible')).toEqual({ count: 1, revertable: false, restorable: false })
+  expect(revertTurn('collectible')).toBe(false)
+})
+
+test.each([new Error('provider failed'), new DOMException('cancelled', 'AbortError')])(
+  'failed or cancelled replies release capture and preserve ordinary Undo: %s',
+  async (error) => {
+    const { card, chat, actions } = setup()
+    chat.reply = async () => {
+      startRun(store, 10)
+      await createAITools(store).node_resize.execute?.(
+        { id: card.id, width: 240, height: 60 },
+        call('interrupted')
+      )
+      throw error
+    }
+    await actions.submit(send('Wider'))
+    expect(runUndoEntries(store)).toEqual([])
+    expect(runBaseline(store, store.state.currentPageId)).toBeNull()
+    expect(width(card.id)).toBe(240)
+    store.undoAction()
+    expect(width(card.id)).toBe(100)
+  }
+)

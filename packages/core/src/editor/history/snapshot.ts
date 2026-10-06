@@ -7,21 +7,33 @@ import { computeAllLayouts } from '#core/layout'
 
 export type PageSnapshot = Map<string, SceneNode>
 
-// Only the most recent page is cached; deleted pages and closed documents are not retained.
-const recentSnapshots = new WeakMap<SceneGraph, PageSnapshot>()
+// Keep one reusable copy per live page. Weak keys release deleted pages/closed documents.
+const recentSnapshots = new WeakMap<SceneGraph, WeakMap<SceneNode, PageSnapshot>>()
 
 export function snapshotPage(graph: SceneGraph, pageId: string): PageSnapshot {
   const snapshot: PageSnapshot = new Map()
-  const previous = recentSnapshots.get(graph)
+  const page = graph.getNode(pageId)
+  if (!page) return snapshot
+  let pages = recentSnapshots.get(graph)
+  if (!pages) {
+    pages = new WeakMap()
+    recentSnapshots.set(graph, pages)
+  }
+  const previous = pages.get(page)
+  const changed: SceneNode[] = []
   const walk = (id: string) => {
     const node = graph.getNode(id)
     if (!node) return
     const saved = previous?.get(id)
-    snapshot.set(id, saved && isEqual(saved, node) ? saved : structuredClone(node))
+    snapshot.set(id, saved && isEqual(saved, node) ? saved : node)
+    if (snapshot.get(id) === node) changed.push(node)
     for (const childId of node.childIds) walk(childId)
   }
   walk(pageId)
-  recentSnapshots.set(graph, snapshot)
+  // Imported nodes share glyph/geometry/source payloads. One clone preserves that sharing;
+  // cloning each node separately amplifies every common buffer across the entire page.
+  for (const node of structuredClone(changed)) snapshot.set(node.id, node)
+  pages.set(page, snapshot)
   return snapshot
 }
 
@@ -34,7 +46,8 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
   if (!page) return
 
   for (const childId of page.childIds.slice()) ctx.graph.deleteNode(childId)
-  restoreChildren(ctx.graph, snapshot, page.id, pageSnap.childIds)
+  // One independently owned clone also preserves sharing when replaying history.
+  restoreChildren(ctx.graph, structuredClone(snapshot), page.id, pageSnap.childIds)
 
   ctx.graph.clearAbsPosCache()
   computeAllLayouts(ctx.graph, page.id)
@@ -55,7 +68,7 @@ function restoreChildren(
     const snap = snapshot.get(childId)
     if (!snap) continue
     // History copies can be shared by many entries; the restored graph must own its arrays/buffers.
-    const { parentId: _snapParentId, childIds: snapChildIds, ...rest } = structuredClone(snap)
+    const { parentId: _snapParentId, childIds: snapChildIds, ...rest } = snap
     graph.createNode(snap.type, parentId, { ...rest, childIds: [] })
     graph.reorderChild(snap.id, parentId, childIds.indexOf(childId))
     restoreChildren(graph, snapshot, snap.id, snapChildIds)
