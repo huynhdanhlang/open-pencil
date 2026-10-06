@@ -129,6 +129,16 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       : this.agentDef.args
   }
 
+  private processCommand(): string {
+    if (this.mode !== 'snapshot-helper') return this.agentDef.command
+    if (this.agentDef.command !== 'codex-acp') {
+      throw new Error(
+        'unsupported_helper_boundary: snapshot helpers require the configured Codex adapter'
+      )
+    }
+    return 'codex-acp-snapshot-helper'
+  }
+
   private async mcpServers() {
     if (this.mode === 'snapshot-helper') return []
     const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
@@ -334,7 +344,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     let process: Awaited<ReturnType<typeof spawnACPProcess>>
     try {
       process = await spawnACPProcess({
-        command: this.agentDef.command,
+        command: this.processCommand(),
         args: this.processArgs(),
         logId: this.agentDef.id,
         destroying: () => this.destroying,

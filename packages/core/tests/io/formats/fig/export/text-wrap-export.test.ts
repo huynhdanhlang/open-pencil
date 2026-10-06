@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { parseFigBuffer } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { shapeTextForClipboard } from '#core/canvas/text/clipboard'
+import { shapeText } from '#core/canvas/text/shape'
 import { getCanvasKit } from '#core/canvaskit'
 import { exportFigFile } from '#core/io/formats/fig/export'
 import { initCanvasKit } from '#core/io/formats/raster/headless'
@@ -40,7 +40,7 @@ for (const [runtime, loadCanvasKit] of [
             { tag: 'CALT', enabled: true }
           ]
         })
-        const shaped = await shapeTextForClipboard(node, { halfLeading: true, alignVertical: true })
+        const shaped = shapeText(ck, provider, node)
         if (!shaped?.baselines) throw new Error('Native paragraph did not produce shaped text')
         expect(shaped?.baselines?.length).toBeGreaterThan(1)
         expect(shaped.glyphs.every((glyph) => glyph.firstCharacter < node.text.length)).toBe(true)
@@ -96,8 +96,8 @@ test('FIG glyph identities use the saved font buffer despite an earlier provider
     if (earlierFace) provider.registerFont(earlierFace, 'Inter')
     fontManager.attachProvider(ck, provider)
     try {
-      const shaped = await shapeTextForClipboard(node)
-      identities.push(shaped?.glyphs.map((glyph) => glyph.glyphId))
+      const shaped = shapeText(ck, provider, node)
+      identities.push(shaped?.glyphs.map((glyph) => glyph.commands))
       const bytes = await exportFigFile(graph, ck)
       const parsed = parseFigBuffer(bytes.buffer as ArrayBuffer)
       saved.push({

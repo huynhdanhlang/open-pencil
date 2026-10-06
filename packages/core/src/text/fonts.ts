@@ -107,6 +107,15 @@ export class FontManager {
     return this.fontProvider ? (this.providerCanvasKits.get(this.fontProvider) ?? null) : null
   }
 
+  /** The latest attached provider made by `canvasKit`; another build's provider cannot shape with it. */
+  providerFor(canvasKit: CanvasKit): TypefaceFontProvider | null {
+    return (
+      Array.from(this.fontProviders)
+        .reverse()
+        .find((provider) => this.providerCanvasKits.get(provider) === canvasKit) ?? null
+    )
+  }
+
   generation(): number {
     return this.registrationGeneration
   }

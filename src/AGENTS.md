@@ -25,6 +25,9 @@ Root Tauri/Vite app. Services and state live under `src/app/**`, views under `sr
 - `src/app/ai/agents/**` owns bounded snapshot-only helper tasks and IndexedDB receipts; `automation/bridge/agent-handlers.ts` resolves exact targets. Shared contracts live in Core RPC, MCP only forwards them, and `tools/release/agents/**` owns the pinned native runner boundary. Helpers never mutate canvas; feedback creates a linked immutable task. Status/cancel must work after a document closes; restart interrupts without repeating inference.
 - Browser-native WebMCP registration lives under `src/app/automation/webmcp/`, consumes per-tool exposure metadata, and is feature-detected through `document.modelContext`. App completion under `src/app/automation/execution/` loads fonts after commit.
 - Collaboration lives under `src/app/collab/**` on Trystero, Yjs, and awareness; preserve crypto-safe room IDs and peer cleanup.
+- A room is a document: every room tab owns its session (`src/app/collab/rooms.ts`, `session.ts`), joining always opens a new tab, and only Share binds an existing document; the collaboration UI reads the active tab's room through `useCollab()` and publishes cursors through the canvas's own tab (`tests/app/collab/session.test.ts`, `tests/e2e/collab/rooms.spec.ts`).
+- A shared document records each layer's parent history, order key and page, never `parentId` or `childIds`, and only Share or a room's conversion sets its root in `meta`; local edits are written by `writeLocalPlacement` and remote changes applied by `applySharedTree` in `src/app/collab/shared-tree/sync.ts`, which resolve the tree with `LayerTree` from `src/app/collab/tree/` (`tests/app/collab/random-edits.test.ts`).
+- Changing how a shared document records data bumps `TREE_FORMAT` and `COLLAB_APP_ID` together, so mismatched builds never meet, and converts saved rooms in `src/app/collab/shared-tree/migration.ts` (`tests/app/collab/shared-tree/migration.test.ts`).
 
 ## Browser baseline
 

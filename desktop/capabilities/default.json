@@ -68,12 +68,38 @@
     {
       "identifier": "shell:allow-spawn",
       "allow": [
-        { "name": "claude-agent-acp", "cmd": "claude-agent-acp", "args": true },
-        { "name": "codex-acp", "cmd": "codex-acp", "args": true },
-        { "name": "gemini", "cmd": "gemini", "args": true },
-        { "name": "openpencil-mcp-http", "cmd": "openpencil-mcp-http", "args": true },
+        { "name": "claude-agent-acp", "cmd": "claude-agent-acp", "args": false },
+        { "name": "codex-acp", "cmd": "codex-acp", "args": false },
+        {
+          "name": "codex-acp-snapshot-helper",
+          "cmd": "codex-acp",
+          "args": [
+            "--openpencil-snapshot-helper",
+            {
+              "validator": "^\\{\"model\":(?:null|\"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}(?:\\[(?:none|minimal|low|medium|high|xhigh|max|ultra)\\])?\"),\"effort\":(?:null|\"(?:none|minimal|low|medium|high|xhigh|max|ultra)\")\\}$"
+            }
+          ]
+        },
+        { "name": "gemini", "cmd": "gemini", "args": ["--acp"] },
+        { "name": "openpencil-mcp-http", "cmd": "openpencil-mcp-http", "args": false },
         { "name": "openpencil-harness", "cmd": "openpencil-harness", "args": false },
-        { "name": "cmd", "cmd": "cmd", "args": true }
+        { "name": "cmd-claude-agent-acp", "cmd": "cmd", "args": ["/c", "claude-agent-acp"] },
+        { "name": "cmd-codex-acp", "cmd": "cmd", "args": ["/c", "codex-acp"] },
+        {
+          "name": "cmd-codex-acp-snapshot-helper",
+          "cmd": "cmd",
+          "args": [
+            "/c",
+            "codex-acp",
+            "--openpencil-snapshot-helper",
+            {
+              "validator": "^\\{\"model\":(?:null|\"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}(?:\\[(?:none|minimal|low|medium|high|xhigh|max|ultra)\\])?\"),\"effort\":(?:null|\"(?:none|minimal|low|medium|high|xhigh|max|ultra)\")\\}$"
+            }
+          ]
+        },
+        { "name": "cmd-gemini", "cmd": "cmd", "args": ["/c", "gemini", "--acp"] },
+        { "name": "cmd-openpencil-mcp-http", "cmd": "cmd", "args": ["/c", "openpencil-mcp-http"] },
+        { "name": "cmd-openpencil-harness", "cmd": "cmd", "args": ["/c", "openpencil-harness"] }
       ]
     },
     "shell:allow-stdin-write",
