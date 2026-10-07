@@ -396,6 +396,7 @@ If SVG succeeds but PNG fails, inspect the raster error stage. A missing rendere
 - Omit the file path to work with the document open in the running OpenPencil editor.
 - Start with `list_documents`; resolve the exact document path, page and relevant selection before any edit. Pass `document_id` and `page_id` explicitly where supported, then inspect only the needed subtree.
 - Use `tree --depth 2` or `query_nodes` to avoid overwhelming output on large files.
+- For selection-focused work, discover `get_selection` and request only the needed `depth`; matched builds return a compact subtree rather than every node property. Selection-scoped MCP connections deliberately restrict reads and file output. Treat that denial as a permission boundary; do not widen the configured scope to bypass it.
 - Export specific nodes with `--node` for faster visual checks.
 - Use `export_image` after changes to verify visual quality.
 - The running editor shows each MCP session as an agent at the layers its tools touch, and follows it while it works when the user has Follow agents on. Leave the user's selection and view alone unless they ask to be shown something.

@@ -24,7 +24,12 @@ import {
   MCPStartupError,
   type MCPFailure
 } from './failure'
-import { disabledMCPTools, mcpAuthenticationEnabled, mcpRootDirectory } from './preferences'
+import {
+  disabledMCPTools,
+  mcpAuthenticationEnabled,
+  mcpRootDirectory,
+  mcpScope
+} from './preferences'
 
 export interface AutomationHealth {
   status: 'ok' | 'no_app'
@@ -408,7 +413,8 @@ async function configureDevMCP(): Promise<AutomationServerHandle> {
   const configuration: DevMCPConfiguration = {
     authenticationEnabled: mcpAuthenticationEnabled.value,
     rootDirectory: mcpRootDirectory.value,
-    disabledTools: [...disabledMCPTools.value]
+    disabledTools: [...disabledMCPTools.value],
+    scope: mcpScope()
   }
   const response = await fetch(DEV_MCP_RESTART_PATH, {
     method: 'POST',
@@ -467,7 +473,8 @@ async function startMCPIfNeeded(timing: MCPStartupTiming): Promise<AutomationSer
       OPENPENCIL_MCP_TCP: '1',
       OPENPENCIL_MCP_ROOT: mcpRoot,
       OPENPENCIL_MCP_APP_TIMEOUT_MS: String(MCP_APP_ATTACH_TIMEOUT_MS),
-      OPENPENCIL_MCP_DISABLED_TOOLS: serializeDisabledTools(disabledMCPTools.value)
+      OPENPENCIL_MCP_DISABLED_TOOLS: serializeDisabledTools(disabledMCPTools.value),
+      OPENPENCIL_MCP_SCOPE: mcpScope()
     }
   })
 
