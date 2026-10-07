@@ -132,9 +132,10 @@ export function materializeInstance(
       throw new Error(`Preallocated occurrence has wrong parent ${current.sourceId}`)
     }
     const node = existing ?? graph.createNode(nodeType, parent, propsWithIdentity)
-    if (existing) graph.updateNode(existing.id, propsWithIdentity)
     nodes.set(current, node)
+    // A nested definition already owns its live edits; enclosing population only adopts it.
     if (existing && current !== occurrence && node.type === 'COMPONENT') return node
+    if (existing) graph.updateNode(existing.id, propsWithIdentity)
     applyBindingClaims(current, node, owner)
     const sourceChildId = sourceChildren.get(current)
     if (owner && current.mainComponentId !== null && sourceChildId) {

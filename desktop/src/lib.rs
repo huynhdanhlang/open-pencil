@@ -1,3 +1,4 @@
+mod agents;
 mod credentials;
 mod deep_link;
 mod fig_container;
@@ -8,8 +9,8 @@ mod menu_events;
 mod window;
 
 use credentials::{
-    credential_access_paused, credential_retry_access, credential_read, credential_remove, credential_status, credential_store_availability,
-    credential_write,
+    credential_access_paused, credential_read, credential_remove, credential_retry_access,
+    credential_status, credential_store_availability, credential_write,
 };
 use deep_link::path_matches_suffix;
 use fig_container::{build_fig_file, build_fig_file_binary};
@@ -261,6 +262,13 @@ fn queue_deep_links<R: tauri::Runtime>(app: &tauri::AppHandle<R>, urls: Vec<url:
                 deep_link: true,
             }),
             Ok(deep_link::DeepLink::Join(join)) => rooms.push(join.room),
+            // The sign-in that opened the browser is waiting; it checks the state itself.
+            Ok(deep_link::DeepLink::OAuth(callback)) => {
+                let _ = app.emit("oauth-callback", callback);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_focus();
+                }
+            }
             Err(error) => eprintln!("[deep-link] refused {url}: {error:?}"),
         }
     }
@@ -325,6 +333,7 @@ pub fn run() {
         .manage(PendingOpen(Mutex::new(Vec::new())))
         .manage(PendingRooms(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
+            agents::agent_lookup,
             build_fig_file,
             build_fig_file_binary,
             credential_read,

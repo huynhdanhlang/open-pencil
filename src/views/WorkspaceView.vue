@@ -6,6 +6,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { offerAISetupOnFirstRun } from '@/app/ai/models/settings/onboarding/dialog'
+import { exposeAutomationTestRequests } from '@/app/automation/bridge/test-hooks'
 import { startMCPRuntime, stopMCPRuntime } from '@/app/automation/mcp/runtime'
 import { startWebMCP } from '@/app/automation/webmcp/runtime'
 import { exposeCollaborationActions } from '@/app/browser-bridge'
@@ -74,6 +76,10 @@ function openFirstTab(): Tab {
   }
 }
 
+if (createdInitialTab && route.path === '/' && !appRuntimeConfig.test && !route.meta.demo) {
+  offerAISetupOnFirstRun()
+}
+
 useHead({ title: route.meta.demo ? 'Demo' : undefined })
 useKeyboard()
 useEditorMenu()
@@ -82,6 +88,7 @@ useDocumentDrop()
 const collab = useCollab()
 provide(COLLAB_KEY, collab)
 exposeCollaborationActions(collab, joinRoomFromInput)
+exposeAutomationTestRequests()
 syncRoomRoute(router, route)
 
 useEventListener(

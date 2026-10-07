@@ -16,6 +16,12 @@ import {
 import { decodeTreeFromTransport } from '@open-pencil/design-jsx'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import {
+  agentFinished,
+  agentStarted,
+  readAgentSession,
+  touchedNodeIds
+} from '@/app/automation/agents'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import {
   AUTOMATION_UNDO_LABEL,
@@ -70,20 +76,17 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     store.flashNodes(results.map((node) => node.id))
     const result = results[0]
     return {
-      ok: true,
-      result: {
-        id: result.id,
-        name: result.name,
-        type: result.type,
-        children: result.childIds,
-        ...(results.length > 1
-          ? {
-              siblings: results
-                .slice(1)
-                .map((node) => ({ id: node.id, name: node.name, type: node.type }))
-            }
-          : {})
-      }
+      id: result.id,
+      name: result.name,
+      type: result.type,
+      children: result.childIds,
+      ...(results.length > 1
+        ? {
+            siblings: results
+              .slice(1)
+              .map((node) => ({ id: node.id, name: node.name, type: node.type }))
+          }
+        : {})
     }
   }
 
@@ -92,6 +95,25 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const toolArgs = (args as { args?: Record<string, unknown> }).args ?? {}
     if (!toolName) throw new Error('Missing "name" in args')
 
+    // A call from an MCP session shows as that session's agent, working where the call works.
+    const session = readAgentSession((args as { agent?: unknown }).agent)
+    if (session) agentStarted(target.store, session, target.pageId)
+    const response = await runTool(target, toolName, toolArgs)
+    if (session) {
+      agentFinished(target.store, session, {
+        pageId: target.pageId,
+        nodeIds: touchedNodeIds(target.store, toolArgs, response.result),
+        edited: response.edited
+      })
+    }
+    return { ok: true, result: response.result }
+  }
+
+  async function runTool(
+    target: AutomationTarget,
+    toolName: string,
+    toolArgs: Record<string, unknown>
+  ): Promise<{ result: unknown; edited: boolean }> {
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const run = async () => {
@@ -100,7 +122,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           ...toolArgs,
           jsx: ''
         }) as RenderPlacementInput
-        return handleToolRender(target, toolArgs, placementInput)
+        return { result: await handleToolRender(target, toolArgs, placementInput), edited: true }
       }
       const store = target.store
       const libraryService = useLibraryService()
@@ -147,7 +169,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
         store.requestRender()
         store.flashNodes(extractNodeIds(result))
       }
-      return { ok: true, result }
+      return { result, edited: def.mutates }
     }
     // Raster exports share the renderer and must not overlap a full FIG build.
     return def.execution.mutation === 'none' && def.name !== 'export_image'

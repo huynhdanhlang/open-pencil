@@ -16,13 +16,15 @@ export interface ComponentConstruction {
 export function planComponentConstruction(
   roots: readonly InstanceOccurrence[],
   readComponent: (id: string) => InstanceOccurrence,
-  index: ReadonlyMap<string, NodeChange>
+  index: ReadonlyMap<string, NodeChange>,
+  contentIds: ReadonlySet<string>
 ): ComponentConstruction[] {
   const sources = index
   const pageComponents = new Map<string, InstanceOccurrence>()
   const indexPageComponents = (node: InstanceOccurrence): void => {
     if (node.mainComponentId !== null) return
-    if (node.properties.type === 'SYMBOL') pageComponents.set(node.sourceId, node)
+    if (node.properties.type === 'SYMBOL' && contentIds.has(node.sourceId))
+      pageComponents.set(node.sourceId, node)
     for (const child of node.children) indexPageComponents(child)
   }
   for (const root of roots) indexPageComponents(root)
@@ -45,7 +47,8 @@ export function planComponentConstruction(
   const visit = (root: InstanceOccurrence): void => {
     for (const node of occurrences(root)) {
       if (node.mainComponentId !== null) ensure(node.mainComponentId)
-      if (node.properties.type === 'SYMBOL') ensure(node.sourceId)
+      // Ancestors retain ownership, not necessarily the complete definition's children.
+      if (node.properties.type === 'SYMBOL' && contentIds.has(node.sourceId)) ensure(node.sourceId)
     }
   }
   const ensure = (id: string): void => {
