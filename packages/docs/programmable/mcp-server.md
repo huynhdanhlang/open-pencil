@@ -35,6 +35,8 @@ For a sizing discrepancy, request `get_node` with `layout_context: true` and a b
 
 For generated nested Frames/Components, inspect their painted bounds as well as leaf sizes after resizing an enclosing instance. FIG saves can normalize cross-axis Fill to FIXED sizing plus STRETCH alignment; the matched native fork honors that parent-owned dimension without letting a generated intrinsic `derivedLayout` restore an old width. Orthogonal Hug caches and imported FIG geometry guards remain separate. Verify actual large/mobile exports before and after save/reopen: leaf sizes and Fill JSX alone cannot prove nested background fidelity.
 
+The render failure journal owns isolated copies of invalidated text cache bytes, rather than duplicating the entire imported backing buffer for each glyph/picture view. This reduces transient recovery-copy allocation without changing Undo, failure cleanup or document content. Structural history and renderer caches remain separate memory owners; validate sustained memory behavior with native process evidence on the actual operation sequence.
+
 Source grow, self alignment and positioning propagate to existing instance children unless overridden. Root instance placement remains owned by its outer container. Responsive verification must include an instance that existed before the source edit, not only a newly created instance.
 
 This surface does **not** expose structural creation/deletion, arbitrary JavaScript/JSX execution, image loading, filesystem operations, or credentials. Those tools retain their existing AI/MCP paths. WebMCP is an evolving browser proposal, not universally available; unsupported browsers continue to use OpenPencil normally. The stdio and HTTP integrations below remain independent.

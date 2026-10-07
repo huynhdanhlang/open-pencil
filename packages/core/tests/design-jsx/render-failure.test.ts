@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { Buffer } from 'node:buffer'
 
 import { renderJSX } from '@open-pencil/core/design-jsx'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
@@ -186,3 +187,57 @@ test('render layout is scoped to its parent page and leaves unrelated page geome
   })
   expect(untouched.width).toBe(230)
 })
+
+test.each(['Uint8Array', 'Buffer'] as const)(
+  'failed render owns only visible %s text cache bytes rather than shared import backings',
+  async (viewType) => {
+    const graph = new SceneGraph()
+    const [parent] = await renderJSX(graph, '<Frame w={512} h={100} flex="row"/>')
+    const backing = new ArrayBuffer(16 * 1024 * 1024)
+    const children = Array.from({ length: 8 }, (_, index) =>
+      graph.createNode('TEXT', parent.id, {
+        text: 'Owned glyph',
+        width: 100,
+        height: 100,
+        layoutGrow: 1,
+        textAutoResize: 'NONE',
+        derivedTextGlyphs: [
+          { commandsBlob: new Uint8Array(backing, index * 32, 8), x: 0, y: 0, fontSize: 12 }
+        ],
+        textPicture:
+          viewType === 'Buffer'
+            ? Buffer.from(backing, index * 32 + 8, 16)
+            : new Uint8Array(backing, index * 32 + 8, 16)
+      })
+    )
+    let fail = true
+    graph.onNodeEvents({
+      updated: (id) => {
+        if (fail && id === children.at(-1)?.id) {
+          fail = false
+          new Uint8Array(backing).fill(99)
+          throw new Error('Final text layout failed')
+        }
+      }
+    })
+    await expect(
+      renderJSX(graph, '<Rect w={100} h={50}/>', { parentId: parent.id })
+    ).rejects.toThrow('Final text layout failed')
+    expect(graph.getChildren(parent.id)).toHaveLength(8)
+    const buffers = new Set<ArrayBufferLike>()
+    for (const child of children) {
+      expect(child.width).toBe(100)
+      const glyph = child.derivedTextGlyphs?.[0].commandsBlob
+      const picture = child.textPicture
+      if (!glyph || !picture) throw new Error('Missing restored text cache')
+      expect([...glyph]).toEqual(new Array<number>(8).fill(0))
+      expect([...picture]).toEqual(new Array<number>(16).fill(0))
+      expect(glyph.buffer).not.toBe(backing)
+      expect(picture.buffer).not.toBe(backing)
+      buffers.add(glyph.buffer)
+      buffers.add(picture.buffer)
+    }
+    const ownedBytes = [...buffers].reduce((sum, buffer) => sum + buffer.byteLength, 0)
+    expect(ownedBytes).toBeLessThanOrEqual(8 * (8 + 16))
+  }
+)

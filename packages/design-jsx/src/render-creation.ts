@@ -1,4 +1,14 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { copyDerivedGlyphs } from '@open-pencil/scene-graph/copy'
+
+function copySavedProperty(node: SceneNode, key: keyof SceneNode): unknown {
+  // Imported views can borrow tiny ranges of a large FIG archive buffer.
+  // The rollback owns the visible cache bytes, not another copy of the archive.
+  if (key === 'derivedTextGlyphs' && node.derivedTextGlyphs)
+    return copyDerivedGlyphs(node.derivedTextGlyphs)
+  if (key === 'textPicture' && node.textPicture) return new Uint8Array(node.textPicture)
+  return structuredClone(node[key])
+}
 
 /** Creation ownership is local to this invocation, never a listener spanning an await. */
 export class RenderCreationJournal {
@@ -48,7 +58,7 @@ export class RenderCreationJournal {
         const keys = new Set([...(Object.keys(changes) as (keyof SceneNode)[]), ...absent])
         for (const key of keys) {
           if (Object.hasOwn(saved.values, key) || saved.absent.has(key)) continue
-          if (Object.hasOwn(node, key)) Reflect.set(saved.values, key, structuredClone(node[key]))
+          if (Object.hasOwn(node, key)) Reflect.set(saved.values, key, copySavedProperty(node, key))
           else saved.absent.add(key)
         }
       }
