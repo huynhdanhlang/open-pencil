@@ -106,6 +106,7 @@
 
 ### Fixed
 
+- Save imported documents after deleting nested children from a loaded component: resumed instances now reconcile every source level against the live component, including child order and nested component swaps, while preserving instance-owned slot content.
 - Write complete JSX when `get_jsx` receives a filesystem `path`, keeping the 12,000-character limit only for inline previews. MCP refuses truncated responses from older editors before writing a file, preserving existing exports; main component metadata and general instance/vector fidelity limits are documented separately.
 
 - Canonical `update_node` journals its affected property/layout fields with bounded Undo and rollback, so loading unrelated pages no longer blocks a small edit at the whole-document limit. Other atomic tools retain their existing document checkpoint limit. Committed event-delivery failures keep the edit undoable.

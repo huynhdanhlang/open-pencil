@@ -14,33 +14,51 @@ export function reconcileOccurrenceStructure(
   graph: SceneGraph,
   components: ReadonlyMap<string, MaterializedComponentOccurrence>
 ): void {
-  if (target.mainComponentId !== null) {
-    const component = components.get(target.mainComponentId)
-    if (!component) throw new Error(`Missing component occurrence ${target.mainComponentId}`)
+  const matchChildren = (
+    current: InstanceOccurrence,
+    source: InstanceOccurrence,
+    nodes: ReadonlyMap<InstanceOccurrence, SceneNode>
+  ): void => {
+    // Custom slot descendants belong to this instance, not to the master's source tree.
+    if (current.slotContentId) {
+      for (const child of current.children) visit(child)
+      return
+    }
+    const sourceParent = nodes.get(source)
+    if (!sourceParent || !graph.getNode(sourceParent.id)) {
+      throw new Error(`Unmaterialized source parent ${source.sourceId}`)
+    }
     const liveOrder = new Map(
-      graph.getChildren(component.materialized.root.id).map((node, index) => [node.id, index])
+      graph.getChildren(sourceParent.id).map((node, index) => [node.id, index])
     )
-    const sourceChildren = new Map(
-      component.occurrence.children.map((child) => [child.sourceId, child])
-    )
-    target.children = target.children
-      .filter((child) => {
-        const source = sourceChildren.get(child.sourceId)
-        const node = source && component.materialized.nodes.get(source)
+    // Unknown/ambiguous archive identities are errors; only authoritative live deletions
+    // and moves out of this source parent may prune a previously interpreted occurrence.
+    const pairs = [...pairSourceChildren(current, source)]
+      .filter(([, counterpart]) => {
+        const node = nodes.get(counterpart)
         return !!node && liveOrder.has(node.id)
       })
-      .toSorted((a, b) => {
-        const sourceA = sourceChildren.get(a.sourceId)
-        const sourceB = sourceChildren.get(b.sourceId)
-        const nodeA = sourceA && component.materialized.nodes.get(sourceA)
-        const nodeB = sourceB && component.materialized.nodes.get(sourceB)
-        return (
-          (nodeA ? (liveOrder.get(nodeA.id) ?? 0) : 0) -
-          (nodeB ? (liveOrder.get(nodeB.id) ?? 0) : 0)
-        )
-      })
+      .toSorted(
+        ([, a], [, b]) =>
+          (liveOrder.get(nodes.get(a)?.id ?? '') ?? 0) -
+          (liveOrder.get(nodes.get(b)?.id ?? '') ?? 0)
+      )
+    current.children = pairs.map(([child]) => child)
+    for (const [child, counterpart] of pairs) {
+      if (child.mainComponentId !== null) visit(child)
+      else matchChildren(child, counterpart, nodes)
+    }
   }
-  for (const child of target.children) reconcileOccurrenceStructure(child, graph, components)
+  const visit = (current: InstanceOccurrence): void => {
+    if (current.mainComponentId === null) {
+      for (const child of current.children) visit(child)
+      return
+    }
+    const component = components.get(current.mainComponentId)
+    if (!component) throw new Error(`Missing component occurrence ${current.mainComponentId}`)
+    matchChildren(current, component.occurrence, component.materialized.nodes)
+  }
+  visit(target)
 }
 
 /**
