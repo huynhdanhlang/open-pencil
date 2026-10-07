@@ -27,6 +27,7 @@ export function createConversationHistory<TChat extends HistoryChat>(
   let ownerRecoveryId: string | null = null
   // Weak, so the history does not keep a closed document's editor alive.
   let owner: WeakRef<ChatDocumentEditor> | null = null
+  const closedEditors = new WeakSet<ChatDocumentEditor>()
   let operation: Promise<unknown> = Promise.resolve()
   const session = createHistorySession(() => runtime.resetChat())
   const { flush, storageError } = createHistoryPersistence({
@@ -61,36 +62,52 @@ export function createConversationHistory<TChat extends HistoryChat>(
     return session.detach(flush)
   }
 
-  async function activate(conversation: Conversation) {
-    const editor = runtime.getEditor()
+  function isCurrentEditor(editor: ChatDocumentEditor): boolean {
+    return runtime.getEditor() === editor && !closedEditors.has(editor)
+  }
+
+  async function activate(
+    conversation: Conversation,
+    editor: ChatDocumentEditor
+  ): Promise<boolean> {
+    if (!isCurrentEditor(editor)) return false
+    if (conversation.messages.length || conversation.titleSource !== 'fallback') {
+      await store.select(conversation.documentId, conversation.id)
+      if (!isCurrentEditor(editor)) return false
+    }
     owner = new WeakRef(editor)
     ownerRecoveryId = editor.getRecoveryId()
     session.restoreInterrupted(conversation.interrupted)
     readOnly.value = conversation.documentId !== chatDocumentId(editor)
     current.value = conversation
     messages.value = restoreMessages(conversation.messages)
-    if (conversation.messages.length || conversation.titleSource !== 'fallback') {
-      await store.select(conversation.documentId, conversation.id)
-    }
+    return true
   }
 
-  async function createDraft() {
-    const editor = runtime.getEditor()
+  async function createDraft(editor: ChatDocumentEditor): Promise<boolean> {
+    if (!isCurrentEditor(editor)) return false
+    const documentId = await resolveChatDocumentId(editor, store)
+    if (!isCurrentEditor(editor)) return false
     const now = new Date().toISOString()
-    await activate({
-      id: crypto.randomUUID(),
-      documentId: await resolveChatDocumentId(editor, store),
-      documentName: editor.state.documentName,
-      title: '',
-      titleSource: 'fallback',
-      createdAt: now,
-      updatedAt: now,
-      profileId: runtime.profileId(),
-      backend: runtime.backend(),
-      interrupted: false,
-      messages: []
-    })
+    const activated = await activate(
+      {
+        id: crypto.randomUUID(),
+        documentId,
+        documentName: editor.state.documentName,
+        title: '',
+        titleSource: 'fallback',
+        createdAt: now,
+        updatedAt: now,
+        profileId: runtime.profileId(),
+        backend: runtime.backend(),
+        interrupted: false,
+        messages: []
+      },
+      editor
+    )
+    if (!activated) return false
     await refresh()
+    return isCurrentEditor(editor)
   }
 
   function isIdentityChange(editor: ChatDocumentEditor, documentId: string) {
@@ -106,33 +123,44 @@ export function createConversationHistory<TChat extends HistoryChat>(
   async function reassignDocument(editor: ChatDocumentEditor, documentId: string) {
     if (!current.value) return
     await flush()
+    if (!isCurrentEditor(editor)) return
     await store.reassignDocument(current.value.documentId, documentId, editor.state.documentName)
     current.value = { ...current.value, documentId, documentName: editor.state.documentName }
     await refresh()
   }
 
-  async function loadDocument() {
-    const editor = runtime.getEditor()
+  async function loadDocument(editor: ChatDocumentEditor): Promise<boolean> {
+    if (!isCurrentEditor(editor)) return false
     const documentId = await resolveChatDocumentId(editor, store)
+    if (!isCurrentEditor(editor)) return false
     if (isIdentityChange(editor, documentId)) await reassignDocument(editor, documentId)
-    if (current.value?.documentId === documentId) {
+    if (!isCurrentEditor(editor)) return false
+    if (current.value?.documentId === documentId && owner?.deref() === editor) {
       readOnly.value = false
       owner = new WeakRef(editor)
       ownerRecoveryId = editor.getRecoveryId()
-      return
+      return true
     }
     await detach()
+    if (!isCurrentEditor(editor)) return false
     const id = await store.getSelected(documentId)
+    if (!isCurrentEditor(editor)) return false
     const conversation = id ? await store.read(id) : null
-    if (conversation?.documentId === documentId) await activate(conversation)
-    else await createDraft()
+    if (!isCurrentEditor(editor)) return false
+    if (conversation?.documentId === documentId) {
+      if (!(await activate(conversation, editor))) return false
+    } else if (!(await createDraft(editor))) return false
     await refresh()
+    return isCurrentEditor(editor)
   }
 
   function ensureChat() {
+    const editor = runtime.getEditor()
     return serialize(async () => {
-      if (readOnly.value && owner?.deref() === runtime.getEditor()) return null
-      await loadDocument()
+      if (!isCurrentEditor(editor)) return null
+      if (readOnly.value && owner?.deref() === editor) return null
+      if (!(await loadDocument(editor))) return null
+      if (readOnly.value || owner?.deref() !== editor) return null
       // A restored transcript does not restore an external agent session.
       if (
         current.value?.messages.length &&
@@ -140,9 +168,9 @@ export function createConversationHistory<TChat extends HistoryChat>(
         (runtime.backend() !== 'direct' || current.value.backend !== 'direct')
       )
         return null
-      const editor = runtime.getEditor()
+      if (!isCurrentEditor(editor)) return null
       const next = await runtime.ensureChat(messages.value, current.value?.id)
-      if (runtime.getEditor() !== editor) {
+      if (!isCurrentEditor(editor)) {
         await next?.stop()
         await runtime.resetChat()
         return null
@@ -153,20 +181,47 @@ export function createConversationHistory<TChat extends HistoryChat>(
   }
 
   function initialize() {
-    return serialize(loadDocument)
+    const editor = runtime.getEditor()
+    return serialize(async () => {
+      await loadDocument(editor)
+    })
+  }
+  /** Await before disposing a document. Failed persistence leaves it open and retryable. */
+  function releaseEditor(editor: ChatDocumentEditor): Promise<void> {
+    // Block queued/late initialization immediately, before the serialized detach runs.
+    closedEditors.add(editor)
+    return serialize(async () => {
+      if (owner?.deref() !== editor) return
+      await detach()
+      owner = null
+      ownerRecoveryId = null
+      current.value = null
+      messages.value = []
+    }).catch((error: unknown) => {
+      closedEditors.delete(editor)
+      throw error
+    })
+  }
+  function cancelEditorClose(editor: ChatDocumentEditor): void {
+    closedEditors.delete(editor)
   }
   function newChat() {
+    const editor = runtime.getEditor()
     return serialize(async () => {
+      if (!isCurrentEditor(editor)) return
       await detach()
-      await createDraft()
+      await createDraft(editor)
     })
   }
   function open(id: string) {
+    const editor = runtime.getEditor()
     return serialize(async () => {
+      if (!isCurrentEditor(editor)) return
       if (current.value?.id === id) return
       await detach()
+      if (!isCurrentEditor(editor)) return
       const conversation = await store.read(id)
-      if (conversation) await activate(conversation)
+      if (conversation) await activate(conversation, editor)
     })
   }
   function rename(id: string, title: string) {
@@ -182,6 +237,7 @@ export function createConversationHistory<TChat extends HistoryChat>(
     })
   }
   function remove(id: string) {
+    const editor = runtime.getEditor()
     return serialize(async () => {
       if (current.value?.id === id) {
         await detach()
@@ -189,7 +245,7 @@ export function createConversationHistory<TChat extends HistoryChat>(
         messages.value = []
       }
       await store.remove(id)
-      if (!current.value) await createDraft()
+      if (!current.value) await createDraft(editor)
       await refresh()
     })
   }
@@ -202,6 +258,8 @@ export function createConversationHistory<TChat extends HistoryChat>(
     busy,
     storageError,
     initialize,
+    releaseEditor,
+    cancelEditorClose,
     ensureChat,
     flush,
     newChat,

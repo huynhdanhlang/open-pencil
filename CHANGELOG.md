@@ -106,6 +106,7 @@
 
 ### Fixed
 
+- Closing a document flushes its AI transcript and releases the live chat before disposing the editor. Failed persistence leaves the tab retryable, and delayed history reads cannot bind a closed tab's transcript to another editor.
 - Page-load rollback snapshots preserve shared FIG backing buffers across candidate nodes instead of copying the same buffer for each node, while retaining isolated recovery data.
 - Appending JSX variants to an existing component set and renaming known variant dimensions refresh native choices without replacing property IDs or unrelated values. Native variant renames retain complete Undo/Redo state, and failed render completion restores metadata and source edit markers.
 

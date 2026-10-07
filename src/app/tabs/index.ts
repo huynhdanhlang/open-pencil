@@ -169,25 +169,32 @@ export async function closeTab(tabId: string, unsaved?: 'save' | 'discard'): Pro
     ? await confirmDocumentClose(closingTab.store, async () => unsaved)
     : await requestDocumentClose(closingTab.store, closingTab.store.state.documentName)
   if (choice === 'cancel') return
-  if (choice === 'discard') await closingTab.store.discardRecovery()
-  else await closingTab.store.persistRecoveryNow()
-  if (!tabsRef.value.includes(closingTab)) return
-  if (choice !== 'discard' && closingTab.store.hasUnsavedChanges()) return
-  const wasActive = activeTabId.value === tabId
-  coverThumbnailListeners.get(closingTab.store)?.()
-  coverThumbnailListeners.delete(closingTab.store)
-  closingTab.store.preparationController.dispose()
-  closingTab.store.dispose()
-  tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
+  const { releaseAIChatEditor, cancelAIChatEditorClose } = await import('@/app/ai/chat/use')
+  await releaseAIChatEditor(closingTab.store)
+  try {
+    if (choice === 'discard') await closingTab.store.discardRecovery()
+    else await closingTab.store.persistRecoveryNow()
+    if (!tabsRef.value.includes(closingTab)) return
+    if (choice !== 'discard' && closingTab.store.hasUnsavedChanges()) return
+    const wasActive = activeTabId.value === tabId
+    coverThumbnailListeners.get(closingTab.store)?.()
+    coverThumbnailListeners.delete(closingTab.store)
+    closingTab.store.preparationController.dispose()
+    closingTab.store.dispose()
+    tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
 
-  if (tabsRef.value.length === 0) {
-    createHomeTab()
-    return
-  }
+    if (tabsRef.value.length === 0) {
+      createHomeTab()
+      return
+    }
 
-  if (wasActive) {
-    const newIdx = Math.min(idx, tabsRef.value.length - 1)
-    activateTab(tabsRef.value[newIdx])
+    if (wasActive) {
+      const newIdx = Math.min(idx, tabsRef.value.length - 1)
+      activateTab(tabsRef.value[newIdx])
+    }
+  } finally {
+    // Recovery failure or a concurrent document edit can leave the tab open.
+    if (tabsRef.value.includes(closingTab)) cancelAIChatEditorClose(closingTab.store)
   }
 }
 

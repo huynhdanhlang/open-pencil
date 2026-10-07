@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { IS_BROWSER } from '@open-pencil/core/constants'
 
 import { createConversationHistory } from '@/app/ai/chat/history/controller'
+import type { ChatDocumentEditor } from '@/app/ai/chat/history/document'
 import {
   apiKeyStatus,
   browserCredentialsRemembered,
@@ -91,4 +92,13 @@ export function useAIChat() {
     chatFailure: chatSession.failure,
     clearChatFailure: chatSession.clearFailure
   }
+}
+
+/** Document close owns this await; never reset a different tab's conversation. */
+export function releaseAIChatEditor(editor: ChatDocumentEditor) {
+  return history.releaseEditor(editor)
+}
+
+export function cancelAIChatEditorClose(editor: ChatDocumentEditor) {
+  history.cancelEditorClose(editor)
 }
