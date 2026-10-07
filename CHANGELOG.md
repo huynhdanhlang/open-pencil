@@ -106,6 +106,8 @@
 
 ### Fixed
 
+- Write complete JSX when `get_jsx` receives a filesystem `path`, keeping the 12,000-character limit only for inline previews. MCP refuses truncated responses from older editors before writing a file, preserving existing exports; main component metadata and general instance/vector fidelity limits are documented separately.
+
 - Canonical `update_node` journals its affected property/layout fields with bounded Undo and rollback, so loading unrelated pages no longer blocks a small edit at the whole-document limit. Other atomic tools retain their existing document checkpoint limit. Committed event-delivery failures keep the edit undoable.
 - `Icon` and inline SVG color variables resolve to COLOR values and bind only authored `currentColor` path paints. Literal multicolor paths remain unbound; token bindings survive Save/import.
 - Duplicating a layer subtree and importing a transfer forest preserve shared FIG backing buffers within one isolated copy instead of cloning the same archive-sized buffer for each layer. Transfer Undo captures retain their own isolated copy.

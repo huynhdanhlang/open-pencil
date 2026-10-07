@@ -11,7 +11,7 @@ const MAX_JSX_LENGTH = 12_000
 export const getJSX = defineTool({
   name: 'get_jsx',
   description:
-    'Get JSX representation of a node and its children. Compact round-trip format — same syntax as the render tool.',
+    'Get JSX representation of a node and its children. Inline results over 12,000 characters are truncated previews; supply path for complete file output. Uses the render tool syntax, with documented export fidelity limitations.',
   execution: { kind: 'sync', mutation: 'none' },
   input: v.object({
     id: nodeIdInput,
@@ -19,16 +19,16 @@ export const getJSX = defineTool({
       v.pipe(
         v.string(),
         v.description(
-          'Write JSX to this path instead of returning it (requires OPENPENCIL_MCP_ROOT)'
+          'Write complete, untruncated JSX to this path instead of returning it (requires OPENPENCIL_MCP_ROOT)'
         )
       )
     )
   }),
-  execute: (figma, { id }) => {
+  execute: (figma, { id, path }) => {
     const node = figma.getNodeById(id)
     if (!node) return { error: `Node "${id}" not found` }
     const jsx = sceneNodeToJSX(id, figma.graph)
-    if (jsx.length > MAX_JSX_LENGTH) {
+    if (!path && jsx.length > MAX_JSX_LENGTH) {
       return {
         id,
         name: node.name,

@@ -222,6 +222,11 @@ export async function writeToolOutput(
   filePath: string,
   root: string
 ): Promise<MCPResult | null> {
+  if (toolName === 'get_jsx' && result.truncated === true) {
+    throw new Error(
+      'JSX output is truncated; no file was written. Use an editor version that supports complete get_jsx path output, or export smaller subtrees.'
+    )
+  }
   const { resolved, realPath } = await resolveSafePath(filePath, root)
   // Use the canonical realPath for filesystem operations to prevent TOCTOU:
   // an attacker could swap a directory component with a symlink between
