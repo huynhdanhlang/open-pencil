@@ -6,6 +6,7 @@ import { UndoManager } from '@open-pencil/scene-graph/undo'
 import { executeAtomicTool } from '#core/editor/history/atomic-tool'
 import { FigmaAPI } from '#core/figma-api'
 import { computeLayout } from '#core/layout'
+import { createLayoutRunner } from '#core/layout/mutations'
 import { setLayoutChild } from '#core/tools/modify/layout'
 
 test.each(['HORIZONTAL', 'VERTICAL'] as const)(
@@ -145,4 +146,26 @@ test('combined flow and sizing use the final positioning while explicit alignmen
     align_self: 'MAX'
   })
   expect(child.layoutAlignSelf).toBe('MAX')
+})
+
+test('resized imported free-layout instances still lay out their nested frames', () => {
+  const graph = new SceneGraph()
+  const api = new FigmaAPI(graph)
+  const source = api.createComponent()
+  const row = graph.createNode('FRAME', source.id, {
+    layoutMode: 'HORIZONTAL',
+    width: 100,
+    height: 24,
+    primaryAxisSizing: 'FIXED',
+    counterAxisSizing: 'FIXED'
+  })
+  graph.createNode('RECTANGLE', row.id, { width: 20, height: 24, layoutGrow: 1 })
+  const instance = graph.createInstance(source.id, api.currentPageId)
+  if (!instance) throw new Error('Missing instance')
+  instance.source.format = 'fig'
+  instance.source.editedFields.push('width')
+  const copiedRow = graph.getChildren(instance.id)[0]
+  const copiedLeaf = graph.getChildren(copiedRow.id)[0]
+  createLayoutRunner(() => graph).runLayoutForNode(instance.id)
+  expect(copiedLeaf.width).toBe(100)
 })
