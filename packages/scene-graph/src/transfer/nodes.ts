@@ -1,4 +1,4 @@
-import { cloneNodeProps } from '../copy'
+import { cloneNodeProps, cloneNodePropsBatch } from '../copy'
 import { remapInstanceOverrideState } from '../instance-overrides'
 import type { ComponentPropertyType, SceneNode } from '../types'
 import { requireTransferReference as required } from './references'
@@ -52,6 +52,23 @@ export function prepareNodeTransfer(
   source: SceneNode,
   refs: NodeTransferReferences
 ): Partial<SceneNode> {
+  return remapNodeTransfer(source, refs, cloneNodeProps(source, null))
+}
+
+/** Keep source backing-store ownership bounded across a complete transfer forest. */
+export function prepareNodeTransfers(
+  sources: readonly SceneNode[],
+  refs: NodeTransferReferences
+): Partial<SceneNode>[] {
+  const copies = cloneNodePropsBatch(sources, null)
+  return sources.map((source, index) => remapNodeTransfer(source, refs, copies[index]))
+}
+
+function remapNodeTransfer(
+  source: SceneNode,
+  refs: NodeTransferReferences,
+  result: Partial<SceneNode>
+): Partial<SceneNode> {
   const node = (id: string) => required(refs.nodes, id, 'node')
   const variable = (id: string) => required(refs.variables, id, 'variable')
   const property = (id: string) => required(refs.properties, id, 'property')
@@ -65,7 +82,6 @@ export function prepareNodeTransfer(
     Object.fromEntries(
       Object.entries(entries).map(([id, value]) => [property(id), propertyValue(id, value)])
     )
-  const result = cloneNodeProps(source, null)
   result.componentId = source.componentId ? node(source.componentId) : null
   result.instanceOverrides = remapInstanceOverrideState(source.instanceOverrides, {
     node,

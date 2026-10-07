@@ -235,12 +235,40 @@ export function cloneNodeProps(
   componentId: string | null,
   mode: NodeCloneMode = 'deep'
 ): Partial<SceneNode> {
+  const source =
+    componentId === null && mode === 'deep'
+      ? structuredClone(src.source)
+      : createDefaultSourceMetadata()
+  return cloneNodePropsWithSource(src, componentId, mode, source)
+}
+
+/** Copy one owned forest; shared FIG buffers stay shared inside its isolated copy. */
+export function cloneNodePropsBatch(
+  nodes: readonly SceneNode[],
+  componentId: string | null,
+  mode: NodeCloneMode = 'deep'
+): Partial<SceneNode>[] {
+  const sources =
+    componentId === null && mode === 'deep'
+      ? structuredClone(nodes.map((node) => node.source))
+      : nodes.map(() => createDefaultSourceMetadata())
+  return nodes.map((node, index) =>
+    cloneNodePropsWithSource(node, componentId, mode, sources[index])
+  )
+}
+
+function cloneNodePropsWithSource(
+  src: SceneNode,
+  componentId: string | null,
+  mode: NodeCloneMode,
+  source: SceneNode['source']
+): Partial<SceneNode> {
   const { id: _, parentId: _p, childIds: _c, ...rest } = src
   if (mode === 'fig-import') {
     return {
       ...rest,
       ...(componentId !== null ? { componentId } : {}),
-      source: createDefaultSourceMetadata(),
+      source,
       boundVariables: { ...src.boundVariables },
       variableBindingScales: { ...src.variableBindingScales },
       variableAssignmentScales: { ...src.variableAssignmentScales },
@@ -268,7 +296,7 @@ export function cloneNodeProps(
     styleRuns: copyOpt(src.styleRuns, (value) => markCopySource(value, copyStyleRuns(value))),
     // Generated instance descendants have no independent Figma provenance. Retaining the source
     // component's opaque raw payload here duplicates megabytes of metadata per instance.
-    source: componentId === null ? structuredClone(src.source) : createDefaultSourceMetadata(),
+    source,
     dashPattern: copyOpt(src.dashPattern, (a) => [...a]),
     fontVariations: copyOpt(src.fontVariations, (a) => a.map((v) => ({ ...v }))),
     fontFeatures: copyOpt(src.fontFeatures, (a) => a.map((v) => ({ ...v }))),

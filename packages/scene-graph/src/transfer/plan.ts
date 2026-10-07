@@ -1,6 +1,6 @@
 import type { SceneGraph } from '../index'
 import type { ComponentPropertyType, SceneNode } from '../types'
-import { prepareNodeTransfer } from './nodes'
+import { prepareNodeTransfers } from './nodes'
 import { requireTransferReference } from './references'
 import { prepareVariableTransfer } from './variables'
 
@@ -85,15 +85,16 @@ export function prepareGraphTransfer(input: GraphTransferInput) {
     if (dependencies.has(node.id)) return target.rootId
     return mapped(node.parentId ?? '')
   }
+  const nodeProps = prepareNodeTransfers(ordered, references)
   return {
     nodeIds: nodes,
     rootIds: input.rootIds.map(mapped),
     dependencyPageIds: input.dependencyPageIds.map(mapped),
-    nodes: ordered.map((node) => ({
+    nodes: ordered.map((node, index) => ({
       id: mapped(node.id),
       type: node.type,
       parentId: destinationParent(node),
-      props: prepareNodeTransfer(node, references)
+      props: nodeProps[index]
     })),
     ...resources,
     activeModes: new Map(

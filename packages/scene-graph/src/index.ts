@@ -59,7 +59,7 @@ export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
 import { removeStaleBindings } from './bindings'
 export { CommittedGraphEventError } from './buffered-events'
 import { BufferedSceneEmitter } from './buffered-events'
-import { cloneNodeProps } from './copy'
+import { cloneNodePropsBatch } from './copy'
 import { bindNodeEvents } from './events'
 import * as HitTest from './hit-test'
 export type { DropTargetOptions } from './hit-test'
@@ -814,21 +814,39 @@ export class SceneGraph {
     parentId: string,
     overrides: Partial<SceneNode> = {}
   ): SceneNode | null {
-    const src = this.nodes.get(sourceId)
-    if (!src) return null
-
-    const props = cloneNodeProps(src, null)
-    // Null out Figma source identifiers so the clone is treated as local.
-    // `as SourceMetadata` required: cloneNodeProps returns Partial<SceneNode>,
-    // so props.source is SourceMetadata | undefined, but we know it's always set.
-    props.source = { ...(props.source as SourceMetadata), id: null, orderKey: null }
-    const clone = this.createNode(src.type, parentId, { ...props, ...overrides })
-
-    for (const childId of src.childIds) {
-      this.cloneTree(childId, clone.id)
+    const entries: Array<{ node: SceneNode; parent: number | null }> = []
+    const ancestors = new Set<string>()
+    const collect = (id: string, parent: number | null) => {
+      const node = this.nodes.get(id)
+      if (!node) return
+      if (ancestors.has(id)) throw new Error('Cannot clone a cyclic subtree')
+      const index = entries.push({ node, parent }) - 1
+      ancestors.add(id)
+      for (const childId of node.childIds) collect(childId, index)
+      ancestors.delete(id)
     }
-
-    return clone
+    collect(sourceId, null)
+    if (entries.length === 0) return null
+    // Prepare all mutable props before publishing any node; one source clone
+    // prevents archive-sized backing buffers from being copied per layer.
+    const props = cloneNodePropsBatch(
+      entries.map((entry) => entry.node),
+      null
+    )
+    const clones: SceneNode[] = []
+    for (const [index, entry] of entries.entries()) {
+      const copied = props[index]
+      // The copy owner always supplies source metadata; the public props type is partial.
+      copied.source = { ...(copied.source as SourceMetadata), id: null, orderKey: null }
+      const targetParent = entry.parent === null ? parentId : clones[entry.parent].id
+      clones.push(
+        this.createNode(entry.node.type, targetParent, {
+          ...copied,
+          ...(entry.parent === null ? overrides : {})
+        })
+      )
+    }
+    return clones[0]
   }
 
   createInstance(

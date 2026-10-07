@@ -1,4 +1,4 @@
-import { cloneNodeProps } from '../copy'
+import { cloneNodePropsBatch } from '../copy'
 import type { SceneGraph } from '../index'
 import type { GraphTransferPlan } from './apply'
 
@@ -11,18 +11,21 @@ export function captureTransferredState(
     if (value === undefined) throw new Error(`Missing transferred ${kind} ${id}`)
     return value
   }
+  const nodes = original.nodes.map((entry) =>
+    requireValue(graph.getNode(entry.id), 'node', entry.id)
+  )
+  const props = cloneNodePropsBatch(nodes, null)
   return {
     nodeIds: new Map(original.nodeIds),
     rootIds: [...original.rootIds],
     dependencyPageIds: [...original.dependencyPageIds],
-    nodes: original.nodes.map((entry) => {
-      const node = requireValue(graph.getNode(entry.id), 'node', entry.id)
-      if (!node.parentId) throw new Error(`Missing transferred parent ${entry.id}`)
+    nodes: nodes.map((node, index) => {
+      if (!node.parentId) throw new Error(`Missing transferred parent ${node.id}`)
       return {
         id: node.id,
         type: node.type,
         parentId: node.parentId,
-        props: cloneNodeProps(node, null)
+        props: props[index]
       }
     }),
     variables: original.variables.map((variable) =>
