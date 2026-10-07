@@ -9,10 +9,12 @@ import { sceneNodeToJSX } from '@open-pencil/design-jsx'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { createEditor } from '#core/editor/create'
+import { executeAtomicTool } from '#core/editor/history/atomic-tool'
 import { FigmaAPI } from '#core/figma-api'
 import { exportFigFile, parseFigFile } from '#core/io/formats/fig'
 import { computeLayout } from '#core/layout'
 import { setLayoutChild } from '#core/tools/modify/layout'
+import { updateNode } from '#core/tools/modify/update'
 
 test('leaf Fill survives component instances, complete JSX and FIG Save at large/mobile widths', async () => {
   const graph = new SceneGraph()
@@ -68,6 +70,18 @@ test('leaf Fill survives component instances, complete JSX and FIG Save at large
   const editor = createEditor({ graph: restored, skipInitialGraphSetup: true })
   editor.subscribeToGraph()
   try {
+    const savedInstance = [...restored.nodes.values()].find((node) => node.type === 'INSTANCE')
+    if (!savedInstance) throw new Error('Missing saved instance')
+    // Exercise the imported-instance preservation branch as well as generated source metadata.
+    savedInstance.source.format = 'fig'
+    const importedWidths = restored.getChildren(savedInstance.id).map((node) => node.width)
+    editor.runLayoutForNode(savedInstance.id)
+    expect(restored.getChildren(savedInstance.id).map((node) => node.width)).toEqual(importedWidths)
+    executeAtomicTool(editor, new FigmaAPI(restored), updateNode, {
+      id: savedInstance.id,
+      width: 320
+    })
+    expect(restored.getChildren(savedInstance.id).map((node) => node.width)).toEqual([304, 304])
     await editor.runMutationWithLayout(() => {
       restored.updateNode(restoredSource.id, { width: 320 })
     }, restoredSource.id)

@@ -13,7 +13,15 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
     const node = graph.getNode(id)
     if (!node) return
 
-    computeAllLayouts(graph, id)
+    // Initial import keeps baked instance geometry. An explicit size edit must
+    // reflow that instance's auto-layout instead of retaining the imported box.
+    if (
+      node.type === 'INSTANCE' &&
+      node.source.format === 'fig' &&
+      node.source.editedFields.some((field) => field === 'width' || field === 'height')
+    )
+      computeLayout(graph, id)
+    else computeAllLayouts(graph, id)
 
     let parent = node.parentId ? graph.getNode(node.parentId) : undefined
     while (parent) {
