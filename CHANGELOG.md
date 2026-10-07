@@ -106,6 +106,7 @@
 
 ### Fixed
 
+- Limit component synchronization layout to the edited definitions, their instances, and affected auto-layout ancestors. Building new controls no longer repeatedly lays out unrelated trees on the same page; parent resizing, sibling placement, and cross-page instances remain synchronized.
 - Save imported documents after deleting nested children from a loaded component: resumed instances now reconcile every source level against the live component, including child order and nested component swaps, while preserving instance-owned slot content.
 - Write complete JSX when `get_jsx` receives a filesystem `path`, keeping the 12,000-character limit only for inline previews. MCP refuses truncated responses from older editors before writing a file, preserving existing exports; main component metadata and general instance/vector fidelity limits are documented separately.
 

@@ -72,7 +72,7 @@ test('nested reconciliation preserves source order and does not prune instance-o
   reconcileOccurrenceStructure(target, graph, components)
   expect(target.children[0].children.map((child) => child.sourceId)).toEqual(['1:4', '1:3'])
   target.children[0].slotContentId = 'own-content'
-  target.children[0].children[0].sourceId = 'own-child'
+  target.children[0].children[0] = { ...target.children[0].children[0], sourceId: 'own-child' }
   graph.deleteNode(removed.id)
   reconcileOccurrenceStructure(target, graph, components)
   expect(target.children[0].children.map((child) => child.sourceId)).toEqual(['own-child', '1:3'])
@@ -83,11 +83,11 @@ test('nested reconciliation preserves source order and does not prune instance-o
 test('unknown or ambiguous source identities fail rather than being silently removed', () => {
   const { graph, occurrence, target, materialized } = setup()
   const components = new Map([['1:1', { occurrence, materialized }]])
-  target.children[0].children[0].sourceId = 'unknown'
+  target.children[0].children[0] = { ...target.children[0].children[0], sourceId: 'unknown' }
   expect(() => reconcileOccurrenceStructure(target, graph, components)).toThrow(
     'Missing source child'
   )
-  target.children[0].children[0].sourceId = '1:3'
+  target.children[0].children[0] = { ...target.children[0].children[0], sourceId: '1:3' }
   occurrence.children[0].children.push(occurrence.children[0].children[0])
   expect(() => reconcileOccurrenceStructure(target, graph, components)).toThrow(
     'Ambiguous source child'
@@ -95,6 +95,10 @@ test('unknown or ambiguous source identities fail rather than being silently rem
 })
 
 test('nested instance swaps reconcile against the selected replacement source', () => {
+  const swappedSymbolData = {
+    symbolID: guid(1),
+    symbolOverrides: [{ guidPath: { guids: [guid(2)] }, overriddenSymbolID: guid(19) }]
+  }
   const changes: NodeChange[] = [
     { guid: guid(1), type: 'SYMBOL' },
     {
@@ -126,10 +130,7 @@ test('nested instance swaps reconcile against the selected replacement source', 
     {
       guid: guid(5),
       type: 'INSTANCE',
-      symbolData: {
-        symbolID: guid(1),
-        symbolOverrides: [{ guidPath: { guids: [guid(2)] }, overriddenSymbolID: guid(19) }]
-      }
+      symbolData: swappedSymbolData
     }
   ]
   const target = interpretInstance(changes, '1:5')

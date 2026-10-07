@@ -35,32 +35,45 @@ function componentSyncOrder(graph: SceneGraph, seeds: Set<string>): string[] {
 
 type ComputeLayouts = (graph: SceneGraph, scopeId?: string) => void
 
-/** Pages are `CANVAS` nodes; layout recomputation is scoped to them. */
-function pageIdOf(graph: SceneGraph, nodeId: string): string | null {
-  return graph.closest(nodeId, (node) => node.type === 'CANVAS')?.id ?? null
-}
-
 /**
- * Only the pages that actually changed need layout work: the edited subtrees, the components
- * they belong to, and every instance of those components, which may sit on another page.
+ * A component and its instances need layout, including ancestor containers that can resize
+ * or reposition them. A free-positioned page's unrelated trees do not participate.
  */
-function affectedPageIds(
+function affectedLayoutScopeIds(
   graph: SceneGraph,
   editedIds: Iterable<string>,
   componentIds: Iterable<string>
 ): Set<string> {
-  const pageIds = new Set<string>()
-  const addPageOf = (nodeId: string) => {
-    const pageId = pageIdOf(graph, nodeId)
-    if (pageId) pageIds.add(pageId)
+  const scopeIds = new Set<string>()
+  const addScopeOf = (nodeId: string) => {
+    if (!graph.getNode(nodeId)) return
+    let scopeId = nodeId
+    let parentId = graph.getNode(nodeId)?.parentId
+    const visited = new Set<string>([nodeId])
+    while (parentId) {
+      const parent = graph.closest(parentId, (node) => node.layoutMode !== 'NONE')
+      if (!parent) break
+      if (visited.has(parent.id)) throw new Error('Cyclic component layout ancestry')
+      visited.add(parent.id)
+      scopeId = parent.id
+      parentId = parent.parentId
+    }
+    scopeIds.add(scopeId)
   }
 
-  for (const id of editedIds) addPageOf(id)
+  // Graph events include the old parent of a move and the surviving parent of a deletion.
+  // Keep those scopes even when they are outside a component or on its previous page.
+  for (const id of editedIds) addScopeOf(id)
   for (const componentId of componentIds) {
-    addPageOf(componentId)
-    for (const instance of graph.getInstances(componentId)) addPageOf(instance.id)
+    addScopeOf(componentId)
+    for (const instance of graph.getInstances(componentId)) addScopeOf(instance.id)
   }
-  return pageIds
+  return new Set(
+    [...scopeIds].filter((id) => {
+      const parentId = graph.getNode(id)?.parentId
+      return !parentId || !graph.closest(parentId, (node) => scopeIds.has(node.id))
+    })
+  )
 }
 
 export function createComponentSyncScheduler(
@@ -92,9 +105,8 @@ export function createComponentSyncScheduler(
         graph.syncInstances(compId, removed)
       }
       if (componentIds.size > 0) {
-        const pageIds = affectedPageIds(graph, ids, ordered)
-        if (pageIds.size === 0) computeLayouts(graph)
-        else for (const pageId of pageIds) computeLayouts(graph, pageId)
+        for (const scopeId of affectedLayoutScopeIds(graph, ids, ordered))
+          computeLayouts(graph, scopeId)
         requestRender()
       }
     } finally {
