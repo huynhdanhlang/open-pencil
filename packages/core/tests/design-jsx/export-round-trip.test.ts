@@ -30,7 +30,7 @@ test('leaf Fill survives component instances, complete JSX and FIG Save at large
     paddingRight: 8
   })
   for (const type of ['TEXT', 'RECTANGLE'] as const) {
-    const child = graph.createNode(type, source.id, {
+    graph.createNode(type, source.id, {
       name: type === 'TEXT' ? 'Counter' : 'Camera',
       width: 228,
       height: 24,
@@ -38,11 +38,14 @@ test('leaf Fill survives component instances, complete JSX and FIG Save at large
       textAutoResize: 'NONE',
       textAlignHorizontal: 'RIGHT'
     })
+  }
+  const instance = expectDefined(graph.createInstance(source.id, api.currentPageId), 'instance')
+  for (const child of graph.getChildren(source.id)) {
     setLayoutChild.execute(api, { id: child.id, sizing_horizontal: 'FILL' })
     expect(api.getNodeById(child.id)?.layoutSizingHorizontal).toBe('FILL')
   }
   computeLayout(graph, source.id)
-  const instance = expectDefined(graph.createInstance(source.id, api.currentPageId), 'instance')
+  graph.syncInstances(source.id)
   graph.updateNode(instance.id, { width: 1000 })
   computeLayout(graph, instance.id)
   expect(graph.getChildren(instance.id).map((node) => node.width)).toEqual([984, 984])
@@ -81,6 +84,7 @@ test('leaf Fill survives component instances, complete JSX and FIG Save at large
       id: savedInstance.id,
       width: 320
     })
+    await Promise.resolve()
     expect(restored.getChildren(savedInstance.id).map((node) => node.width)).toEqual([304, 304])
     await editor.runMutationWithLayout(() => {
       restored.updateNode(restoredSource.id, { width: 320 })

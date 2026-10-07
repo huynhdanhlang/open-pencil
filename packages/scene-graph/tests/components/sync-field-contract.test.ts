@@ -4,6 +4,45 @@ import { SceneGraph, setInstanceOverride } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '../helpers/assert'
 
+test('existing children inherit changed layout-child fields while root placement and explicit overrides stay owned', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const component = graph.createNode('COMPONENT', page.id)
+  const source = graph.createNode('RECTANGLE', component.id)
+  const instance = expectDefined(graph.createInstance(component.id, page.id))
+  const child = graph.getChildren(instance.id)[0]
+  graph.updateNode(instance.id, {
+    layoutGrow: 4,
+    layoutAlignSelf: 'MAX',
+    layoutPositioning: 'ABSOLUTE'
+  })
+  graph.updateNode(source.id, {
+    layoutGrow: 2,
+    layoutAlignSelf: 'STRETCH',
+    layoutPositioning: 'ABSOLUTE'
+  })
+  graph.syncInstances(component.id)
+  expect([child.layoutGrow, child.layoutAlignSelf, child.layoutPositioning]).toEqual([
+    2,
+    'STRETCH',
+    'ABSOLUTE'
+  ])
+  expect([instance.layoutGrow, instance.layoutAlignSelf, instance.layoutPositioning]).toEqual([
+    4,
+    'MAX',
+    'ABSOLUTE'
+  ])
+  graph.updateNode(child.id, { layoutAlignSelf: 'CENTER' })
+  setInstanceOverride(instance.instanceOverrides, instance.id, child.id, 'layoutAlignSelf', true)
+  graph.updateNode(source.id, { layoutGrow: 3, layoutPositioning: 'AUTO' })
+  graph.syncInstances(component.id)
+  expect([child.layoutGrow, child.layoutAlignSelf, child.layoutPositioning]).toEqual([
+    3,
+    'CENTER',
+    'AUTO'
+  ])
+})
+
 test('updates existing child placement and text sizing without moving the instance root', () => {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]

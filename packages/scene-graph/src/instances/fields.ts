@@ -64,6 +64,11 @@ export const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
 export const INSTANCE_SYNC_FIELDS = [
   ...INSTANCE_SYNC_PROPS,
   ...INSTANCE_SYNC_TEXT_PROPS,
+  // A child's flow belongs to its enclosing component; an instance root's
+  // placement/grow/alignment belongs to the container where it is placed.
+  'layoutGrow',
+  'layoutAlignSelf',
+  'layoutPositioning',
   // Child coordinates belong to the component; root instance placement belongs to its page.
   'x',
   'y',
