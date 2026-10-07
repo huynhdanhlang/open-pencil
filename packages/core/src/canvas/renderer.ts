@@ -54,7 +54,8 @@ import type {
   ImageFilter,
   MaskFilter,
   RuntimeEffect,
-  Paragraph
+  Paragraph,
+  GrDirectContext
 } from 'canvaskit-wasm'
 
 export interface SubtreePictureCacheEntry {
@@ -79,6 +80,11 @@ import type { PresenceCursor, RenderOverlays, RulerTheme } from './renderer/type
 export class SkiaRenderer {
   ck: CanvasKit
   surface: Surface
+  /** Borrowed from the surface owner; diagnostics never delete or tune this context. */
+  resourceCacheContext: Pick<
+    GrDirectContext,
+    'getResourceCacheUsageBytes' | 'getResourceCacheLimitBytes'
+  > | null = null
   declare fillPaint: Paint
   diamondGradientEffect: RuntimeEffect | null = null
   declare strokePaint: Paint
@@ -481,9 +487,13 @@ export class SkiaRenderer {
       for (const entry of cache.values()) paths += entry.length
     }
     return {
+      layer: this.tracksSceneSettlement ? ('scene' as const) : ('overlays' as const),
       // CanvasKit is shared by document renderers; capacity is a high-water mark, not live bytes.
       wasmHeapScope: 'shared-canvaskit' as const,
       wasmHeapCapacityBytes: heap instanceof Uint8Array ? heap.byteLength : null,
+      // This measures Gr's resource cache, not all GPU memory or JS/WASM allocation.
+      gpuResourceCacheBytes: this.resourceCacheContext?.getResourceCacheUsageBytes() ?? null,
+      gpuResourceCacheLimitBytes: this.resourceCacheContext?.getResourceCacheLimitBytes() ?? null,
       decodedImages: this.imageCache.size,
       decodedImageBudgetBytes: this.imageCache.weight,
       paths,

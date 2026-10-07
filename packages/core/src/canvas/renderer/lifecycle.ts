@@ -30,6 +30,7 @@ function disposePathCaches(r: SkiaRenderer): void {
 export function destroyRenderer(r: SkiaRenderer): void {
   if (r.destroyed) return
   r.destroyed = true
+  r.resourceCacheContext = null
   r.transientPreviews.clear()
 
   r.imageCache.clear()

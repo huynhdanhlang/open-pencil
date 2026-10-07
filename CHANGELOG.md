@@ -232,7 +232,7 @@
 
 ### Performance
 
-- Retire obsolete FIG workers, preserve unchanged-file Save across page population, recover exited app-managed MCP servers, and expose read-only renderer/Undo diagnostics through `get_runtime_status`.
+- Retire obsolete FIG workers, preserve unchanged-file Save across page population, recover exited app-managed MCP servers, and expose read-only per-surface renderer, GPU resource-cache and Undo diagnostics through `get_runtime_status`.
 
 - Edit variables in large documents without stalls: renaming, reordering, or adding a variable, or changing its CSS name, unit, scopes, or conditions, no longer redraws the canvas, and changing a value or mode updates only the layers bound to those variables or to variables aliasing them instead of re-resolving and laying out every bound layer in the document.
 - Open large `.fig` files with less memory in the macOS desktop app and Safari: imported layers now share one object layout in JavaScriptCore instead of each being stored as a slower, larger dictionary.

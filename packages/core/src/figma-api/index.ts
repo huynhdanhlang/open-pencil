@@ -112,11 +112,17 @@ export class FigmaAPI implements NodeProxyHost {
   }
 
   runtimeHistory: RuntimeHistory | null = null
+  runtimeRenderers: (() => ReturnType<SkiaRenderer['getResourceUsage']>[]) | null = null
 
   getRuntimeStatus() {
     return {
       document: readDocumentRuntimeStatus(this.graph),
       renderer: this._renderer?.getResourceUsage() ?? null,
+      rendererScope: this.runtimeRenderers
+        ? ('registered-surfaces' as const)
+        : ('primary-only' as const),
+      renderers:
+        this.runtimeRenderers?.() ?? (this._renderer ? [this._renderer.getResourceUsage()] : []),
       history: this.runtimeHistory?.() ?? null
     }
   }
