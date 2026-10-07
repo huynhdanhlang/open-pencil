@@ -2,6 +2,7 @@ import { watchDebounced } from '@vueuse/core'
 import { watch, type WatchHandle } from 'vue'
 
 import type { EditorState } from '@open-pencil/core/editor'
+import type { RuntimePersistenceStatus } from '@open-pencil/core/figma-api'
 
 import { getRecoveryStore } from '@/app/document/recovery/store'
 import type { RecoveryStore } from '@/app/document/recovery/types'
@@ -25,6 +26,7 @@ export interface DocumentRecoveryController {
   markProtectedVersion(version: number): Promise<void>
   discardRecovery(): Promise<void>
   disposeRecovery(): void
+  getDiagnostics(): RuntimePersistenceStatus['recovery']
 }
 
 export function createDocumentRecovery({
@@ -43,20 +45,43 @@ export function createDocumentRecovery({
   let writing: Promise<void> | null = null
   let cleanup: Promise<void> = Promise.resolve()
   let disposed = false
+  const metrics = {
+    builds: 0,
+    writes: 0,
+    building: false,
+    writingBytes: 0,
+    lastBuiltBytes: 0,
+    failures: 0
+  }
 
   async function runWrites(generation: number): Promise<void> {
     if (disposed || generation !== lifecycleGeneration || !isEnabled()) return
     if (requestedVersion === protectedVersion || requestedVersion === persistedVersion) return
     const version = requestedVersion
     const sceneVersion = state.sceneVersion
-    const bytes = await buildFigFile()
+    let bytes: Uint8Array
+    metrics.building = true
+    try {
+      bytes = await buildFigFile()
+      metrics.builds++
+      metrics.lastBuiltBytes = bytes.byteLength
+    } catch (error) {
+      metrics.failures++
+      throw error
+    } finally {
+      metrics.building = false
+    }
     if (generation !== lifecycleGeneration || !isEnabled()) return
-    await store.write({
-      id,
-      documentName: state.documentName,
-      sceneVersion,
-      figBytes: bytes
-    })
+    metrics.writingBytes = bytes.byteLength
+    try {
+      await store.write({ id, documentName: state.documentName, sceneVersion, figBytes: bytes })
+      metrics.writes++
+    } catch (error) {
+      metrics.failures++
+      throw error
+    } finally {
+      metrics.writingBytes = 0
+    }
     persistedVersion = version
     if (generation !== lifecycleGeneration) return
     protectedVersion = version
@@ -117,6 +142,12 @@ export function createDocumentRecovery({
   }
 
   return {
+    getDiagnostics: () => ({
+      ...metrics,
+      persistedVersion,
+      pendingRevision:
+        requestedVersion !== protectedVersion && requestedVersion !== persistedVersion
+    }),
     getRecoveryId: () => id,
     async adoptRecoverySnapshot(nextId) {
       const previousId = id

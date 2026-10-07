@@ -7,6 +7,7 @@ type AutosaveState = EditorState & { autosaveEnabled: boolean }
 type AutosaveOptions = {
   state: AutosaveState
   getSavedVersion: () => number
+  hasUnsavedChanges: () => boolean
   hasWritableSource: () => boolean
   saveCurrentDocument: (version: number) => Promise<void>
 }
@@ -14,6 +15,7 @@ type AutosaveOptions = {
 export function createAutosave({
   state,
   getSavedVersion,
+  hasUnsavedChanges,
   hasWritableSource,
   saveCurrentDocument
 }: AutosaveOptions) {
@@ -22,7 +24,12 @@ export function createAutosave({
   let disposed = false
 
   function canSave(version: number) {
-    return version > getSavedVersion() && state.autosaveEnabled && hasWritableSource()
+    return (
+      version > getSavedVersion() &&
+      hasUnsavedChanges() &&
+      state.autosaveEnabled &&
+      hasWritableSource()
+    )
   }
 
   async function runSaves() {

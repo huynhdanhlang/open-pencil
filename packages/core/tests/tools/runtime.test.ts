@@ -18,10 +18,35 @@ test('runtime diagnostics distinguish unavailable renderer from zero native reso
   expect(result).toMatchObject({
     document: { nodes: 3, images: 1, encodedImageBytes: 3 },
     renderer: null,
-    history: null
+    history: null,
+    persistence: null
   })
   expect(JSON.stringify(result)).not.toContain('private')
   expect(graph.nodes.size).toBe(3)
+})
+
+test('runtime persistence counters read the current owner without retaining or exposing FIG payloads', () => {
+  const api = new FigmaAPI(new SceneGraph())
+  let writingBytes = 81_000_000
+  api.runtimePersistence = () => ({
+    contentRevision: 2,
+    dirty: true,
+    memoryFallback: false,
+    recovery: {
+      builds: 1,
+      writes: 0,
+      building: false,
+      writingBytes,
+      lastBuiltBytes: 81_000_000,
+      failures: 0,
+      persistedVersion: null,
+      pendingRevision: true
+    }
+  })
+  expect(api.getRuntimeStatus().persistence?.recovery.writingBytes).toBe(81_000_000)
+  writingBytes = 0
+  expect(api.getRuntimeStatus().persistence?.recovery.writingBytes).toBe(0)
+  expect(Object.keys(api.getRuntimeStatus().persistence!.recovery)).not.toContain('figBytes')
 })
 
 test('runtime diagnostics report retained native paths and their release without clearing them', async () => {

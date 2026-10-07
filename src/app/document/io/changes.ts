@@ -13,17 +13,22 @@ export function createDocumentChanges(editor: Editor) {
   const changed = () => {
     revision.value++
   }
+  // Lazy import materializes content already in the file. It must still reach the
+  // renderer, but must not queue another full FIG export for Save or recovery.
+  const contentChanged = () => {
+    if (!editor.graph.isApplyingImportedState) changed()
+  }
   // Layout derives sizes and positions from the document; opening a page or loading a font
   // relays it out without an edit, and an edit that relays it out has already counted.
   const updated = () => {
-    if (!editor.graph.isApplyingLayout) changed()
+    if (!editor.graph.isApplyingLayout) contentChanged()
   }
   const unsubscribers = [
-    editor.onEditorEvent('node:created', changed),
+    editor.onEditorEvent('node:created', contentChanged),
     editor.onEditorEvent('node:updated', updated),
-    editor.onEditorEvent('node:deleted', changed),
-    editor.onEditorEvent('node:reparented', changed),
-    editor.onEditorEvent('node:reordered', changed),
+    editor.onEditorEvent('node:deleted', contentChanged),
+    editor.onEditorEvent('node:reparented', contentChanged),
+    editor.onEditorEvent('node:reordered', contentChanged),
     editor.onEditorEvent('graph:replaced', changed),
     editor.onEditorEvent('history:changed', changed)
   ]

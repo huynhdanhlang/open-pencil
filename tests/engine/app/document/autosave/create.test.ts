@@ -21,9 +21,11 @@ function setup(saveCurrentDocument: (version: number) => Promise<void>) {
   })
   let savedVersion = 0
   let writable = true
+  let dirty = true
   const autosave = createAutosave({
     state,
     getSavedVersion: () => savedVersion,
+    hasUnsavedChanges: () => dirty,
     hasWritableSource: () => writable,
     saveCurrentDocument: async (version) => {
       await saveCurrentDocument(version)
@@ -35,11 +37,29 @@ function setup(saveCurrentDocument: (version: number) => Promise<void>) {
     autosave,
     setWritable: (value: boolean) => {
       writable = value
+    },
+    setDirty: (value: boolean) => {
+      dirty = value
     }
   }
 }
 
 describe('document autosave', () => {
+  test('scene repaint revisions cannot serialize clean content; actual edits still save', async () => {
+    const versions: number[] = []
+    const { autosave, state, setDirty } = setup(async (version) => {
+      versions.push(version)
+    })
+    setDirty(false)
+    state.sceneVersion = 100
+    await autosave.requestSave(100)
+    expect(versions).toEqual([])
+    setDirty(true)
+    state.sceneVersion = 101
+    await autosave.requestSave(101)
+    expect(versions).toEqual([101])
+    autosave.disposeAutosave()
+  })
   test('skips saved versions and documents without writable sources', async () => {
     const versions: number[] = []
     const { state, autosave, setWritable } = setup(async (version) => {

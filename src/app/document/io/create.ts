@@ -104,6 +104,7 @@ export function createDocumentIOActions(
     openDOMFile,
     importDOMText,
     hasUnsavedChanges: sourceActions.hasUnsavedChanges,
+    getPersistenceStatus: sourceActions.getPersistenceStatus,
     saveFigFile: sourceActions.saveFigFile,
     saveFigFileAs: sourceActions.saveFigFileAs
   }

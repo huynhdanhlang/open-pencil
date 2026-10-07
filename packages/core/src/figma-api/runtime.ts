@@ -5,6 +5,22 @@ import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import { canUseFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export type RuntimeHistory = () => { undo: number; redo: number; batches: number }
+/** Numeric ownership counters only; never expose recovery payloads or source paths. */
+export interface RuntimePersistenceStatus {
+  contentRevision: number
+  dirty: boolean
+  memoryFallback: boolean
+  recovery: {
+    builds: number
+    writes: number
+    building: boolean
+    writingBytes: number
+    lastBuiltBytes: number
+    failures: number
+    persistedVersion: number | null
+    pendingRevision: boolean
+  }
+}
 
 export function readDocumentRuntimeStatus(graph: SceneGraph) {
   let encodedImageBytes = 0

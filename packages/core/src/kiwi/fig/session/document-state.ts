@@ -118,16 +118,25 @@ export function releaseReaderRecovery(graph: SceneGraph): void {
 export function recoverReaderPage(graph: SceneGraph, pageId: string): boolean {
   const state = states.get(graph)
   if (!state) throw new Error('No reader recovery state')
-  if (!state.session) {
-    if (!state.checkpoint) throw new Error('Missing reader checkpoint')
-    state.session = createFigDocumentSession(state.bytes, readerSessionOptions(state.diagnostics), {
-      graph,
-      checkpoint: checkpointForLiveGraph(graph, state.checkpoint)
-    })
-  }
-  const page = state.session.pages.find((page) => state.session?.graphPageId(page.id) === pageId)
-  if (!page) throw new Error(`Unknown graph page ${pageId}`)
-  const populated = !state.session.loadedPageIds.has(page.id)
-  state.session.loadPage(page.id)
+  let populated = false
+  // Reader transactions deliver buffered events before returning. Keep both
+  // resume and load inside the import boundary, matching worker delta delivery.
+  graph.applyImportedStateDuring(() => {
+    if (!state.session) {
+      if (!state.checkpoint) throw new Error('Missing reader checkpoint')
+      state.session = createFigDocumentSession(
+        state.bytes,
+        readerSessionOptions(state.diagnostics),
+        {
+          graph,
+          checkpoint: checkpointForLiveGraph(graph, state.checkpoint)
+        }
+      )
+    }
+    const page = state.session.pages.find((page) => state.session?.graphPageId(page.id) === pageId)
+    if (!page) throw new Error(`Unknown graph page ${pageId}`)
+    populated = !state.session.loadedPageIds.has(page.id)
+    state.session.loadPage(page.id)
+  })
   return populated
 }

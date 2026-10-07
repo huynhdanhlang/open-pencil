@@ -64,6 +64,58 @@ function setup(
 }
 
 describe('document recovery controller', () => {
+  test('diagnostics bound pending archive bytes and release them after a durable write', async () => {
+    const deferred = deferredWriteStore()
+    const { state, recovery } = setup(async () => new Uint8Array(1024), true, deferred.store)
+    state.sceneVersion = 1
+    const pending = recovery.persistNow()
+    for (let attempt = 0; attempt < 10 && !recovery.getDiagnostics().writingBytes; attempt++)
+      await Promise.resolve()
+    expect(recovery.getDiagnostics()).toMatchObject({
+      builds: 1,
+      writes: 0,
+      building: false,
+      writingBytes: 1024,
+      lastBuiltBytes: 1024
+    })
+    deferred.release()
+    await pending
+    expect(recovery.getDiagnostics()).toMatchObject({
+      writingBytes: 0,
+      writes: 1,
+      persistedVersion: 1
+    })
+    recovery.disposeRecovery()
+  })
+  test('failed recovery writes release active bytes while preserving the retryable revision', async () => {
+    const memory = createMemoryRecoveryStore()
+    let failed = true
+    const { state, recovery } = setup(async () => new Uint8Array(1024), true, {
+      ...memory,
+      write: async (input) => {
+        if (failed) throw new Error('owned write failure')
+        return memory.write(input)
+      }
+    })
+    state.sceneVersion = 1
+    await expect(recovery.persistNow()).rejects.toThrow('owned write failure')
+    expect(recovery.getDiagnostics()).toMatchObject({
+      building: false,
+      writingBytes: 0,
+      failures: 1,
+      writes: 0,
+      pendingRevision: true,
+      persistedVersion: null
+    })
+    failed = false
+    await recovery.persistNow()
+    expect(recovery.getDiagnostics()).toMatchObject({
+      writes: 1,
+      pendingRevision: false,
+      persistedVersion: 1
+    })
+    recovery.disposeRecovery()
+  })
   test('page/render revisions do not export clean or unchanged dirty content', async () => {
     const state = reactive({ ...createDefaultEditorState('page-1'), documentName: 'Draft' })
     const revision = ref(0)

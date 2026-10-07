@@ -56,6 +56,7 @@ import {
   readDocumentRuntimeStatus,
   readViewport,
   type FigmaViewport,
+  type RuntimePersistenceStatus,
   type RuntimeHistory
 } from './runtime'
 import type { ExportImageOptions } from './types'
@@ -63,6 +64,7 @@ import type { ExportImageOptions } from './types'
 const noop = () => undefined
 
 export { FigmaNodeProxy } from './proxy'
+export type { RuntimePersistenceStatus } from './runtime'
 export type { FigmaEffect } from './effects'
 export type { ExportImageOptions } from './types'
 export type {
@@ -113,6 +115,7 @@ export class FigmaAPI implements NodeProxyHost {
 
   runtimeHistory: RuntimeHistory | null = null
   runtimeRenderers: (() => ReturnType<SkiaRenderer['getResourceUsage']>[]) | null = null
+  runtimePersistence: (() => RuntimePersistenceStatus) | null = null
 
   getRuntimeStatus() {
     return {
@@ -123,7 +126,8 @@ export class FigmaAPI implements NodeProxyHost {
         : ('primary-only' as const),
       renderers:
         this.runtimeRenderers?.() ?? (this._renderer ? [this._renderer.getResourceUsage()] : []),
-      history: this.runtimeHistory?.() ?? null
+      history: this.runtimeHistory?.() ?? null,
+      persistence: this.runtimePersistence?.() ?? null
     }
   }
 
