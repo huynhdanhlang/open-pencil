@@ -1,10 +1,6 @@
-use tauri::Emitter;
-
-#[cfg(debug_assertions)]
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event_id: &str) {
-    #[cfg(debug_assertions)]
     if event_id == "dev-tools" {
         if let Some(window) = app.get_webview_window("main") {
             if window.is_devtools_open() {

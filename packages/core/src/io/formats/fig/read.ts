@@ -43,6 +43,9 @@ export function parseFigFileViaWorker(
 ): Promise<SceneGraph> {
   return new Promise((resolve, reject) => {
     options.signal?.throwIfAborted()
+    // Capture immutable recovery bytes before yielding to the worker. The caller may
+    // reuse its input while parsing; a later copy would silently change Save/recovery.
+    const archive = buffer.slice(0)
     const worker = createFigSessionWorker()
     const channel = new MessageChannel()
     const pendingArchives = new Map<string, (bytes: Uint8Array) => void>()
@@ -86,7 +89,6 @@ export function parseFigFileViaWorker(
         if (options.populate === 'first-page' || options.populate === 'none') {
           cleanupAbort()
           if (!e.data.checkpoint) throw new Error('Missing reader checkpoint')
-          const archive = buffer.slice(0)
           registerReaderRecovery(graph, archive, e.data.checkpoint)
           registerOriginalArchiveRequest(
             graph,
@@ -134,16 +136,17 @@ export function parseFigFileViaWorker(
       worker.terminate()
       reject(new Error(err.message || 'Worker failed to parse .fig file'))
     }
-    const workerBuffer = buffer.slice(0)
-    const archiveBuffer = buffer.slice(0)
+    // Parsing only reads the archive. Both worker owners can borrow one transferred
+    // buffer; preserve a separate immutable host copy for recovery after retirement.
+    const workerBuffer = archive.slice(0)
     const request: FigSessionOpenRequest = {
       type: 'open',
       originalBuffer: workerBuffer,
-      archiveBuffer,
+      archiveBuffer: workerBuffer,
       options: { populate: options.populate },
       port: channel.port2
     }
-    worker.postMessage(request, [workerBuffer, archiveBuffer, channel.port2])
+    worker.postMessage(request, [workerBuffer, channel.port2])
   })
 }
 

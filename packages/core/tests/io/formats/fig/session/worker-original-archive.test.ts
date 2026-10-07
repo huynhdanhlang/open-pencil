@@ -42,3 +42,21 @@ test('populating another imported page and deriving layout preserves the origina
     releaseFigPopulationWorker(opened)
   }
 }, 20000)
+
+test('worker retirement preserves the opening archive when the caller reuses its input buffer', async () => {
+  const source = new SceneGraph()
+  source.createNode('TEXT', source.getPages()[0].id, { text: 'First' })
+  source.createNode('TEXT', source.addPage('Second').id, { text: 'Second' })
+  const bytes = await exportFigFile(source)
+  const input = bytes.slice().buffer
+  const pending = parseFigFileViaWorker(input, { populate: 'first-page' })
+  new Uint8Array(input).fill(0)
+  const opened = await pending
+  try {
+    const client = expectDefined(createFigPopulationWorker(opened))
+    expect(await client.populate(opened.getPages()[1].id)).toBe(true)
+    expect(Buffer.from(await exportFigFile(opened)).equals(bytes)).toBe(true)
+  } finally {
+    releaseFigPopulationWorker(opened)
+  }
+}, 20000)

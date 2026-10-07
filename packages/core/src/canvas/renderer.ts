@@ -77,6 +77,9 @@ import { TiledSceneController } from './renderer/tiles'
 import type { TransientCanvasPreview } from './renderer/transient-previews'
 import type { PresenceCursor, RenderOverlays, RulerTheme } from './renderer/types'
 
+const canvasKitModuleIds = new WeakMap<CanvasKit, number>()
+let nextCanvasKitModuleId = 1
+
 export class SkiaRenderer {
   ck: CanvasKit
   surface: Surface
@@ -476,6 +479,11 @@ export class SkiaRenderer {
   /** Counts are ownership diagnostics, not estimates of total native allocation. */
   getResourceUsage() {
     const heap = Reflect.get(this.ck, 'HEAPU8') as unknown
+    let wasmModuleId = canvasKitModuleIds.get(this.ck)
+    if (wasmModuleId === undefined) {
+      wasmModuleId = nextCanvasKitModuleId++
+      canvasKitModuleIds.set(this.ck, wasmModuleId)
+    }
     let paths = 0
     for (const cache of [
       this.vectorPathCache,
@@ -488,8 +496,9 @@ export class SkiaRenderer {
     }
     return {
       layer: this.tracksSceneSettlement ? ('scene' as const) : ('overlays' as const),
-      // CanvasKit is shared by document renderers; capacity is a high-water mark, not live bytes.
+      // Deduplicate capacity by module identity; capacity is not live allocation or RSS.
       wasmHeapScope: 'shared-canvaskit' as const,
+      wasmModuleId,
       wasmHeapCapacityBytes: heap instanceof Uint8Array ? heap.byteLength : null,
       // This measures Gr's resource cache, not all GPU memory or JS/WASM allocation.
       gpuResourceCacheBytes: this.resourceCacheContext?.getResourceCacheUsageBytes() ?? null,

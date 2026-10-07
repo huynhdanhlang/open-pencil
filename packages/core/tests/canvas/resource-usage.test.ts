@@ -1,6 +1,6 @@
 import { beforeAll, expect, mock, test } from 'bun:test'
 
-import type { CanvasKit } from 'canvaskit-wasm'
+import CanvasKitInit, { type CanvasKit } from 'canvaskit-wasm'
 
 import { SkiaRenderer } from '@open-pencil/core/canvas'
 import { initCanvasKit } from '@open-pencil/core/io'
@@ -25,6 +25,30 @@ test('software surfaces report unavailable GPU cache bytes explicitly', () => {
     })
   } finally {
     renderer.destroy()
+  }
+})
+
+test('heap diagnostics identify the owning module across surfaces', async () => {
+  const scene = makeRenderer()
+  const overlay = makeRenderer()
+  const otherKit = await CanvasKitInit({
+    locateFile: (file) =>
+      decodeURIComponent(new URL(file, import.meta.resolve('canvaskit-wasm')).pathname)
+  })
+  const otherSurface = otherKit.MakeSurface(1, 1)
+  if (!otherSurface) throw new Error('Cannot create independent diagnostic surface')
+  const independent = new SkiaRenderer(otherKit, otherSurface)
+  try {
+    const sceneUsage = scene.getResourceUsage()
+    const overlayUsage = overlay.getResourceUsage()
+    expect(sceneUsage.wasmModuleId).toBeGreaterThan(0)
+    expect(overlayUsage.wasmModuleId).toBe(sceneUsage.wasmModuleId)
+    expect(overlayUsage.wasmHeapCapacityBytes).toBe(sceneUsage.wasmHeapCapacityBytes)
+    expect(independent.getResourceUsage().wasmModuleId).not.toBe(sceneUsage.wasmModuleId)
+  } finally {
+    scene.destroy()
+    overlay.destroy()
+    independent.destroy()
   }
 })
 
