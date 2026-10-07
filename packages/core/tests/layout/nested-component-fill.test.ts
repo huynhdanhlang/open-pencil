@@ -8,10 +8,11 @@ import { computeLayout } from '#core/layout'
 test.each([
   ['COMPONENT', 'FIXED'],
   ['COMPONENT', 'HUG'],
-  ['FRAME', 'FIXED']
+  ['FRAME', 'FIXED'],
+  ['COMPONENT', 'FIXED', 'HUG']
 ] as const)(
   'nested %s with %s height follows live and saved enclosing instance sizes',
-  async (type, primaryAxisSizing) => {
+  async (type, primaryAxisSizing, counterAxisSizing = 'FILL') => {
     const graph = new SceneGraph()
     const source = graph.createNode('COMPONENT', graph.getPages()[0].id, {
       name: 'Focus',
@@ -27,7 +28,7 @@ test.each([
       height: 124,
       layoutMode: 'VERTICAL',
       primaryAxisSizing,
-      counterAxisSizing: 'FILL',
+      counterAxisSizing,
       layoutAlignSelf: 'STRETCH',
       paddingLeft: 8,
       paddingRight: 8,
@@ -70,7 +71,7 @@ test.each([
     const savedControl = restored.getChildren(savedInstance.id)[0]
     expect(savedControl.type).toBe(type)
     // Figma stores cross Fill as STRETCH; import restores FIXED axis sizing.
-    expect(savedControl.counterAxisSizing).toBe('FIXED')
+    expect(savedControl.counterAxisSizing).toBe(counterAxisSizing === 'HUG' ? 'HUG' : 'FIXED')
     expect(savedControl.layoutAlignSelf).toBe('STRETCH')
     const cachedWidth = savedControl.derivedLayout?.width
     for (const width of [1000, 358, 320, 358]) {

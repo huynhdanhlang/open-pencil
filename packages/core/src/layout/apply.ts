@@ -128,6 +128,26 @@ export function usesGeneratedParentSize(
   return primary ? child.layoutGrow > 0 : stretches
 }
 
+export function usesAuthoritativeGeneratedStretch(parent: SceneNode, child: SceneNode): boolean {
+  const crossAxis = parent.layoutMode === 'HORIZONTAL' ? 'height' : 'width'
+  if (usesGeneratedParentSize(child, parent, crossAxis)) return true
+  if (
+    child.layoutAlignSelf !== 'STRETCH' ||
+    parent.source.format === 'fig' ||
+    !parent.derivedLayout
+  )
+    return false
+  const derivedCrossSize = parent.derivedLayout[crossAxis]
+  return derivedCrossSize !== undefined && Math.abs(derivedCrossSize - parent[crossAxis]) < 0.001
+}
+
+export function needsIntrinsicHugCrossMinimum(graph: SceneGraph, parent: SceneNode): boolean {
+  if (parent.counterAxisSizing !== 'HUG') return false
+  const outer = parent.parentId ? graph.getNode(parent.parentId) : undefined
+  const crossAxis = parent.layoutMode === 'HORIZONTAL' ? 'height' : 'width'
+  return !usesGeneratedParentSize(parent, outer, crossAxis)
+}
+
 function computedChildSize(
   child: SceneNode,
   yogaChild: YogaNode,

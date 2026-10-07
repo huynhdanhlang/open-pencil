@@ -13,7 +13,13 @@ import {
 
 import { resolveNodeLayoutDirection } from '@open-pencil/scene-graph/text-direction'
 
-import { applyYogaLayout, retainedFrameLayoutSize, usesGeneratedParentSize } from './layout/apply'
+import {
+  applyYogaLayout,
+  needsIntrinsicHugCrossMinimum,
+  retainedFrameLayoutSize,
+  usesAuthoritativeGeneratedStretch,
+  usesGeneratedParentSize
+} from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
@@ -277,20 +283,6 @@ function derivedMainAxisFitsParent(
   )
 }
 
-function usesAuthoritativeGeneratedStretch(parent: SceneNode, child: SceneNode): boolean {
-  if (
-    child.layoutAlignSelf !== 'STRETCH' ||
-    parent.source.format === 'fig' ||
-    !parent.derivedLayout
-  ) {
-    return false
-  }
-  const derivedCrossSize =
-    parent.layoutMode === 'HORIZONTAL' ? parent.derivedLayout.height : parent.derivedLayout.width
-  const parentCrossSize = parent.layoutMode === 'HORIZONTAL' ? parent.height : parent.width
-  return derivedCrossSize !== undefined && Math.abs(derivedCrossSize - parentCrossSize) < 0.001
-}
-
 function configureAutoLayoutChildSizing(
   yogaChild: YogaNode,
   child: SceneNode,
@@ -302,9 +294,7 @@ function configureAutoLayoutChildSizing(
   const isParentRow = parent.layoutMode === 'HORIZONTAL'
   const mainAxis = isParentRow ? 'width' : 'height'
   const fixedDerivedMainAxis = derivedMainAxisFitsParent(graph, parent, child, mainAxis)
-  const stretchesAuthoritativeCrossAxis =
-    usesGeneratedParentSize(child, parent, isParentRow ? 'height' : 'width') ||
-    usesAuthoritativeGeneratedStretch(parent, child)
+  const stretchesAuthoritativeCrossAxis = usesAuthoritativeGeneratedStretch(parent, child)
 
   if (isParentRow) {
     if (fixedDerivedMainAxis) yogaChild.setWidth(child.derivedLayout?.width ?? child.width)
@@ -341,8 +331,10 @@ function configureChildAsAutoLayout(
 
   if (usesDetachedDerivedLayout(child)) {
     const derived = child.derivedLayout
-    if (widthSizing === 'HUG') yogaChild.setWidth(derived?.width ?? child.width)
-    if (heightSizing === 'HUG') yogaChild.setHeight(derived?.height ?? child.height)
+    if (widthSizing === 'HUG' && !usesGeneratedParentSize(child, parent, 'width'))
+      yogaChild.setWidth(derived?.width ?? child.width)
+    if (heightSizing === 'HUG' && !usesGeneratedParentSize(child, parent, 'height'))
+      yogaChild.setHeight(derived?.height ?? child.height)
     applyMinMaxConstraints(yogaChild, child)
     return
   }
@@ -468,9 +460,9 @@ function configureChildAsLeaf(
     configureTextLeafWithoutMeasurer(yogaChild, child, parent, fixedDerivedMainAxis)
   } else {
     configureNonTextLeaf(yogaChild, child, isRow, stretchCross)
-    // Fixed text still contributes its box to a HUG cross axis. Without
-    // an intrinsic minimum, stretch collapses the text to its siblings.
-    if (isText && stretchCross && parent.counterAxisSizing === 'HUG') {
+    // Intrinsic text contributes to an unconstrained Hug axis, while an
+    // enclosing generated layout can own that parent's cross dimension.
+    if (isText && stretchCross && needsIntrinsicHugCrossMinimum(graph, parent)) {
       if (isRow) yogaChild.setMinHeight(child.height)
       else yogaChild.setMinWidth(child.width)
     }
