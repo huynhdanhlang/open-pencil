@@ -43,8 +43,8 @@ export const { renderJSX, renderTree, renderTreeRoots } = createDesignJSXRendere
     return icon && icon.paths.length > 0 ? icon : null
   },
   svg: svgIconData,
-  createArtwork: (graph, icon, { parentId, size, color, overrides }) =>
-    createIconFromPaths(graph, icon, icon.name, size, color, parentId, overrides),
+  createArtwork: (graph, icon, { parentId, size, color, colorVariableId, overrides }) =>
+    createIconFromPaths(graph, icon, icon.name, size, color, parentId, overrides, colorVariableId),
   layout: (graph, parentId) => {
     const parent = graph.getNode(parentId)
     const pageId = parent?.type === 'CANVAS' ? parentId : findPageId(graph, parentId)

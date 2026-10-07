@@ -9,12 +9,18 @@ import {
 
 import type { Editor } from '#core/editor/create'
 import type { FigmaAPI } from '#core/figma-api'
+import { updateNode } from '#core/tools/modify/update'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
+
+import { executeAtomicNodeTool } from './atomic-node'
 
 // Capture property changes across pages. Component synchronization remains editor-owned.
 const MAX_TRANSACTION_NODES = 20_000
 
-type MutationEditor = Pick<Editor, 'graph' | 'runLayoutForNode' | 'requestRender' | 'pushUndoEntry'>
+export type MutationEditor = Pick<
+  Editor,
+  'graph' | 'runLayoutForNode' | 'requestRender' | 'pushUndoEntry'
+>
 type Changes<T> = {
   id: string
   before: Partial<T>
@@ -84,6 +90,11 @@ export function executeAtomicTool(
     throw new Error('The target document is no longer open')
   }
   const graph = figma.graph
+  // Only this canonical property-only owner has the scoped mutation contract.
+  // Custom definitions, variable tools and other tools retain the document checkpoint.
+  if (def === updateNode) {
+    return executeAtomicNodeTool(editor, figma, def, args, MAX_TRANSACTION_NODES, options.label)
+  }
   if (graph.nodes.size + graph.variables.size > MAX_TRANSACTION_NODES) {
     throw new Error(
       `Document too large for atomic agent editing (maximum ${MAX_TRANSACTION_NODES} nodes and variables)`

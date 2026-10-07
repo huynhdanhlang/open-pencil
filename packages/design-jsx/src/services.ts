@@ -14,6 +14,8 @@ export interface ArtworkPlacement {
   parentId: string
   size: number
   color: Color
+  /** Bind only artwork paths whose authored paint is currentColor. */
+  colorVariableId?: string
   overrides: Partial<SceneNode>
 }
 

@@ -35,7 +35,7 @@ const DEFAULT_GRADIENT_TRANSFORM: GradientTransform = {
   m12: 0
 }
 
-const colorSchema = v.union([
+export const colorSchema = v.union([
   v.string(),
   v.object({ r: v.number(), g: v.number(), b: v.number(), a: v.number() })
 ])

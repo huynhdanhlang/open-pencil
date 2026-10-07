@@ -1,12 +1,10 @@
 import {
   createComponentPropertyId,
   setInstanceOverride,
-  type Color,
   type NodeType,
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import { parseColor } from '@open-pencil/scene-graph/color'
 import { refreshComponentSetVariants } from '@open-pencil/scene-graph/variant-properties'
 
 import type { RekaScope } from './behaviours'
@@ -16,14 +14,15 @@ import {
   componentMetadata,
   componentPropertyScope
 } from './component-properties'
-import { applySizeOverrides, propsToOverrides } from './props-overrides'
+import { propsToOverrides } from './props-overrides'
+import { renderArtworkNode } from './render-artwork'
 import { RenderCreationJournal } from './render-creation'
 import { prepareScalarBindings } from './scalar-bindings'
 import type { DesignJSXServices } from './services'
 import { FRAGMENT, isTreeNode } from './tree'
 import type { TreeNode } from './tree'
 import type { RenderOptions } from './types'
-import { isVariable, resolveVariableId, type DesignVariable } from './vars'
+import { isVariable, resolveVariableId, variableFallback } from './vars'
 
 const TYPE_MAP: Partial<Record<string, NodeType>> = {
   frame: 'FRAME',
@@ -146,12 +145,6 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function variableFallback(graph: SceneGraph, variable: DesignVariable): string | Color | undefined {
-  if (variable.value !== undefined && typeof variable.value !== 'number') return variable.value
-  const variableId = resolveVariableId(graph, variable)
-  return variableId ? graph.resolveColorVariable(variableId) : undefined
-}
-
 function bindVariableProp(
   graph: SceneGraph,
   props: Record<string, unknown>,
@@ -238,85 +231,6 @@ function applyBindings(graph: SceneGraph, nodeId: string, bindings: Record<strin
   for (const [field, variableId] of Object.entries(bindings)) {
     graph.bindVariable(nodeId, field, variableId)
   }
-}
-
-function applyIconSize(
-  props: Record<string, unknown>,
-  overrides: Partial<SceneNode>,
-  parentLayout: SceneNode['layoutMode'],
-  size: number
-): void {
-  const { w, h } = applySizeOverrides(props, overrides, parentLayout)
-  if (typeof w !== 'number') overrides.width = size
-  if (typeof h !== 'number') overrides.height = size
-}
-
-async function renderIconNode<Artwork>(
-  services: DesignJSXServices<Artwork>,
-  graph: SceneGraph,
-  tree: TreeNode,
-  journal: RenderCreationJournal,
-  parentId: string,
-  position: Pick<RenderOptions, 'x' | 'y'> = {}
-): Promise<SceneNode> {
-  const props = tree.props
-  const iconName = props.name as string | undefined
-  if (!iconName) throw new Error('<Icon> requires a name prop (e.g. name="lucide:heart")')
-
-  const size = (props.size as number | undefined) ?? 24
-  const artwork = await services.icon(iconName, size)
-  if (!artwork) throw new Error(`Icon "${iconName}" not found`)
-  return placeArtwork(services, graph, artwork, props, size, journal, parentId, position)
-}
-
-function placeArtwork<Artwork>(
-  services: DesignJSXServices<Artwork>,
-  graph: SceneGraph,
-  artwork: Artwork,
-  props: Record<string, unknown>,
-  size: number,
-  journal: RenderCreationJournal,
-  parentId: string,
-  position: Pick<RenderOptions, 'x' | 'y'>
-): SceneNode {
-  const parentLayout = graph.getNode(parentId)?.layoutMode ?? 'NONE'
-  const overrides: Partial<SceneNode> = {}
-  if (props.label) overrides.name = props.label as string
-  applyIconSize(props, overrides, parentLayout, size)
-  Object.assign(overrides, position)
-  const color = parseColor((props.color as string | undefined) ?? '#000000')
-  return journal.capture(() =>
-    services.createArtwork(graph, artwork, { parentId, size, color, overrides })
-  )
-}
-
-/**
- * Render an inline <svg> element into vector nodes through the same artwork path as
- * icons. The body may be string children or a `body` prop; parsed shape children work too.
- */
-function renderSVGNode<Artwork>(
-  services: DesignJSXServices<Artwork>,
-  graph: SceneGraph,
-  tree: TreeNode,
-  journal: RenderCreationJournal,
-  parentId: string,
-  position: Pick<RenderOptions, 'x' | 'y'>
-): SceneNode {
-  const props = tree.props
-  const explicitW = typeof props.w === 'number' ? props.w : 0
-  const explicitH = typeof props.h === 'number' ? props.h : 0
-  const size =
-    explicitW > 0 || explicitH > 0
-      ? Math.max(explicitW, explicitH)
-      : ((props.size as number | undefined) ?? 24)
-  const body =
-    (typeof props.body === 'string' && props.body) ||
-    tree.children.filter((c): c is string => typeof c === 'string').join('')
-  const artwork = services.svg({ body, elements: tree.children.filter(isTreeNode), props }, size)
-  if (!artwork) {
-    throw new Error('<svg> requires SVG markup, a body prop, or supported SVG shape children')
-  }
-  return placeArtwork(services, graph, artwork, props, size, journal, parentId, position)
 }
 
 function findComponentByName(graph: SceneGraph, name: string): SceneNode | undefined {
@@ -468,23 +382,6 @@ function applyInstanceOverrides(
   if (mutated) {
     graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
   }
-}
-
-async function renderArtworkNode<Artwork>(
-  services: DesignJSXServices<Artwork>,
-  graph: SceneGraph,
-  tree: TreeNode,
-  journal: RenderCreationJournal,
-  parentId: string,
-  position: Pick<RenderOptions, 'x' | 'y'>
-): Promise<SceneNode> {
-  const metadata = componentMetadata(tree.props, 'VECTOR', componentPropertyScope(graph, parentId))
-  const node =
-    tree.type === 'icon'
-      ? await renderIconNode(services, graph, tree, journal, parentId, position)
-      : renderSVGNode(services, graph, tree, journal, parentId, position)
-  if (Object.keys(metadata).length > 0) graph.updateNode(node.id, metadata)
-  return node
 }
 
 export interface ElementOverrides {

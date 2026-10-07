@@ -61,3 +61,12 @@ export function designVar(def: VarDef, value?: DesignVariable['value']): DesignV
     value: def.value
   }
 }
+
+export function variableFallback(
+  graph: SceneGraph,
+  variable: DesignVariable
+): string | Color | undefined {
+  if (variable.value !== undefined && typeof variable.value !== 'number') return variable.value
+  const variableId = resolveVariableId(graph, variable)
+  return variableId ? graph.resolveColorVariable(variableId) : undefined
+}

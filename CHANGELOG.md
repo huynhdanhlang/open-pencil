@@ -106,6 +106,8 @@
 
 ### Fixed
 
+- Canonical `update_node` journals its affected property/layout fields with bounded Undo and rollback, so loading unrelated pages no longer blocks a small edit at the whole-document limit. Other atomic tools retain their existing document checkpoint limit. Committed event-delivery failures keep the edit undoable.
+- `Icon` and inline SVG color variables resolve to COLOR values and bind only authored `currentColor` path paints. Literal multicolor paths remain unbound; token bindings survive Save/import.
 - Duplicating a layer subtree and importing a transfer forest preserve shared FIG backing buffers within one isolated copy instead of cloning the same archive-sized buffer for each layer. Transfer Undo captures retain their own isolated copy.
 - Closing a document flushes its AI transcript and releases the live chat before disposing the editor. Failed persistence leaves the tab retryable, and delayed history reads cannot bind a closed tab's transcript to another editor.
 - Page-load rollback snapshots preserve shared FIG backing buffers across candidate nodes instead of copying the same buffer for each node, while retaining isolated recovery data.

@@ -13,7 +13,8 @@ export function createIconFromPaths(
   size: number,
   color: Color,
   parentId: string,
-  overrides?: Partial<SceneNode>
+  overrides?: Partial<SceneNode>,
+  colorVariableId?: string
 ): SceneNode {
   const frame = graph.createNode('FRAME', parentId, {
     name: `Icon / ${name}`,
@@ -38,6 +39,8 @@ export function createIconFromPaths(
       graph.updateNode(vector.id, {
         fills: [{ type: 'SOLID', color: fillColor, opacity: 1, visible: true }]
       })
+      if (path.fill === 'currentColor' && colorVariableId)
+        graph.bindVariable(vector.id, 'fills/0/color', colorVariableId)
     } else {
       graph.updateNode(vector.id, { fills: [] })
     }
@@ -51,6 +54,8 @@ export function createIconFromPaths(
         path.strokeJoin
       )
       graph.updateNode(vector.id, { strokes: [stroke], ...pathStrokeLineStyle(stroke) })
+      if (path.stroke === 'currentColor' && colorVariableId)
+        graph.bindVariable(vector.id, 'strokes/0/color', colorVariableId)
     }
   }
 
