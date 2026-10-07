@@ -230,8 +230,8 @@ test.each(['Uint8Array', 'Buffer'] as const)(
       const glyph = child.derivedTextGlyphs?.[0].commandsBlob
       const picture = child.textPicture
       if (!glyph || !picture) throw new Error('Missing restored text cache')
-      expect([...glyph]).toEqual(new Array<number>(8).fill(0))
-      expect([...picture]).toEqual(new Array<number>(16).fill(0))
+      expect([...glyph]).toEqual(Array.from({ length: 8 }, () => 0))
+      expect([...picture]).toEqual(Array.from({ length: 16 }, () => 0))
       expect(glyph.buffer).not.toBe(backing)
       expect(picture.buffer).not.toBe(backing)
       buffers.add(glyph.buffer)
