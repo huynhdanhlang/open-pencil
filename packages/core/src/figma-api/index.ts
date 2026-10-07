@@ -1,6 +1,7 @@
 import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 
 import type {
+  GroupFitOptions,
   SceneGraph,
   SceneNode as CoreSceneNode,
   NodeType,
@@ -14,13 +15,14 @@ import { computeImageHash } from '@open-pencil/scene-graph/images'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
-import { canMakeBooleanSourceNode } from '#core/canvas/boolean'
+import { canMakeBooleanSourceNode, groupFitOptions } from '#core/canvas/boolean'
 import { flattenNodesToVectorProps } from '#core/canvas/flatten'
-import { IS_BROWSER } from '#core/constants'
+import { IS_BROWSER, type InterfaceTheme } from '#core/constants'
 import { newLayerDefaults } from '#core/editor/shapes/defaults'
 import { booleanOperationPaints, createBooleanOperation } from '#core/editor/structure/boolean'
 import { wrapNodes } from '#core/editor/structure/container-wrap'
 import { ungroupNode } from '#core/editor/structure/group'
+import { setDefaultPageBackground } from '#core/figma-api/page-backgrounds'
 import type { RasterCodec } from '#core/io/formats/raster'
 import { reconcileVariableLayouts } from '#core/layout/variables'
 import { documentFontStatus, type DocumentFontStatus } from '#core/text/font/status'
@@ -41,6 +43,7 @@ import type {
   FigmaTextNode,
   FigmaVectorNode
 } from './node-types'
+import { startPendingLayout } from './pending-layout'
 import {
   FigmaNodeProxy,
   INTERNAL_ID,
@@ -92,11 +95,14 @@ export class FigmaAPI implements NodeProxyHost {
   private _nodeCache = new Map<string, FigmaNodeProxy>()
   private _pageProxies = new WeakSet<FigmaNodeProxy>()
   private _renderer: SkiaRenderer | null = null
+  /** The interface theme new sections take their fill from, as in Figma. */
+  theme: InterfaceTheme = 'light'
 
   readonly mixed = MIXED
 
   constructor(graph: SceneGraph) {
     this.graph = graph
+    startPendingLayout(graph)
     const pages = graph.getPages()
     this._currentPageId = pages[0]?.id ?? graph.rootId
   }
@@ -113,6 +119,10 @@ export class FigmaAPI implements NodeProxyHost {
       renderer: this._renderer?.getResourceUsage() ?? null,
       history: this.runtimeHistory?.() ?? null
     }
+  }
+
+  get groupFitOptions(): GroupFitOptions {
+    return groupFitOptions(this._renderer, this.graph)
   }
 
   get currentPageId(): string {
@@ -169,9 +179,10 @@ export class FigmaAPI implements NodeProxyHost {
 
   /** New layers start as the editor's tools make them, which is how Figma's plugin API makes them. */
   private _createNode(type: NodeType): FigmaNodeProxy {
-    const defaults = newLayerDefaults(type)
-    // Figma's plugin API makes a line 100 wide with no height.
+    const defaults = newLayerDefaults(type, this.theme)
+    // Figma's plugin API makes a line 100 wide with no height, and a section 496 square.
     if (type === 'LINE') defaults.height = 0
+    if (type === 'SECTION') Object.assign(defaults, { width: 496, height: 496 })
     const node = this.graph.createNode(type, this._currentPageId, defaults)
     return this.wrapNode(node.id)
   }
@@ -218,6 +229,7 @@ export class FigmaAPI implements NodeProxyHost {
 
   createPage(): FigmaNodeProxy {
     const page = this.graph.addPage('Page')
+    setDefaultPageBackground(this.graph, page, this.theme)
     return this.wrapNode(page.id)
   }
 
@@ -326,7 +338,7 @@ export class FigmaAPI implements NodeProxyHost {
     const variable = this.graph.variables.get(variableId)
     if (!variable) throw new Error(`Variable "${variableId}" not found`)
     variable.valuesByMode[modeId] = structuredClone(value)
-    reconcileVariableLayouts(this.graph)
+    reconcileVariableLayouts(this.graph, { variables: [variableId] })
   }
 
   deleteVariable(id: string): void {
@@ -343,12 +355,12 @@ export class FigmaAPI implements NodeProxyHost {
 
   bindVariable(nodeId: string, field: string, variableId: string): void {
     this.graph.bindVariable(nodeId, field, variableId)
-    reconcileVariableLayouts(this.graph)
+    reconcileVariableLayouts(this.graph, { subtrees: [nodeId] })
   }
 
   unbindVariable(nodeId: string, field: string): void {
     this.graph.unbindVariable(nodeId, field)
-    reconcileVariableLayouts(this.graph)
+    reconcileVariableLayouts(this.graph, { subtrees: [nodeId] })
   }
 
   private _booleanOperation(
@@ -360,13 +372,14 @@ export class FigmaAPI implements NodeProxyHost {
     if (nodes.length < 2) throw new Error('Need at least 2 nodes for boolean operation')
     const parentId = this._nodeId(parent)
     const members = nodes.map((node) => this._rawNode(node))
-    const group = createBooleanOperation(
+    const { node: group } = createBooleanOperation(
       this.graph,
       members,
       parentId,
       operation,
       index,
-      booleanOperationPaints(operation, members, 'script')
+      booleanOperationPaints(operation, members, 'script'),
+      this.groupFitOptions
     )
     return this.wrapNode(group.id) as FigmaBooleanOperationNode
   }

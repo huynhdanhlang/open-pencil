@@ -278,7 +278,10 @@ export interface ArcData {
 }
 
 export type LayoutMode = 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID'
+/** A node's sizing along one axis; fill is stored on the child, see `layoutSizing`. */
 export type LayoutSizing = 'FIXED' | 'HUG' | 'FILL'
+/** Whether an auto-layout frame keeps its size or hugs its children along one of its axes. */
+export type AxisSizingMode = 'FIXED' | 'HUG'
 
 export type GridTrackSizing = 'FIXED' | 'FR' | 'AUTO'
 
@@ -489,8 +492,8 @@ export interface SceneNode {
   layoutWrap: LayoutWrap
   primaryAxisAlign: LayoutAlign
   counterAxisAlign: LayoutCounterAlign
-  primaryAxisSizing: LayoutSizing
-  counterAxisSizing: LayoutSizing
+  primaryAxisSizing: AxisSizingMode
+  counterAxisSizing: AxisSizingMode
   itemSpacing: number
   counterAxisSpacing: number
   paddingTop: number
@@ -519,6 +522,14 @@ export interface SceneNode {
   borderBottomWeight: number
   borderLeftWeight: number
   independentStrokeWeights: boolean
+
+  /**
+   * The weight and alignment a node keeps for its strokes, as Figma keeps them on the node: they
+   * last while it has no strokes, and a stroke added to it takes them. Each stroke still carries
+   * its own `weight` and `align`, which win while the node has strokes.
+   */
+  strokeWeight: number
+  strokeAlign: Stroke['align']
 
   strokeMiterLimit: number
 

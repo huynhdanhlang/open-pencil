@@ -236,7 +236,10 @@ describe('imported auto-layout bounds', () => {
     expect(graph.getNode(second.id)).toMatchObject({ x: 136, width: 152 })
   })
 
-  test('keeps normal flex sizing when imported dimensions do not fit the parent', () => {
+  test.each([
+    { format: 'fig' as const, width: 136 },
+    { format: null, width: 152 }
+  ])('sizes mismatched derived dimensions according to source $format', ({ format, width }) => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const row = graph.createNode('FRAME', page.id, {
@@ -261,11 +264,13 @@ describe('imported auto-layout bounds', () => {
       layoutGrow: 1,
       derivedLayout: { width: 136, height: 40 }
     })
+    first.source.format = format
+    second.source.format = format
 
     computeAllLayouts(graph)
 
-    expect(graph.getNode(first.id)).toMatchObject({ x: 0, width: 136 })
-    expect(graph.getNode(second.id)).toMatchObject({ x: 168, width: 136 })
+    expect(graph.getNode(first.id)).toMatchObject({ x: 0, width })
+    expect(graph.getNode(second.id)).toMatchObject({ x: 168, width })
   })
 
   test('stretches generated children inside authoritative imported bounds', () => {
@@ -293,7 +298,8 @@ describe('imported auto-layout bounds', () => {
     expect(graph.getNode(label.id)).toMatchObject({ x: 0, width: 302 })
   })
 
-  test('does not infer authoritative stretch without generated parent bounds', () => {
+  // Stretch is fill, as in Figma, whether or not the parent's bounds came from the file.
+  test('stretches an auto-layout child without generated parent bounds', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const column = graph.createNode('FRAME', page.id, {
@@ -314,7 +320,7 @@ describe('imported auto-layout bounds', () => {
 
     computeAllLayouts(graph)
 
-    expect(graph.getNode(label.id)?.width).toBe(44)
+    expect(graph.getNode(label.id)?.width).toBe(624)
   })
 
   test('preserves hidden child geometry while excluding it from parent flow', () => {

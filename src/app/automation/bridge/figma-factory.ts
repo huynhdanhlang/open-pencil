@@ -12,6 +12,7 @@ export function makeFigmaFromStore(
   const api = new FigmaAPI(store.graph)
   api.setRenderer(store.renderer ?? null)
   api.runtimeHistory = () => store.undo.diagnostics
+  api.theme = store.state.theme ?? 'light'
   api.currentPage = api.wrapNode(pageId)
   const requireShownPage = () => {
     if (store.state.currentPageId !== pageId) {

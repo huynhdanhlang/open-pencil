@@ -23,7 +23,12 @@ export * from './behaviours/kinds'
 export * from './behaviours/model'
 export * from './behaviours/spec'
 export * from './copy'
-export { createDefaultNode, FITTED_CONTAINER_TYPES } from './node-defaults'
+export {
+  createDefaultNode,
+  defaultStrokeAlign,
+  FITTED_CONTAINER_TYPES,
+  newStrokeGeometry
+} from './node-defaults'
 export {
   copyInstanceComponentProps,
   findInstanceAncestor,
@@ -45,6 +50,7 @@ export * from './snap'
 export * from './export-format'
 export * from './export-scale'
 export * from './coordinate'
+export * from './layout-sizing'
 export * from './group-bounds'
 export * from './constants'
 export * from './geometry'
