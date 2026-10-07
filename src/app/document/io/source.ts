@@ -14,7 +14,10 @@ import { createDocumentSourceState } from '@/app/document/io/source-state'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
 import { createDocumentRecovery } from '@/app/document/recovery'
 import { recoveryEnabled } from '@/app/document/recovery/preferences'
-import { isRecoveryStoreMemoryFallback } from '@/app/document/recovery/store'
+import {
+  getRecoveryMemoryUsage,
+  isRecoveryStoreMemoryFallback
+} from '@/app/document/recovery/store'
 import { notificationMessages } from '@/app/i18n/notifications'
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
 import { toast } from '@/app/shell/ui'
@@ -261,12 +264,16 @@ export function createDocumentSourceActions({
     saveFigFile: () => saveAndTrack(saveFigFile),
     saveFigFileAs: () => saveAndTrack(saveFigFileAs),
     hasUnsavedChanges: changes.hasUnsavedChanges,
-    getPersistenceStatus: () => ({
-      contentRevision: changes.capture(),
-      dirty: changes.hasUnsavedChanges(),
-      memoryFallback: isRecoveryStoreMemoryFallback(),
-      recovery: recovery.getDiagnostics()
-    }),
+    getPersistenceStatus: () => {
+      const memory = getRecoveryMemoryUsage()
+      return {
+        contentRevision: changes.capture(),
+        dirty: changes.hasUnsavedChanges(),
+        memoryFallback: isRecoveryStoreMemoryFallback(),
+        recoveryMemory: memory ? { scope: 'shared-recovery-store' as const, ...memory } : null,
+        recovery: recovery.getDiagnostics()
+      }
+    },
     markDocumentSaved: () => {
       const revision = changes.capture()
       changes.markSaved(revision)

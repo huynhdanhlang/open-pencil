@@ -10,6 +10,7 @@ export interface RuntimePersistenceStatus {
   contentRevision: number
   dirty: boolean
   memoryFallback: boolean
+  recoveryMemory: { scope: 'shared-recovery-store'; snapshots: number; bytes: number } | null
   recovery: {
     builds: number
     writes: number

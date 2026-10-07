@@ -19,6 +19,8 @@ export interface RecoverySnapshotInput {
 }
 
 export interface RecoveryStore {
+  /** Archives owned by the memory backend, excluding IDB/transient codec copies. */
+  getMemoryUsage?(): { snapshots: number; bytes: number } | null
   list(): Promise<RecoverySnapshotMeta[]>
   read(id: string): Promise<RecoverySnapshot | null>
   write(input: RecoverySnapshotInput): Promise<RecoverySnapshotMeta>

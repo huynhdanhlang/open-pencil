@@ -9,6 +9,11 @@ export function createMemoryRecoveryStore(): RecoveryStore {
   const snapshots = new Map<string, RecoverySnapshot>()
 
   return {
+    getMemoryUsage() {
+      let bytes = 0
+      for (const snapshot of snapshots.values()) bytes += snapshot.figBytes.byteLength
+      return { snapshots: snapshots.size, bytes }
+    },
     async list() {
       return [...snapshots.values()]
         .map(({ figBytes: _figBytes, ...metadata }) => structuredClone(metadata))

@@ -35,6 +35,7 @@ export function createIdbRecoveryStore(): RecoveryStore {
   const database = openAppDatabase(recoveryDatabase)
 
   return {
+    getMemoryUsage: () => ({ snapshots: 0, bytes: 0 }),
     async list() {
       const rows = await (await database).getAll('meta')
       return rows.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))

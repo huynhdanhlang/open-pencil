@@ -32,6 +32,7 @@ test('runtime persistence counters read the current owner without retaining or e
     contentRevision: 2,
     dirty: true,
     memoryFallback: false,
+    recoveryMemory: { scope: 'shared-recovery-store', snapshots: 0, bytes: 0 },
     recovery: {
       builds: 1,
       writes: 0,

@@ -16,7 +16,7 @@ function warnMemoryFallback(error?: unknown): void {
   memoryFallback = true
 }
 
-function createResilientRecoveryStore(primary: RecoveryStore): RecoveryStore {
+export function createResilientRecoveryStore(primary: RecoveryStore): RecoveryStore {
   let current = primary
   let queue = Promise.resolve()
 
@@ -33,17 +33,26 @@ function createResilientRecoveryStore(primary: RecoveryStore): RecoveryStore {
     if (current !== primary) return current
     warnMemoryFallback(error)
     const memory = createMemoryRecoveryStore()
-    try {
-      const snapshots = await primary.list()
-      for (const metadata of snapshots) {
-        const snapshot = await primary.read(metadata.id)
-        if (snapshot) await memory.write(snapshot)
+    // Durable recovery already lives in IndexedDB. A failed current write must
+    // not import the entire archive bank into the singleton's strong memory Map.
+    // Keep only new drafts in memory; older bytes remain readable on demand.
+    current = {
+      ...memory,
+      async list() {
+        const durable = await primary.list()
+        const overlay = await memory.list()
+        const rows = new Map(durable.map((metadata) => [metadata.id, metadata]))
+        for (const metadata of overlay) rows.set(metadata.id, metadata)
+        return [...rows.values()].toSorted((left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt)
+        )
+      },
+      async read(id) {
+        const draft = await memory.read(id)
+        return draft ?? primary.read(id)
       }
-    } catch (migrationError) {
-      console.warn('[Recovery] Failed to migrate IndexedDB snapshots to memory:', migrationError)
     }
-    current = memory
-    return memory
+    return current
   }
 
   function run<T>(operation: (store: RecoveryStore) => Promise<T>): Promise<T> {
@@ -72,6 +81,7 @@ function createResilientRecoveryStore(primary: RecoveryStore): RecoveryStore {
   }
 
   return {
+    getMemoryUsage: () => current.getMemoryUsage?.() ?? null,
     list: () => run((store) => store.list()),
     read: (id: string): Promise<RecoverySnapshot | null> => run((store) => store.read(id)),
     write: (input: RecoverySnapshotInput): Promise<RecoverySnapshotMeta> =>
@@ -95,6 +105,10 @@ export function getRecoveryStore(): RecoveryStore {
 
 export function isRecoveryStoreMemoryFallback(): boolean {
   return memoryFallback
+}
+
+export function getRecoveryMemoryUsage() {
+  return singleton?.getMemoryUsage?.() ?? null
 }
 
 export function resetRecoveryStoreForTests(store?: RecoveryStore): void {
