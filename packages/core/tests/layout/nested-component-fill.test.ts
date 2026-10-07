@@ -181,3 +181,37 @@ test('inherited stretch resizes a generated nested Hug component without discard
   computeLayout(graph, parent.id)
   expect([child.width, child.height]).toEqual([320, 124])
 })
+
+test('an unconstrained Hug parent keeps its stretched native child intrinsic width until constrained', () => {
+  const graph = new SceneGraph()
+  const parent = graph.createNode('FRAME', graph.getPages()[0].id, {
+    width: 752,
+    height: 160,
+    layoutMode: 'VERTICAL',
+    primaryAxisSizing: 'FIXED',
+    counterAxisSizing: 'HUG'
+  })
+  const control = graph.createNode('COMPONENT', parent.id, {
+    width: 752,
+    height: 124,
+    layoutMode: 'VERTICAL',
+    primaryAxisSizing: 'FIXED',
+    counterAxisSizing: 'HUG',
+    layoutAlignSelf: 'STRETCH',
+    paddingLeft: 8,
+    paddingRight: 8,
+    derivedLayout: { width: 752, height: 124 }
+  })
+  const input = graph.createNode('TEXT', control.id, {
+    width: 736,
+    height: 80,
+    text: 'Owned request',
+    textAutoResize: 'NONE',
+    layoutAlignSelf: 'STRETCH'
+  })
+  computeLayout(graph, parent.id)
+  expect([parent.width, control.width, input.width]).toEqual([752, 752, 736])
+  graph.updateNode(parent.id, { width: 358, counterAxisSizing: 'FIXED' })
+  computeLayout(graph, parent.id)
+  expect([parent.width, control.width, input.width]).toEqual([358, 358, 342])
+})

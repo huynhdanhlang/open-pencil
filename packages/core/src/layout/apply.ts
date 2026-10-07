@@ -44,7 +44,7 @@ export function retainedFrameLayoutSize(
   const parent = frame.parentId ? graph.getNode(frame.parentId) : undefined
   // Detached Hug containers must keep the other axis assigned by their parent.
   // A saved intrinsic cache is not a constraint for that Fill/stretch dimension.
-  if (usesGeneratedParentSize(frame, parent, axis)) return frame[axis]
+  if (usesGeneratedParentSize(graph, frame, parent, axis)) return frame[axis]
   const primary = (frame.layoutMode === 'HORIZONTAL') === (axis === 'width')
   const sizing = primary ? frame.primaryAxisSizing : frame.counterAxisSizing
   if (sizing === 'FIXED') return frame[axis]
@@ -110,6 +110,7 @@ function preservesStaleImportedTextSize(child: SceneNode, axis: 'width' | 'heigh
 }
 
 export function usesGeneratedParentSize(
+  graph: SceneGraph,
   child: SceneNode,
   parent: SceneNode | undefined,
   axis: 'width' | 'height'
@@ -125,12 +126,21 @@ export function usesGeneratedParentSize(
   const stretches =
     child.layoutAlignSelf === 'STRETCH' ||
     (child.layoutAlignSelf === 'AUTO' && parent.counterAxisAlign === 'STRETCH')
-  return primary ? child.layoutGrow > 0 : stretches
+  if (primary) return child.layoutGrow > 0
+  if (!stretches) return false
+  // Stretch cannot allocate an axis that the parent itself derives from content.
+  if (parent.counterAxisSizing !== 'HUG' || parent.derivedLayout?.[axis] !== undefined) return true
+  const outer = parent.parentId ? graph.getNode(parent.parentId) : undefined
+  return usesGeneratedParentSize(graph, parent, outer, axis)
 }
 
-export function usesAuthoritativeGeneratedStretch(parent: SceneNode, child: SceneNode): boolean {
+export function usesAuthoritativeGeneratedStretch(
+  graph: SceneGraph,
+  parent: SceneNode,
+  child: SceneNode
+): boolean {
   const crossAxis = parent.layoutMode === 'HORIZONTAL' ? 'height' : 'width'
-  if (usesGeneratedParentSize(child, parent, crossAxis)) return true
+  if (usesGeneratedParentSize(graph, child, parent, crossAxis)) return true
   if (
     child.layoutAlignSelf !== 'STRETCH' ||
     parent.source.format === 'fig' ||
@@ -145,10 +155,11 @@ export function needsIntrinsicHugCrossMinimum(graph: SceneGraph, parent: SceneNo
   if (parent.counterAxisSizing !== 'HUG') return false
   const outer = parent.parentId ? graph.getNode(parent.parentId) : undefined
   const crossAxis = parent.layoutMode === 'HORIZONTAL' ? 'height' : 'width'
-  return !usesGeneratedParentSize(parent, outer, crossAxis)
+  return !usesGeneratedParentSize(graph, parent, outer, crossAxis)
 }
 
 function computedChildSize(
+  graph: SceneGraph,
   child: SceneNode,
   yogaChild: YogaNode,
   axis: 'width' | 'height',
@@ -163,7 +174,7 @@ function computedChildSize(
     return computed > 0 ? computed : child[axis]
   }
   // Saved generated containers and leaves can both retain intrinsic geometry.
-  if (usesGeneratedParentSize(child, parent, axis)) return computed
+  if (usesGeneratedParentSize(graph, child, parent, axis)) return computed
   return child.derivedLayout?.[axis] ?? computed
 }
 
@@ -181,8 +192,22 @@ function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: Yog
   updateComputedGeometry(graph, child, {
     x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
     y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
-    width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry, parent),
-    height: computedChildSize(child, yogaChild, 'height', preservesImportedFrameGeometry, parent)
+    width: computedChildSize(
+      graph,
+      child,
+      yogaChild,
+      'width',
+      preservesImportedFrameGeometry,
+      parent
+    ),
+    height: computedChildSize(
+      graph,
+      child,
+      yogaChild,
+      'height',
+      preservesImportedFrameGeometry,
+      parent
+    )
   })
 }
 

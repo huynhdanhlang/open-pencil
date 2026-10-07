@@ -294,7 +294,7 @@ function configureAutoLayoutChildSizing(
   const isParentRow = parent.layoutMode === 'HORIZONTAL'
   const mainAxis = isParentRow ? 'width' : 'height'
   const fixedDerivedMainAxis = derivedMainAxisFitsParent(graph, parent, child, mainAxis)
-  const stretchesAuthoritativeCrossAxis = usesAuthoritativeGeneratedStretch(parent, child)
+  const stretchesAuthoritativeCrossAxis = usesAuthoritativeGeneratedStretch(graph, parent, child)
 
   if (isParentRow) {
     if (fixedDerivedMainAxis) yogaChild.setWidth(child.derivedLayout?.width ?? child.width)
@@ -331,9 +331,9 @@ function configureChildAsAutoLayout(
 
   if (usesDetachedDerivedLayout(child)) {
     const derived = child.derivedLayout
-    if (widthSizing === 'HUG' && !usesGeneratedParentSize(child, parent, 'width'))
+    if (widthSizing === 'HUG' && !usesGeneratedParentSize(graph, child, parent, 'width'))
       yogaChild.setWidth(derived?.width ?? child.width)
-    if (heightSizing === 'HUG' && !usesGeneratedParentSize(child, parent, 'height'))
+    if (heightSizing === 'HUG' && !usesGeneratedParentSize(graph, child, parent, 'height'))
       yogaChild.setHeight(derived?.height ?? child.height)
     applyMinMaxConstraints(yogaChild, child)
     return
