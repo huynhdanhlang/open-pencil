@@ -109,7 +109,8 @@ function computedChildSize(
   child: SceneNode,
   yogaChild: YogaNode,
   axis: 'width' | 'height',
-  preservesImportedFrameGeometry: boolean
+  preservesImportedFrameGeometry: boolean,
+  parent: SceneNode | undefined
 ): number {
   if (preservesImportedFrameGeometry || preservesStaleImportedTextSize(child, axis)) {
     return child[axis]
@@ -117,6 +118,19 @@ function computedChildSize(
   const computed = axis === 'width' ? yogaChild.getComputedWidth() : yogaChild.getComputedHeight()
   if (child.type === 'TEXT' && child.source.format === 'fig') {
     return computed > 0 ? computed : child[axis]
+  }
+  // Saved OpenPencil text can carry derived size without being a FIG source.
+  // Its intrinsic cache must not override a dimension owned by the parent layout.
+  if (
+    child.type === 'TEXT' &&
+    parent &&
+    (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL')
+  ) {
+    const primary = (axis === 'width') === (parent.layoutMode === 'HORIZONTAL')
+    const stretches =
+      child.layoutAlignSelf === 'STRETCH' ||
+      (child.layoutAlignSelf === 'AUTO' && parent.counterAxisAlign === 'STRETCH')
+    if (primary ? child.layoutGrow > 0 : stretches) return computed
   }
   return child.derivedLayout?.[axis] ?? computed
 }
@@ -131,11 +145,12 @@ function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: Yog
   const preservesImportedPosition =
     preservesImportedFrameGeometry ||
     (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
+  const parent = child.parentId ? graph.getNode(child.parentId) : undefined
   updateComputedGeometry(graph, child, {
     x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
     y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
-    width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry),
-    height: computedChildSize(child, yogaChild, 'height', preservesImportedFrameGeometry)
+    width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry, parent),
+    height: computedChildSize(child, yogaChild, 'height', preservesImportedFrameGeometry, parent)
   })
 }
 

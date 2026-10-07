@@ -168,13 +168,15 @@ function collectSizingProps(
     if (node.height > 0) props.push(['h', node.height])
   }
 
-  if (!ctx.parentIsAutoLayout) return
+  if (!ctx.parentIsAutoLayout || node.layoutPositioning === 'ABSOLUTE') return
   if (node.layoutGrow > 0) props.push(['grow', node.layoutGrow])
   if (node.layoutAlignSelf === 'STRETCH') {
     const parent = node.parentId ? graph.getNode(node.parentId) : null
     if (parent && (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL')) {
       const crossDim = parent.layoutMode === 'HORIZONTAL' ? 'h' : 'w'
-      if (!props.some(([k]) => k === crossDim)) props.push([crossDim, 'fill'])
+      const index = props.findIndex(([key]) => key === crossDim)
+      if (index === -1) props.push([crossDim, 'fill'])
+      else props[index] = [crossDim, 'fill']
     }
   }
 }
@@ -182,22 +184,14 @@ function collectSizingProps(
 function collectTextSizingProps(node: SceneNode, graph: SceneGraph, props: JSXProp[]): void {
   const autoResize = node.textAutoResize
   const emitH = autoResize === 'NONE' || autoResize === 'TRUNCATE'
-  // Don't emit fixed w when text stretches to fill parent — the layoutAlignSelf
-  // check below will emit w="fill" instead. Without this guard, w={computedPx}
-  // gets emitted first and blocks the fill detection.
-  const isFillWidth =
-    node.layoutAlignSelf === 'STRETCH' &&
-    (() => {
-      const parent = node.parentId ? graph.getNode(node.parentId) : null
-      return parent?.layoutMode === 'VERTICAL'
-    })()
   const isGrowWidth =
+    node.layoutPositioning !== 'ABSOLUTE' &&
     node.layoutGrow > 0 &&
     (() => {
       const parent = node.parentId ? graph.getNode(node.parentId) : null
       return parent?.layoutMode === 'HORIZONTAL'
     })()
-  const emitW = autoResize !== 'WIDTH_AND_HEIGHT' && !isFillWidth && !isGrowWidth
+  const emitW = autoResize !== 'WIDTH_AND_HEIGHT' && !isGrowWidth
   if (emitW && node.width > 0) props.push(['w', node.width])
   if (emitH && node.height > 0) props.push(['h', node.height])
 }

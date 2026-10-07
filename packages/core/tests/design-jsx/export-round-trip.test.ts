@@ -1,12 +1,83 @@
 import { describe, expect, it, test } from 'bun:test'
+
+import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
+import { findByName, PROPERTY_CASES } from '#core-tests/helpers/property-cases'
 import { pick } from 'es-toolkit'
 
 import { renderJSX } from '@open-pencil/core/design-jsx'
 import { sceneNodeToJSX } from '@open-pencil/design-jsx'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
-import { findByName, PROPERTY_CASES } from '#core-tests/helpers/property-cases'
+import { createEditor } from '#core/editor/create'
+import { FigmaAPI } from '#core/figma-api'
+import { exportFigFile, parseFigFile } from '#core/io/formats/fig'
+import { computeLayout } from '#core/layout'
+import { setLayoutChild } from '#core/tools/modify/layout'
+
+test('leaf Fill survives component instances, complete JSX and FIG Save at large/mobile widths', async () => {
+  const graph = new SceneGraph()
+  const api = new FigmaAPI(graph)
+  const source = graph.createNode('COMPONENT', api.currentPageId, {
+    name: 'Responsive input',
+    layoutMode: 'VERTICAL',
+    width: 752,
+    height: 120,
+    primaryAxisSizing: 'FIXED',
+    counterAxisSizing: 'FIXED',
+    paddingLeft: 8,
+    paddingRight: 8
+  })
+  for (const type of ['TEXT', 'RECTANGLE'] as const) {
+    const child = graph.createNode(type, source.id, {
+      name: type === 'TEXT' ? 'Counter' : 'Camera',
+      width: 228,
+      height: 24,
+      text: '0 / 1000',
+      textAutoResize: 'NONE',
+      textAlignHorizontal: 'RIGHT'
+    })
+    setLayoutChild.execute(api, { id: child.id, sizing_horizontal: 'FILL' })
+    expect(api.getNodeById(child.id)?.layoutSizingHorizontal).toBe('FILL')
+  }
+  computeLayout(graph, source.id)
+  const instance = expectDefined(graph.createInstance(source.id, api.currentPageId), 'instance')
+  graph.updateNode(instance.id, { width: 1000 })
+  computeLayout(graph, instance.id)
+  expect(graph.getChildren(instance.id).map((node) => node.width)).toEqual([984, 984])
+
+  const jsx = sceneNodeToJSX(source.id, graph)
+  const renderedGraph = new SceneGraph()
+  const [rendered] = await renderJSX(renderedGraph, jsx)
+  expect(rendered).toBeDefined()
+  for (const width of [1000, 320]) {
+    renderedGraph.updateNode(rendered.id, { width })
+    computeLayout(renderedGraph, rendered.id)
+    const children = renderedGraph.getChildren(rendered.id)
+    expect(children.map((node) => node.width)).toEqual([width - 16, width - 16])
+    expect(children[0].textAlignHorizontal).toBe('RIGHT')
+  }
+  const bytes = await exportFigFile(graph, undefined, undefined, undefined, false, {
+    rendering: 'none'
+  })
+  const restored = await parseFigFile(bytes.slice().buffer as ArrayBuffer, { populate: 'all' })
+  const restoredSource = [...restored.nodes.values()].find(
+    (node) => node.name === source.name && node.type === 'COMPONENT'
+  )
+  expect(restoredSource).toBeDefined()
+  if (!restoredSource) throw new Error('Missing saved component')
+  const editor = createEditor({ graph: restored, skipInitialGraphSetup: true })
+  editor.subscribeToGraph()
+  try {
+    await editor.runMutationWithLayout(() => {
+      restored.updateNode(restoredSource.id, { width: 320 })
+    }, restoredSource.id)
+    expect(restored.getChildren(restoredSource.id).map((node) => node.width)).toEqual([304, 304])
+    expect(restored.getChildren(restoredSource.id)[0].textAlignHorizontal).toBe('RIGHT')
+  } finally {
+    editor.dispose()
+    editor.releaseGraphResources()
+  }
+})
 
 describe('attribute string round-trip', () => {
   it.each([

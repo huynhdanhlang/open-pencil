@@ -14,6 +14,33 @@ function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id
 }
 
+test.each(['HORIZONTAL', 'VERTICAL'] as const)(
+  'stretched leaf and container exports replace the %s cross dimension',
+  (layoutMode) => {
+    const graph = makeGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), { layoutMode })
+    const cross = layoutMode === 'VERTICAL' ? 'w' : 'h'
+    for (const type of ['RECTANGLE', 'TEXT', 'FRAME'] as const) {
+      const child = graph.createNode(type, parent.id, {
+        width: 228,
+        height: 24,
+        text: 'Counter',
+        textAutoResize: 'NONE',
+        layoutAlignSelf: 'STRETCH',
+        layoutMode: type === 'FRAME' ? 'HORIZONTAL' : 'NONE',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED'
+      })
+      expect(sceneNodeToJSX(child.id, graph)).toContain(`${cross}="fill"`)
+      graph.updateNode(child.id, { layoutPositioning: 'ABSOLUTE', layoutGrow: 2 })
+      const absolute = sceneNodeToJSX(child.id, graph)
+      expect(absolute).toContain('w={228}')
+      expect(absolute).toContain('h={24}')
+      expect(absolute).not.toContain('="fill"')
+    }
+  }
+)
+
 describe('sceneNodeToJSX', () => {
   test('basic rectangle', () => {
     const graph = makeGraph()

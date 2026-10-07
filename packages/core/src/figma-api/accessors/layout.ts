@@ -36,7 +36,12 @@ function setLayoutSizing(
   const updates: Partial<SceneNode> = usesCounterAxis
     ? { counterAxisSizing: value as SceneNode['counterAxisSizing'] }
     : { primaryAxisSizing: value as SceneNode['primaryAxisSizing'] }
-  if (parentLayout(target, internals) === axis) updates.layoutGrow = value === 'FILL' ? 1 : 0
+  const parent = parentLayout(target, internals)
+  if (node.layoutPositioning !== 'ABSOLUTE' && parent !== 'NONE') {
+    if (parent === axis) updates.layoutGrow = value === 'FILL' ? 1 : 0
+    else if (value === 'FILL') updates.layoutAlignSelf = 'STRETCH'
+    else if (node.layoutAlignSelf === 'STRETCH') updates.layoutAlignSelf = 'AUTO'
+  }
   updateNode(target, internals, updates)
 }
 
@@ -125,7 +130,12 @@ function layoutSizingAccessor(
   return {
     get(this: ProxyThis): string {
       const node = raw(this, internals)
-      const layout = node.layoutMode !== 'NONE' ? node.layoutMode : parentLayout(this, internals)
+      const parent = parentLayout(this, internals)
+      if (node.layoutPositioning !== 'ABSOLUTE' && parent !== 'NONE') {
+        if (parent === axis && node.layoutGrow > 0) return 'FILL'
+        if (parent !== axis && node.layoutAlignSelf === 'STRETCH') return 'FILL'
+      }
+      const layout = node.layoutMode !== 'NONE' ? node.layoutMode : parent
       if (layout === 'NONE') return 'FIXED'
       return layout === axis ? node.primaryAxisSizing : node.counterAxisSizing
     },

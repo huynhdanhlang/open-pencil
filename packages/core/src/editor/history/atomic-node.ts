@@ -22,7 +22,7 @@ type NodeChange = {
 }
 const IDENTITY_FIELDS = new Set(['id', 'type', 'parentId', 'childIds', 'componentId', 'source'])
 
-/** Canonical update_node and layout write through the graph's synchronous mutation observer. */
+/** Canonical single-node property tools and layout use the synchronous mutation observer. */
 export function executeAtomicNodeTool(
   editor: MutationEditor,
   figma: FigmaAPI,

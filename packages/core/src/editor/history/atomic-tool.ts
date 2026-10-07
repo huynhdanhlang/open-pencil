@@ -9,6 +9,7 @@ import {
 
 import type { Editor } from '#core/editor/create'
 import type { FigmaAPI } from '#core/figma-api'
+import { setConstraints, setLayout, setLayoutChild } from '#core/tools/modify/layout'
 import { updateNode } from '#core/tools/modify/update'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
 
@@ -16,6 +17,7 @@ import { executeAtomicNodeTool } from './atomic-node'
 
 // Capture property changes across pages. Component synchronization remains editor-owned.
 const MAX_TRANSACTION_NODES = 20_000
+const SCOPED_NODE_TOOLS = new Set<ToolDef>([updateNode, setLayout, setLayoutChild, setConstraints])
 
 export type MutationEditor = Pick<
   Editor,
@@ -90,9 +92,9 @@ export function executeAtomicTool(
     throw new Error('The target document is no longer open')
   }
   const graph = figma.graph
-  // Only this canonical property-only owner has the scoped mutation contract.
+  // These canonical single-node property owners share the scoped mutation contract.
   // Custom definitions, variable tools and other tools retain the document checkpoint.
-  if (def === updateNode) {
+  if (SCOPED_NODE_TOOLS.has(def)) {
     return executeAtomicNodeTool(editor, figma, def, args, MAX_TRANSACTION_NODES, options.label)
   }
   if (graph.nodes.size + graph.variables.size > MAX_TRANSACTION_NODES) {

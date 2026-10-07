@@ -172,6 +172,11 @@ export const setLayoutChild = defineTool({
     const node = figma.getNodeById(args.id)
     if (!node) return nodeNotFound(args.id)
     const updated: string[] = []
+    // Sizing uses the final flow mode, including a child re-entering auto-layout.
+    if (args.positioning !== undefined) {
+      node.layoutPositioning = args.positioning
+      updated.push('layoutPositioning')
+    }
     if (args.sizing_horizontal !== undefined) {
       node.layoutSizingHorizontal = args.sizing_horizontal
       updated.push('layoutSizingHorizontal')
@@ -187,10 +192,6 @@ export const setLayoutChild = defineTool({
     if (args.align_self !== undefined) {
       node.layoutAlign = args.align_self
       updated.push('layoutAlign')
-    }
-    if (args.positioning !== undefined) {
-      node.layoutPositioning = args.positioning
-      updated.push('layoutPositioning')
     }
     return { id: args.id, updated }
   }
