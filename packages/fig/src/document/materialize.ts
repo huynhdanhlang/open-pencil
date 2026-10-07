@@ -214,6 +214,16 @@ function materializeReader(
     if (!parentId) throw new Error(`Unmaterialized component parent ${item.parentSourceId}`)
     const existingNodes = new Map<InstanceOccurrence, SceneNode>()
     const collectExisting = (node: InstanceOccurrence): void => {
+      // A nested definition was built first. Reuse its complete ownership map,
+      // including generated instance/slot descendants absent from global sources.
+      const component =
+        node.properties.type === 'SYMBOL' ? components.get(node.sourceId) : undefined
+      if (component) {
+        const restored = restoreComponentCheckpoint(graph, node, checkpointComponent(component))
+        for (const [occurrence, existing] of restored.materialized.nodes)
+          existingNodes.set(occurrence, existing)
+        return
+      }
       const id = sources.get(node.sourceId)
       const existing = id ? graph.getNode(id) : undefined
       if (existing) existingNodes.set(node, existing)
