@@ -25,11 +25,23 @@ const CONTROL_WORDS = new Set([
   'action'
 ])
 
+function isControlWord(word: string): boolean {
+  return CONTROL_WORDS.has(word) || (word.endsWith('s') && CONTROL_WORDS.has(word.slice(0, -1)))
+}
+
 function isInteractive(name: string): boolean {
-  return nameWords(name).some(
-    (word) =>
-      CONTROL_WORDS.has(word) || (word.endsWith('s') && CONTROL_WORDS.has(word.slice(0, -1)))
+  const words = nameWords(name)
+  const role = nameWords(name.split('/')[0] ?? '')
+  const hasExplicitControlRole = role.length === 1 && isControlWord(role[0] ?? '')
+  // The final noun identifies a divider, even when its description mentions inputs
+  // or menus. An explicit control role or button that adds a divider is still a target.
+  if (
+    ['separator', 'divider'].includes(words.at(-1) ?? '') &&
+    !hasExplicitControlRole &&
+    !words.some((word) => ['button', 'buttons', 'btn', 'cta'].includes(word))
   )
+    return false
+  return words.some(isControlWord)
 }
 
 export default defineRule({

@@ -108,6 +108,48 @@ describe('no-deeply-nested', () => {
 })
 
 describe('touch-target-size', () => {
+  test('does not infer a target from control words in a separator description', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    graph.createNode('FRAME', pageId, {
+      name: 'Captured inputs to output settings separator',
+      width: 548,
+      height: 1
+    })
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'Menu divider',
+      width: 200,
+      height: 1
+    })
+    const button = graph.createNode('FRAME', pageId, {
+      name: 'Button / Add separator',
+      width: 20,
+      height: 20
+    })
+    const link = graph.createNode('FRAME', pageId, {
+      name: 'Link / Add separator',
+      width: 20,
+      height: 20
+    })
+    const action = graph.createNode('FRAME', pageId, {
+      name: 'Action / Insert divider',
+      width: 20,
+      height: 20
+    })
+    const actions = graph.createNode('FRAME', pageId, {
+      name: 'Actions / Insert divider',
+      width: 20,
+      height: 20
+    })
+
+    expect(lint(graph, 'touch-target-size').map((message) => message.nodeId)).toEqual([
+      button.id,
+      link.id,
+      action.id,
+      actions.id
+    ])
+  })
+
   test('treats a small control inside a larger control as part of that control', () => {
     const graph = new SceneGraph()
     const pageId = graph.getPages()[0].id
@@ -126,7 +168,11 @@ describe('touch-target-size', () => {
     const pageId = graph.getPages()[0].id
     graph.createNode('RECTANGLE', pageId, { name: 'Rectangle', width: 1, height: 80 })
     graph.createNode('FRAME', pageId, { name: 'Tablet preview', width: 20, height: 20 })
-    const iconButton = graph.createNode('FRAME', pageId, { name: 'IconButton2', width: 32, height: 32 })
+    const iconButton = graph.createNode('FRAME', pageId, {
+      name: 'IconButton2',
+      width: 32,
+      height: 32
+    })
 
     expect(lint(graph, 'touch-target-size').map((message) => message.nodeId)).toEqual([
       iconButton.id
