@@ -13,7 +13,7 @@ import {
 
 import { resolveNodeLayoutDirection } from '@open-pencil/scene-graph/text-direction'
 
-import { applyYogaLayout, retainedFrameLayoutSize } from './layout/apply'
+import { applyYogaLayout, retainedFrameLayoutSize, usesGeneratedParentSize } from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
@@ -300,10 +300,11 @@ function configureAutoLayoutChildSizing(
   heightSizing: AxisSizing
 ): void {
   const isParentRow = parent.layoutMode === 'HORIZONTAL'
-  const fixedDerivedMainAxis = isParentRow
-    ? derivedMainAxisFitsParent(graph, parent, child, 'width')
-    : derivedMainAxisFitsParent(graph, parent, child, 'height')
-  const stretchesAuthoritativeCrossAxis = usesAuthoritativeGeneratedStretch(parent, child)
+  const mainAxis = isParentRow ? 'width' : 'height'
+  const fixedDerivedMainAxis = derivedMainAxisFitsParent(graph, parent, child, mainAxis)
+  const stretchesAuthoritativeCrossAxis =
+    usesGeneratedParentSize(child, parent, isParentRow ? 'height' : 'width') ||
+    usesAuthoritativeGeneratedStretch(parent, child)
 
   if (isParentRow) {
     if (fixedDerivedMainAxis) yogaChild.setWidth(child.derivedLayout?.width ?? child.width)

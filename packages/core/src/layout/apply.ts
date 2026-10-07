@@ -41,6 +41,10 @@ export function retainedFrameLayoutSize(
   frame: SceneNode,
   axis: 'width' | 'height'
 ): number | undefined {
+  const parent = frame.parentId ? graph.getNode(frame.parentId) : undefined
+  // Detached Hug containers must keep the other axis assigned by their parent.
+  // A saved intrinsic cache is not a constraint for that Fill/stretch dimension.
+  if (usesGeneratedParentSize(frame, parent, axis)) return frame[axis]
   const primary = (frame.layoutMode === 'HORIZONTAL') === (axis === 'width')
   const sizing = primary ? frame.primaryAxisSizing : frame.counterAxisSizing
   if (sizing === 'FIXED') return frame[axis]
@@ -105,6 +109,25 @@ function preservesStaleImportedTextSize(child: SceneNode, axis: 'width' | 'heigh
   )
 }
 
+export function usesGeneratedParentSize(
+  child: SceneNode,
+  parent: SceneNode | undefined,
+  axis: 'width' | 'height'
+): boolean {
+  if (
+    child.source.format === 'fig' ||
+    child.layoutPositioning === 'ABSOLUTE' ||
+    !parent ||
+    (parent.layoutMode !== 'HORIZONTAL' && parent.layoutMode !== 'VERTICAL')
+  )
+    return false
+  const primary = (axis === 'width') === (parent.layoutMode === 'HORIZONTAL')
+  const stretches =
+    child.layoutAlignSelf === 'STRETCH' ||
+    (child.layoutAlignSelf === 'AUTO' && parent.counterAxisAlign === 'STRETCH')
+  return primary ? child.layoutGrow > 0 : stretches
+}
+
 function computedChildSize(
   child: SceneNode,
   yogaChild: YogaNode,
@@ -119,19 +142,8 @@ function computedChildSize(
   if (child.type === 'TEXT' && child.source.format === 'fig') {
     return computed > 0 ? computed : child[axis]
   }
-  // Saved OpenPencil text can carry derived size without being a FIG source.
-  // Its intrinsic cache must not override a dimension owned by the parent layout.
-  if (
-    child.type === 'TEXT' &&
-    parent &&
-    (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL')
-  ) {
-    const primary = (axis === 'width') === (parent.layoutMode === 'HORIZONTAL')
-    const stretches =
-      child.layoutAlignSelf === 'STRETCH' ||
-      (child.layoutAlignSelf === 'AUTO' && parent.counterAxisAlign === 'STRETCH')
-    if (primary ? child.layoutGrow > 0 : stretches) return computed
-  }
+  // Saved generated containers and leaves can both retain intrinsic geometry.
+  if (usesGeneratedParentSize(child, parent, axis)) return computed
   return child.derivedLayout?.[axis] ?? computed
 }
 

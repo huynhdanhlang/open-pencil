@@ -33,6 +33,8 @@ For a child in a row or column, `set_layout_child` sizing `FILL` sets grow on th
 
 For a sizing discrepancy, request `get_node` with `layout_context: true` and a bounded depth. Its optional `layoutContext` reports actual axis modes, grow, self alignment, positioning, parent mode, source format/edit markers and retained derived geometry for the requested node. It does not mutate content or return raw imported records.
 
+For generated nested Frames/Components, inspect their painted bounds as well as leaf sizes after resizing an enclosing instance. FIG saves can normalize cross-axis Fill to FIXED sizing plus STRETCH alignment; the matched native fork honors that parent-owned dimension without letting a generated intrinsic `derivedLayout` restore an old width. Orthogonal Hug caches and imported FIG geometry guards remain separate. Verify actual large/mobile exports before and after save/reopen: leaf sizes and Fill JSX alone cannot prove nested background fidelity.
+
 Source grow, self alignment and positioning propagate to existing instance children unless overridden. Root instance placement remains owned by its outer container. Responsive verification must include an instance that existed before the source edit, not only a newly created instance.
 
 This surface does **not** expose structural creation/deletion, arbitrary JavaScript/JSX execution, image loading, filesystem operations, or credentials. Those tools retain their existing AI/MCP paths. WebMCP is an evolving browser proposal, not universally available; unsupported browsers continue to use OpenPencil normally. The stdio and HTTP integrations below remain independent.
