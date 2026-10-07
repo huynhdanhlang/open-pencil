@@ -2,6 +2,7 @@ import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { createCanvasKitRasterCodec } from '@open-pencil/core/io/formats/raster'
 import { computeBounds } from '@open-pencil/scene-graph/geometry'
 
+import { diagnostics } from '@/app/diagnostics'
 import type { EditorStore } from '@/app/editor/active-store'
 import { listFamilies, listFonts } from '@/app/editor/fonts'
 
@@ -13,6 +14,7 @@ export function makeFigmaFromStore(
   api.setRenderer(store.renderer ?? null)
   api.runtimeHistory = () => store.undo.diagnostics
   api.runtimePersistence = store.getPersistenceStatus
+  api.runtimeDiagnostics = diagnostics.getRuntimeStatus
   api.runtimeRenderers = () => store.canvasRenderers.map((renderer) => renderer.getResourceUsage())
   api.theme = store.state.theme ?? 'light'
   api.currentPage = api.wrapNode(pageId)

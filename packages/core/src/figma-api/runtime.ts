@@ -5,6 +5,20 @@ import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import { canUseFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export type RuntimeHistory = () => { undo: number; redo: number; batches: number }
+/** A bounded, redacted error sample from the app's existing shared diagnostics owner. */
+export interface RuntimeDiagnosticsStatus {
+  scope: 'shared-diagnostics'
+  enabled: boolean
+  storageBackend: 'uninitialized' | 'indexeddb' | 'memory'
+  lastPersistenceErrorName: string | null
+  recentRuntimeErrorCount: number
+  wasmFailures: Array<{
+    timestamp: number
+    kind: 'aborted' | 'out-of-bounds'
+    source: 'window' | 'rejection' | 'vue' | null
+    stack: string | null
+  }>
+}
 /** Numeric ownership counters only; never expose recovery payloads or source paths. */
 export interface RuntimePersistenceStatus {
   contentRevision: number
