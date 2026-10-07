@@ -31,6 +31,8 @@ Edits to geometry, paints, layout, text, and variable bindings/values commit syn
 
 For a child in a row or column, `set_layout_child` sizing `FILL` sets grow on the primary axis or STRETCH on the cross axis, including Text and Rectangle. Returning the cross axis to FIXED/HUG clears explicit STRETCH. In a combined request, positioning applies before sizing, and explicit grow/alignment applies afterward. Complete JSX export keeps an AUTO child's cross-axis STRETCH as `w="fill"` or `h="fill"`; absolute children keep their numeric box. Check the actual resized component and saved/imported result before treating responsive fidelity as verified.
 
+For a sizing discrepancy, request `get_node` with `layout_context: true` and a bounded depth. Its optional `layoutContext` reports actual axis modes, grow, self alignment, positioning, parent mode, source format/edit markers and retained derived geometry for the requested node. It does not mutate content or return raw imported records.
+
 This surface does **not** expose structural creation/deletion, arbitrary JavaScript/JSX execution, image loading, filesystem operations, or credentials. Those tools retain their existing AI/MCP paths. WebMCP is an evolving browser proposal, not universally available; unsupported browsers continue to use OpenPencil normally. The stdio and HTTP integrations below remain independent.
 
 ## Install

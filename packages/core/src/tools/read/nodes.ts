@@ -98,6 +98,14 @@ export const getNode = defineTool({
   execution: { kind: 'sync', mutation: 'none' },
   input: v.object({
     id: nodeIdInput,
+    layout_context: v.optional(
+      v.pipe(
+        v.boolean(),
+        v.description(
+          'Include this node’s layout modes, parent mode and retained import geometry diagnostics'
+        )
+      )
+    ),
     depth: v.optional(
       toolNumber(
         v.pipe(
@@ -107,10 +115,28 @@ export const getNode = defineTool({
       )
     )
   }),
-  execute: (figma, { id, depth }) => {
+  execute: (figma, { id, depth, layout_context }) => {
     const node = figma.getNodeById(id)
     if (!node) return { error: `Node "${id}" not found` }
-    return nodeToResult(node, depth)
+    const result = nodeToResult(node, depth)
+    if (layout_context) {
+      const raw = figma.graph.getNode(id)
+      const parent = raw?.parentId ? figma.graph.getNode(raw.parentId) : undefined
+      if (raw)
+        result.layoutContext = {
+          mode: raw.layoutMode,
+          primarySizing: raw.primaryAxisSizing,
+          counterSizing: raw.counterAxisSizing,
+          grow: raw.layoutGrow,
+          alignSelf: raw.layoutAlignSelf,
+          positioning: raw.layoutPositioning,
+          parentMode: parent?.layoutMode ?? null,
+          sourceFormat: raw.source.format,
+          editedFields: [...raw.source.editedFields],
+          derivedLayout: raw.derivedLayout ? { ...raw.derivedLayout } : null
+        }
+    }
+    return result
   }
 })
 
