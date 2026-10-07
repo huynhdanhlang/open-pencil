@@ -99,7 +99,10 @@ export async function loadFonts(
     settleFontDemand(r, snapshot, nodeIds)
     onFallbackFontsLoaded?.()
   }
-  r.fontProvider?.delete()
+  if (r.fontProvider) {
+    fontManager.detachProvider(r.fontProvider)
+    r.fontProvider.delete()
+  }
   r.fontProvider = r.ck.TypefaceFontProvider.Make()
 
   fontManager.attachProvider(r.ck, r.fontProvider)
