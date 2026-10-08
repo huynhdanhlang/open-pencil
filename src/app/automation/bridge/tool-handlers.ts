@@ -22,6 +22,12 @@ import {
   readAgentSession,
   touchedNodeIds
 } from '@/app/automation/agents'
+import {
+  queueRender,
+  readRenderStatus,
+  startRender,
+  type AutomationRequestContext
+} from '@/app/automation/bridge/render-admission'
 import { limitToSelection } from '@/app/automation/bridge/selection-scope'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import {
@@ -91,7 +97,11 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     }
   }
 
-  return async function handleTool(target: AutomationTarget, args: unknown): Promise<unknown> {
+  return async function handleTool(
+    target: AutomationTarget,
+    args: unknown,
+    context?: AutomationRequestContext
+  ): Promise<unknown> {
     const toolName = (args as { name?: string }).name
     const requestedArgs = (args as { args?: Record<string, unknown> }).args ?? {}
     if (!toolName) throw new Error('Missing "name" in args')
@@ -104,7 +114,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     // A call from an MCP session shows as that session's agent, working where the call works.
     const session = readAgentSession((args as { agent?: unknown }).agent)
     if (session) agentStarted(target.store, session, target.pageId)
-    const response = await runTool(target, toolName, toolArgs)
+    const response = await runTool(target, toolName, toolArgs, context)
     if (session) {
       agentFinished(target.store, session, {
         pageId: target.pageId,
@@ -118,11 +128,17 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
   async function runTool(
     target: AutomationTarget,
     toolName: string,
-    toolArgs: Record<string, unknown>
+    toolArgs: Record<string, unknown>,
+    context?: AutomationRequestContext
   ): Promise<{ result: unknown; edited: boolean }> {
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const run = async () => {
+      if (toolName === 'render') {
+        if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
+          throw new Error('Page closed before render started')
+        startRender(target.store.graph, context)
+      }
       if (toolName === 'render' && toolArgs.tree) {
         const placementInput = parseToolArgs(def.name, def.input, {
           ...toolArgs,
@@ -175,12 +191,15 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
         store.requestRender()
         store.flashNodes(extractNodeIds(result))
       }
+      if (toolName === 'get_runtime_status' && result && typeof result === 'object')
+        result = { ...result, automationRender: readRenderStatus(store.graph) }
       return { result, edited: def.mutates }
     }
     // Raster exports share the renderer and must not overlap a full FIG build.
+    if (toolName === 'render') queueRender(target.store.graph)
     return def.execution.mutation === 'none' && def.name !== 'export_image'
       ? run()
-      : target.store.runDocumentOperation(run)
+      : target.store.runDocumentOperation(run, toolName === 'render' ? context?.signal : undefined)
   }
 }
 

@@ -31,5 +31,5 @@ export interface DesignJSXServices<Artwork> {
   /** Vector nodes for the artwork, created under the placement's parent. */
   createArtwork(graph: SceneGraph, artwork: Artwork, placement: ArtworkPlacement): SceneNode
   /** Lay out the rendered parent and its ancestors once its nodes are in place. */
-  layout(graph: SceneGraph, parentId: string): void
+  layout(graph: SceneGraph, parentId: string, renderedRootIds?: readonly string[]): void
 }

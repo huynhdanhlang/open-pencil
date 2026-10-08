@@ -202,11 +202,27 @@ export function createBrowserRPCBridge({
         const settle = createSettler(resolve, reject)
         const timer = setTimeout(() => {
           pending.delete(id)
-          settle.reject(new Error(`RPC timeout (${Math.round(RPC_TIMEOUT / 1000)}s)`))
+          try {
+            sendJSON(ws, { type: 'cancel', id })
+          } catch {
+            /* A closed socket also cancels queued requests. */
+          }
+          const render =
+            body.command === 'tool' &&
+            body.args &&
+            typeof body.args === 'object' &&
+            Reflect.get(body.args, 'name') === 'render'
+          settle.reject(
+            new Error(
+              `RPC timeout (${Math.round(RPC_TIMEOUT / 1000)}s)${render ? '; queued render cancelled; an already-started render may finish. Inspect get_runtime_status before retrying.' : ''}`
+            )
+          )
         }, RPC_TIMEOUT)
         pending.set(id, { resolve: settle.resolve, reject: settle.reject, timer })
         try {
-          ws.send(JSON.stringify({ ...body, type: 'request', id }))
+          ws.send(
+            JSON.stringify({ ...body, type: 'request', id, deadlineAt: Date.now() + RPC_TIMEOUT })
+          )
         } catch (e) {
           clearTimeout(timer)
           pending.delete(id)

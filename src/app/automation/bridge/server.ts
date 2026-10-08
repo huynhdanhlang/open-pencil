@@ -12,6 +12,7 @@ import { randomHex } from '@open-pencil/scene-graph/random'
 import { endAgentSession, readAgentSession } from '@/app/automation/agents'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
+import type { AutomationRequestContext } from '@/app/automation/bridge/render-admission'
 import { isUnknownRecord } from '@/app/automation/bridge/target'
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -19,12 +20,16 @@ import type { EditorStore } from '@/app/editor/active-store'
 const AutomationRequestJSON = v.pipe(
   v.string(),
   v.parseJson(),
-  v.object({
-    type: v.literal('request'),
-    id: v.pipe(v.string(), v.nonEmpty()),
-    command: v.string(),
-    args: v.optional(v.unknown())
-  })
+  v.union([
+    v.object({
+      type: v.literal('request'),
+      id: v.pipe(v.string(), v.nonEmpty()),
+      command: v.string(),
+      args: v.optional(v.unknown()),
+      deadlineAt: v.optional(v.pipe(v.number(), v.finite()))
+    }),
+    v.object({ type: v.literal('cancel'), id: v.pipe(v.string(), v.nonEmpty()) })
+  ])
 )
 
 /**
@@ -47,8 +52,12 @@ export function connectAutomation(
   const { handleRequest: handleAutomationRequest } =
     createAutomationCommandHandlers(makeFigmaFromStore)
 
-  async function handleRequest(_id: string, command: string, args: unknown): Promise<unknown> {
-    return handleAutomationRequest(getStore(), command, args)
+  async function handleRequest(
+    context: AutomationRequestContext,
+    command: string,
+    args: unknown
+  ): Promise<unknown> {
+    return handleAutomationRequest(getStore(), command, args, context)
   }
 
   function connect() {
@@ -65,6 +74,7 @@ export function connectAutomation(
       return
     }
 
+    const requests = new Map<string, AbortController>()
     socket.onopen = () => {
       console.debug('[Automation] WebSocket connected to MCP server')
       socket.send(JSON.stringify({ type: 'register', token }))
@@ -79,6 +89,23 @@ export function connectAutomation(
           return
         }
         const msg = parsed.output
+        if (msg.type === 'cancel') {
+          requests.get(msg.id)?.abort(new Error('Automation request timed out'))
+          return
+        }
+        if (requests.has(msg.id)) return
+        const legacyRender =
+          msg.command === 'tool' && isUnknownRecord(msg.args) && msg.args.name === 'render'
+        const deadlineAt = msg.deadlineAt ?? (legacyRender ? Date.now() + 20_000 : undefined)
+        const controller = new AbortController()
+        requests.set(msg.id, controller)
+        const deadlineTimer =
+          deadlineAt === undefined
+            ? undefined
+            : setTimeout(
+                () => controller.abort(new Error('Automation request timed out')),
+                Math.max(0, deadlineAt - Date.now())
+              )
         const session = isUnknownRecord(msg.args) ? readAgentSession(msg.args.agent) : null
         if (session) {
           const sockets = sessionSockets.get(session.session) ?? new Set<WebSocket>()
@@ -86,7 +113,11 @@ export function connectAutomation(
           sessionSockets.set(session.session, sockets)
         }
         try {
-          const result = await handleRequest(msg.id, msg.command, msg.args)
+          const result = await handleRequest(
+            { id: msg.id, deadlineAt, signal: controller.signal },
+            msg.command,
+            msg.args
+          )
           if (socket.readyState !== WebSocket.OPEN) return
           socket.send(JSON.stringify({ type: 'response', id: msg.id, ...(result as object) }))
         } catch (e) {
@@ -99,6 +130,9 @@ export function connectAutomation(
               error: e instanceof Error ? e.message : String(e)
             })
           )
+        } finally {
+          clearTimeout(deadlineTimer)
+          requests.delete(msg.id)
         }
       } catch (e) {
         console.warn('Failed to parse WebSocket message:', e)
@@ -106,6 +140,9 @@ export function connectAutomation(
     }
 
     socket.onclose = (event) => {
+      for (const controller of requests.values())
+        controller.abort(new Error('Automation connection closed'))
+      requests.clear()
       if (ws === socket) ws = null
       // Sessions that reached the app only over this connection cannot any more, so their agents
       // leave; ones that also came another way, such as over a newer connection, stay.

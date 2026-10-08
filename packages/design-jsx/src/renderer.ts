@@ -104,7 +104,13 @@ export async function renderRoots<Artwork>(
       nodes.push(node)
     }
 
-    journal.layout(() => services.layout(graph, parentId))
+    journal.layout(() =>
+      services.layout(
+        graph,
+        parentId,
+        nodes.map((node) => node.id)
+      )
+    )
     journal.semantic(() =>
       refreshComponentSetVariants(
         graph,

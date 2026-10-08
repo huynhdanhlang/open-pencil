@@ -2,7 +2,7 @@ import type { RenderResult } from '@open-pencil/design-jsx'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { findPageId } from '#core/io/subgraph'
-import { computeAllLayouts } from '#core/layout'
+import { createLayoutRunner } from '#core/layout/mutations'
 
 /** Placement fields shared by the render tool and its speculative preview. */
 export interface RenderPlacementInput {
@@ -65,5 +65,23 @@ export function finishRenderPlacement(
     }
   }
   if (placement.replaceId) graph.deleteNode(placement.replaceId)
-  computeAllLayouts(graph, placement.pageId)
+  layoutRenderedContent(
+    graph,
+    placement.parentId,
+    results.map((result) => result.id)
+  )
+}
+
+/** Free canvas roots are independent; an auto-layout parent still owns its siblings and ancestors. */
+export function layoutRenderedContent(
+  graph: SceneGraph,
+  parentId: string,
+  rootIds?: readonly string[]
+): void {
+  const parent = graph.getNode(parentId)
+  if (!parent) throw new Error('Render parent no longer belongs to a page')
+  const runner = createLayoutRunner(() => graph)
+  if (parent.type === 'CANVAS' && rootIds) {
+    for (const id of rootIds) runner.runLayoutForNode(id)
+  } else runner.runLayoutForNode(parentId)
 }

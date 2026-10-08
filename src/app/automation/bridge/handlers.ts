@@ -17,6 +17,13 @@ import {
   handleOpenFile,
   handleSaveFile
 } from '@/app/automation/bridge/file-handlers'
+import {
+  admitRender,
+  assertRenderRequestLive,
+  awaitRenderPreparation,
+  isRenderCommand,
+  type AutomationRequestContext
+} from '@/app/automation/bridge/render-admission'
 import { handleRPCFallback } from '@/app/automation/bridge/rpc-handler'
 import { handleSelection } from '@/app/automation/bridge/selection-handler'
 import {
@@ -61,28 +68,50 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
   async function handleTargetCommand(
     target: AutomationTarget,
     command: string,
-    args: UnknownRecord
+    args: UnknownRecord,
+    context?: AutomationRequestContext
   ): Promise<unknown> {
-    const viewTool = command === 'tool' && toolPreparesShownPage(args)
-    if (
-      target.store.graph.getNode(target.pageId)?.type !== 'CANVAS' ||
-      (!viewTool && !(await target.store.preparePageNodes(target.pageId)))
-    ) {
-      throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
+    const admittedGraph = target.store.graph
+    const prepareAndRun = async () => {
+      if (isRenderCommand(command, args)) assertRenderRequestLive(context)
+      const viewTool = command === 'tool' && toolPreparesShownPage(args)
+      // Runtime counters describe already-materialized content; inspection must not import a page.
+      const runtimeRead = command === 'tool' && args.name === 'get_runtime_status'
+      if (
+        target.store.graph.getNode(target.pageId)?.type !== 'CANVAS' ||
+        (!viewTool &&
+          !runtimeRead &&
+          !(await (isRenderCommand(command, args)
+            ? awaitRenderPreparation(target.store.preparePageNodes(target.pageId), context)
+            : target.store.preparePageNodes(target.pageId))))
+      ) {
+        throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
+      }
+      if (isRenderCommand(command, args) && target.store.graph !== admittedGraph)
+        throw new Error('Document changed before render started')
+      const handler = commandHandlers[command]
+      const run = () =>
+        command === 'tool'
+          ? handleTool(target, args, context)
+          : handler
+            ? handler(target, args)
+            : handleRPCFallback(target, command, args)
+      // File lifecycle handlers already own their FIG queue; do not nest that queue.
+      const result = ['undo', 'redo', 'export'].includes(command)
+        ? await target.store.runDocumentOperation(run)
+        : await run()
+      return responseWithTarget(result, target)
     }
-    const handler = commandHandlers[command]
-    const run = () => (handler ? handler(target, args) : handleRPCFallback(target, command, args))
-    // File lifecycle handlers already own their FIG queue; do not nest that queue.
-    const result = ['undo', 'redo', 'export'].includes(command)
-      ? await target.store.runDocumentOperation(run)
-      : await run()
-    return responseWithTarget(result, target)
+    return isRenderCommand(command, args)
+      ? admitRender(admittedGraph, context, prepareAndRun)
+      : prepareAndRun()
   }
 
   async function handleRequest(
     store: EditorStore,
     command: string,
-    args: unknown
+    args: unknown,
+    context?: AutomationRequestContext
   ): Promise<unknown> {
     if (command === 'agent_dispatch' || command === 'agent_status' || command === 'agent_cancel')
       return handleAgentCommand(store, command, args)
@@ -98,13 +127,15 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     if (command === 'update_settings') return handleUpdateSettings(args)
 
     if (command === 'open_file' || command === 'new_document') {
+      if (isRenderCommand(command, args) && target.store.graph !== admittedGraph)
+        throw new Error('Document changed before render started')
       const handler = commandHandlers[command]
       if (handler) return handler(resolveAutomationTarget(store, undefined), args)
     }
 
     const rawArgs = isUnknownRecord(args) ? args : {}
     const target = resolveAutomationTarget(store, rawArgs)
-    return handleTargetCommand(target, command, stripAutomationTargetArgs(rawArgs))
+    return handleTargetCommand(target, command, stripAutomationTargetArgs(rawArgs), context)
   }
 
   return { handleRequest, handleTargetCommand }

@@ -264,7 +264,8 @@ export function createDocumentSourceActions({
     saveFigFileToPath,
     startWatchingCurrentFile,
     disposeDocumentIO,
-    runDocumentOperation: <T>(run: () => Promise<T>) => figBuildQueue.run(run),
+    runDocumentOperation: <T>(run: () => Promise<T>, signal?: AbortSignal) =>
+      figBuildQueue.run(run, signal),
     saveFigFile: () => saveAndTrack(saveFigFile),
     saveFigFileAs: () => saveAndTrack(saveFigFileAs),
     hasUnsavedChanges: changes.hasUnsavedChanges,
