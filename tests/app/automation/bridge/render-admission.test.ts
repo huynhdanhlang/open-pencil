@@ -5,8 +5,75 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
+import {
+  admitRender,
+  startRender,
+  markRenderStep,
+  shouldDeferRenderPaint
+} from '@/app/automation/bridge/render-admission'
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
+
+test('partial construction defers paints only in its admitted page and always releases on failure', async () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0].id
+  expect(shouldDeferRenderPaint(graph, page, 'scene')).toBe(false)
+  await expect(
+    admitRender(graph, undefined, async () => {
+      startRender(graph, undefined, page)
+      markRenderStep(graph, 'construction')
+      expect(shouldDeferRenderPaint(graph, page, 'scene')).toBe(true)
+      expect(shouldDeferRenderPaint(graph, 'other-page', 'scene')).toBe(false)
+      markRenderStep(graph, 'fonts')
+      expect(shouldDeferRenderPaint(graph, page, 'overlays')).toBe(false)
+      markRenderStep(graph, 'construction')
+      throw new Error('Owned construction failed')
+    })
+  ).rejects.toThrow('Owned construction failed')
+  expect(shouldDeferRenderPaint(graph, page, 'scene')).toBe(false)
+})
+
+for (const payload of [
+  { jsx: '<Frame name="Cross-page render" />' },
+  { tree: { type: 'frame', props: { name: 'Cross-page render' }, children: [] } }
+]) {
+  test('parent placement owns the paint gate and reversible page for raw/tree renders', async () => {
+    Object.assign(globalThis, { window: { innerWidth: 1024, innerHeight: 768 } })
+    const store = createEditorStore()
+    const shown = store.state.currentPageId
+    const destination = store.graph.addPage('Destination')
+    const fontWait = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+    const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+    const target = {
+      store,
+      documentId: 'owned',
+      documentName: 'Owned',
+      pageId: shown,
+      pageName: 'Page'
+    }
+    try {
+      const response = (await handleTargetCommand(target, 'tool', {
+        name: 'render',
+        args: { ...payload, parent_id: destination.id }
+      })) as { result: { id: string } }
+      expect(store.graph.getNode(response.result.id)?.parentId).toBe(destination.id)
+      const status = (await handleTargetCommand(target, 'tool', {
+        name: 'get_runtime_status',
+        args: {}
+      })) as {
+        result: { automationRender: { pageId: string } }
+      }
+      expect(status.result.automationRender.pageId).toBe(destination.id)
+      await handleTargetCommand(target, 'undo', {})
+      expect(store.graph.getNode(response.result.id)).toBeUndefined()
+      expect(store.graph.getNode(destination.id)).toBeDefined()
+    } finally {
+      fontWait.mockRestore()
+      store.dispose()
+      Reflect.deleteProperty(globalThis, 'window')
+    }
+  })
+}
 
 test('raw JSX prepares fonts only in its returned roots and retains one reversible edit', async () => {
   Object.assign(globalThis, { window: { innerWidth: 1024, innerHeight: 768 } })

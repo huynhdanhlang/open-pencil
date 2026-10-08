@@ -24,6 +24,15 @@ interface RenderStatus {
   step: RenderStep | null
   stepStartedAt: number | null
   stepMs: Partial<Record<RenderStep, number>>
+  pageId: string | null
+  paintDeferrals: Partial<Record<PaintLayer, number>>
+  paintMs: Partial<Record<RenderStep, Partial<Record<PaintLayer, PaintTiming>>>>
+}
+type PaintLayer = 'scene' | 'overlays' | 'full'
+interface PaintTiming {
+  count: number
+  totalMs: number
+  maxMs: number
 }
 const renders = new WeakMap<SceneGraph, RenderStatus>()
 
@@ -61,7 +70,10 @@ export async function admitRender<T>(
     finishedAt: null,
     step: null,
     stepStartedAt: null,
-    stepMs: {}
+    stepMs: {},
+    pageId: null,
+    paintDeferrals: {},
+    paintMs: {}
   }
   renders.set(graph, status)
   try {
@@ -106,13 +118,42 @@ export function queueRender(graph: SceneGraph): void {
 }
 
 /** Mutation cutoff: after this point cancellation cannot roll back unrelated manual edits. */
-export function startRender(graph: SceneGraph, context?: AutomationRequestContext): void {
+export function startRender(
+  graph: SceneGraph,
+  context?: AutomationRequestContext,
+  pageId?: string
+): void {
   assertRenderRequestLive(context)
   const status = renders.get(graph)
   if (status) {
     status.phase = 'running'
     status.startedAt = Date.now()
+    status.pageId = pageId ?? null
   }
+}
+
+/** Paint only the complete construction; never pause graph, layout or Undo owners. */
+export function shouldDeferRenderPaint(
+  graph: SceneGraph,
+  pageId: string,
+  layer: PaintLayer
+): boolean {
+  const status = renders.get(graph)
+  if (status?.phase !== 'running' || status.step !== 'construction' || status.pageId !== pageId)
+    return false
+  status.paintDeferrals[layer] = (status.paintDeferrals[layer] ?? 0) + 1
+  return true
+}
+
+/** Numeric paint timings at the actual surface boundary, including direct paints. */
+export function recordRenderPaint(graph: SceneGraph, layer: PaintLayer, durationMs: number): void {
+  const status = renders.get(graph)
+  if (status?.phase !== 'running' || !status.step || !Number.isFinite(durationMs)) return
+  const timings = (status.paintMs[status.step] ??= {})
+  const timing = (timings[layer] ??= { count: 0, totalMs: 0, maxMs: 0 })
+  timing.count++
+  timing.totalMs += Math.max(0, durationMs)
+  timing.maxMs = Math.max(timing.maxMs, durationMs)
 }
 
 export function readRenderStatus(graph: SceneGraph) {
@@ -122,6 +163,15 @@ export function readRenderStatus(graph: SceneGraph) {
         scope: 'document-automation-render' as const,
         ...status,
         stepMs: { ...status.stepMs },
+        paintDeferrals: { ...status.paintDeferrals },
+        paintMs: Object.fromEntries(
+          Object.entries(status.paintMs).map(([step, layers]) => [
+            step,
+            Object.fromEntries(
+              Object.entries(layers).map(([layer, timing]) => [layer, { ...timing }])
+            )
+          ])
+        ),
         elapsedMs: (status.finishedAt ?? Date.now()) - status.receivedAt,
         queueWaitMs: status.startedAt === null ? null : status.startedAt - status.receivedAt,
         cancellation: 'before-start-only' as const

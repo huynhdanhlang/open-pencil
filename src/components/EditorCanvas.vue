@@ -29,6 +29,7 @@ import {
 } from '@open-pencil/vue'
 
 import { useAIChat } from '@/app/ai/chat/use'
+import { shouldDeferRenderPaint, recordRenderPaint } from '@/app/automation/bridge/render-admission'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { useCanvasCollaborationAwareness } from '@/app/editor/canvas/collaboration-awareness'
 import { createCanvasContextSelection } from '@/app/editor/canvas/context-selection'
@@ -78,7 +79,7 @@ const onViewportResize = (width: number, height: number) => {
 const { updateCursor } = useCanvasCollaborationAwareness(store)
 const { selectAtContextPoint } = createCanvasContextSelection(canvasRef, store)
 
-const shouldSuspendRender = () =>
+const shouldSuspendPreparation = () =>
   store.state.preparation !== null &&
   store.state.preparation.kind !== 'font-retry' &&
   store.state.preparation.phase !== 'preparing-render'
@@ -87,12 +88,16 @@ useCanvas(sceneCanvasRef, store, {
   layer: 'scene',
   sceneRenderer: appRuntimeConfig.sceneRenderer,
   onReady: store.markCanvasReady,
-  shouldSuspendRender,
+  shouldSuspendRender: () =>
+    shouldSuspendPreparation() ||
+    shouldDeferRenderPaint(store.graph, paneView.value.currentPageId, 'scene'),
   showRulers: false,
   getRenderState,
   onViewportResize,
-  onPresented: ({ sceneVersion }) =>
-    store.preparationController.acknowledgePresentation(sceneVersion),
+  onPresented: ({ sceneVersion, renderDurationMs }) => {
+    recordRenderPaint(store.graph, 'scene', renderDurationMs)
+    store.preparationController.acknowledgePresentation(sceneVersion)
+  },
   onPresentation: (colorSpace) => {
     store.state.canvasPresentation = colorSpace
   }
@@ -104,7 +109,11 @@ const { hitTestSectionTitle, hitTestComponentLabel, hitTestFrameTitle, hitTestIs
       return appRuntimeConfig.showRulers && store.state.showRulers && paneView.value.play === null
     },
     getOverlayObstacles: () => canvasOverlayObstacles(canvasRef.value),
-    shouldSuspendRender,
+    shouldSuspendRender: () =>
+      shouldSuspendPreparation() ||
+      shouldDeferRenderPaint(store.graph, paneView.value.currentPageId, 'overlays'),
+    onPresented: ({ renderDurationMs }) =>
+      recordRenderPaint(store.graph, 'overlays', renderDurationMs),
     getRenderState,
     onViewportResize
   })

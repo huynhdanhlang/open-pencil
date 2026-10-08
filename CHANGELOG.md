@@ -250,6 +250,8 @@
 
 ### Performance
 
+- Defer partial scene/overlay paints during admitted JSX construction on the resolved placement page, including direct font/resize paints; report bounded paint timings and deferrals in runtime status.
+
 - Coalesce the displayed layer tree per frame during async structural authoring, flushing before selection and cancelling stale work on page/graph changes. Suppress file-watch reload throughout disk writes and prepare the restored lazy page before publishing it on external reload.
 
 - Prepare fonts only for rendered JSX roots and reflow changed subtrees on free-positioned pages; MCP runtime status separates render construction, fonts, layout, and Undo timings.

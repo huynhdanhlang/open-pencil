@@ -138,10 +138,20 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const run = async () => {
+      let renderPageId = target.pageId
       if (toolName === 'render') {
         if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
           throw new Error('Page closed before render started')
-        startRender(target.store.graph, context)
+        const placementInput = parseToolArgs(def.name, def.input, {
+          ...toolArgs,
+          ...(toolArgs.tree ? { jsx: '' } : {})
+        }) as RenderPlacementInput
+        renderPageId = resolveRenderPlacement(
+          target.store.graph,
+          placementInput,
+          target.pageId
+        ).pageId
+        startRender(target.store.graph, context, renderPageId)
       }
       if (toolName === 'render' && toolArgs.tree) {
         const placementInput = parseToolArgs(def.name, def.input, {
@@ -157,7 +167,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       if (def.execution.mutation === 'view' && store.state.currentPageId !== target.pageId) {
         await store.switchPage(target.pageId)
       }
-      const figma = makeFigma(store, target.pageId)
+      const figma = makeFigma(store, renderPageId)
       let result: unknown
       if (def.execution.mutation === 'view') {
         const initialPageId = figma.currentPageId

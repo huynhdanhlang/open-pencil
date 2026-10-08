@@ -125,11 +125,12 @@ export function createCanvasSurfaceManager({
     }
   }
 
-  function acknowledgePresentation() {
+  function acknowledgePresentation(renderDurationMs: number) {
     const renderedState = options?.getRenderState?.() ?? editor.state
     options?.onPresented?.({
       renderVersion: renderedState.renderVersion,
-      sceneVersion: renderedState.sceneVersion
+      sceneVersion: renderedState.sceneVersion,
+      renderDurationMs
     })
   }
 
@@ -140,6 +141,12 @@ export function createCanvasSurfaceManager({
 
   function renderNow() {
     if (!state.renderer || isDestroyed()) return
+    // Initialization, font completion and resize can call this outside the RAF loop.
+    if (options?.shouldSuspendRender?.()) {
+      renderLoop.markDirty()
+      return
+    }
+    const startedAt = performance.now()
     state.renderer.overlayObstacles = overlayObstacles()
     state.renderer.renderFromEditorState(
       options?.getRenderState?.() ?? editor.state,
@@ -152,7 +159,7 @@ export function createCanvasSurfaceManager({
       editor.isInteractiveEditing()
     )
     renderLoop.markRendered()
-    acknowledgePresentation()
+    acknowledgePresentation(performance.now() - startedAt)
     clearSceneBackingRenderTimer()
     if (options?.layer === 'scene' && state.renderer.tiledScenePending) {
       renderLoop.markDirty()
