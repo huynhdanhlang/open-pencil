@@ -4,6 +4,7 @@ import { computeAllLayouts } from '@open-pencil/core/layout'
 import { documentFontStatus, fontManager, fontResolver } from '@open-pencil/core/text'
 import { useEditorEvent } from '@open-pencil/vue'
 
+import { measureRenderWork } from '@/app/automation/bridge/render-admission'
 import { useEditorStore } from '@/app/editor/active-store'
 import { loadFont, requestLocalFontAccess } from '@/app/editor/fonts'
 
@@ -25,7 +26,9 @@ export function useDocumentFontStatus() {
 
   const status = computed(() => {
     void revision.value
-    return documentFontStatus(editor.graph, editor.state.currentPageId)
+    return measureRenderWork(editor.graph, 'font-status', () =>
+      documentFontStatus(editor.graph, editor.state.currentPageId)
+    )
   })
 
   async function retry() {

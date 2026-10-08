@@ -10,11 +10,38 @@ import {
   admitRender,
   startRender,
   markRenderStep,
-  shouldDeferRenderPaint
+  shouldDeferRenderPaint,
+  measureRenderWork,
+  readRenderStatus
 } from '@/app/automation/bridge/render-admission'
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
 import { createDeferred } from '@/app/runtime/deferred'
+
+test('render work measurements preserve results/errors and retain only admitted numeric timings', async () => {
+  const graph = new SceneGraph()
+  const pageId = graph.getPages()[0].id
+  expect(measureRenderWork(graph, 'font-status', () => 42)).toBe(42)
+  expect(readRenderStatus(graph)).toBeNull()
+  await admitRender(graph, undefined, async () => {
+    startRender(graph, undefined, pageId)
+    markRenderStep(graph, 'construction')
+    expect(measureRenderWork(graph, 'font-status', () => 42)).toBe(42)
+    expect(() =>
+      measureRenderWork(graph, 'design-check', () => {
+        throw new Error('original')
+      })
+    ).toThrow('original')
+  })
+  const status = readRenderStatus(graph)
+  expect(status?.workMs.construction?.['font-status']?.count).toBe(1)
+  expect(status?.workMs.construction?.['design-check']?.count).toBe(1)
+  measureRenderWork(graph, 'font-status', () => 99)
+  expect(readRenderStatus(graph)?.workMs.construction?.['font-status']?.count).toBe(1)
+  if (status?.workMs.construction?.['font-status'])
+    status.workMs.construction['font-status'].count = 99
+  expect(readRenderStatus(graph)?.workMs.construction?.['font-status']?.count).toBe(1)
+})
 
 test('moving a render parent during destination preparation aborts before snapshots', async () => {
   const store = createEditorStore()

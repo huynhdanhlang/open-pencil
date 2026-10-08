@@ -28,7 +28,9 @@ interface RenderStatus {
   paintDeferrals: Partial<Record<PaintLayer, number>>
   layerTreeDeferrals: number
   paintMs: Partial<Record<RenderStep, Partial<Record<PaintLayer, PaintTiming>>>>
+  workMs: Partial<Record<RenderStep, Partial<Record<RenderWorkOwner, PaintTiming>>>>
 }
+type RenderWorkOwner = 'font-status' | 'design-check'
 type PaintLayer = 'scene' | 'overlays' | 'full'
 interface PaintTiming {
   count: number
@@ -75,7 +77,8 @@ export async function admitRender<T>(
     pageId: null,
     paintDeferrals: {},
     layerTreeDeferrals: 0,
-    paintMs: {}
+    paintMs: {},
+    workMs: {}
   }
   renders.set(graph, status)
   try {
@@ -171,6 +174,24 @@ export function recordRenderPaint(graph: SceneGraph, layer: PaintLayer, duration
   timing.maxMs = Math.max(timing.maxMs, durationMs)
 }
 
+/** Measure actual synchronous consumers, without retaining node payloads or changing their work. */
+export function measureRenderWork<T>(graph: SceneGraph, owner: RenderWorkOwner, run: () => T): T {
+  const status = renders.get(graph)
+  const step = status?.phase === 'running' ? status.step : null
+  if (!status || !step) return run()
+  const startedAt = performance.now()
+  try {
+    return run()
+  } finally {
+    const durationMs = Math.max(0, performance.now() - startedAt)
+    const timings = (status.workMs[step] ??= {})
+    const timing = (timings[owner] ??= { count: 0, totalMs: 0, maxMs: 0 })
+    timing.count++
+    timing.totalMs += durationMs
+    timing.maxMs = Math.max(timing.maxMs, durationMs)
+  }
+}
+
 export function readRenderStatus(graph: SceneGraph) {
   const status = renders.get(graph)
   return status
@@ -179,6 +200,14 @@ export function readRenderStatus(graph: SceneGraph) {
         ...status,
         stepMs: { ...status.stepMs },
         paintDeferrals: { ...status.paintDeferrals },
+        workMs: Object.fromEntries(
+          Object.entries(status.workMs).map(([step, owners]) => [
+            step,
+            Object.fromEntries(
+              Object.entries(owners).map(([owner, timing]) => [owner, { ...timing }])
+            )
+          ])
+        ) as RenderStatus['workMs'],
         paintMs: Object.fromEntries(
           Object.entries(status.paintMs).map(([step, layers]) => [
             step,

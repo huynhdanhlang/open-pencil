@@ -5,6 +5,7 @@ import type { Editor } from '@open-pencil/core/editor'
 import { isFigPagePending } from '@open-pencil/core/io/formats/fig'
 import { createLinter, type LintConfig, type LintFixRequest } from '@open-pencil/core/lint'
 
+import { measureRenderWork } from '@/app/automation/bridge/render-admission'
 import type { AppEditorState } from '@/app/editor/session/types'
 import { appPreferences, type DesignCheckPreset } from '@/app/settings/preferences/store'
 
@@ -56,7 +57,9 @@ export function createDesignCheck(editor: Editor, state: AppEditorState) {
   )
 
   function checkPage(pageId: string): DesignIssue[] {
-    return toDesignIssues(linter.value.lintGraph(editor.graph, [pageId]).messages, pageId)
+    return measureRenderWork(editor.graph, 'design-check', () =>
+      toDesignIssues(linter.value.lintGraph(editor.graph, [pageId]).messages, pageId)
+    )
   }
 
   /** Set while the Lint panel lists the whole document, which needs every page checked. */
