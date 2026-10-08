@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { expect, spyOn, test } from 'bun:test'
 
+import { BUILTIN_IO_FORMATS, IORegistry, parseFigFile } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -39,9 +40,17 @@ for (const payload of [
 ]) {
   test('parent placement owns the paint gate and reversible page for raw/tree renders', async () => {
     Object.assign(globalThis, { window: { innerWidth: 1024, innerHeight: 768 } })
-    const store = createEditorStore()
+    const source = new SceneGraph()
+    const sourcePage = source.addPage('Destination')
+    source.createNode('RECTANGLE', sourcePage.id, { name: 'Retained before render' })
+    const written = await new IORegistry(BUILTIN_IO_FORMATS).writeDocument('fig', source)
+    const bytes = written.data as Uint8Array
+    const lazy = await parseFigFile(bytes.slice().buffer, { populate: 'first-page' })
+    const store = createEditorStore(lazy)
     const shown = store.state.currentPageId
-    const destination = store.graph.addPage('Destination')
+    const destination = store.graph.getPages().find((page) => page.name === 'Destination')
+    if (!destination) throw new Error('Missing destination fixture')
+    expect(store.graph.getChildren(destination.id)).toHaveLength(0)
     const fontWait = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
     const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
     const target = {
@@ -57,6 +66,11 @@ for (const payload of [
         args: { ...payload, parent_id: destination.id }
       })) as { result: { id: string } }
       expect(store.graph.getNode(response.result.id)?.parentId).toBe(destination.id)
+      expect(
+        store.graph
+          .getChildren(destination.id)
+          .some((node) => node.name === 'Retained before render')
+      ).toBe(true)
       const status = (await handleTargetCommand(target, 'tool', {
         name: 'get_runtime_status',
         args: {}
@@ -67,6 +81,9 @@ for (const payload of [
       await handleTargetCommand(target, 'undo', {})
       expect(store.graph.getNode(response.result.id)).toBeUndefined()
       expect(store.graph.getNode(destination.id)).toBeDefined()
+      expect(store.graph.getChildren(destination.id).map((node) => node.name)).toEqual([
+        'Retained before render'
+      ])
     } finally {
       fontWait.mockRestore()
       store.dispose()

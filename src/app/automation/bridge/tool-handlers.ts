@@ -24,6 +24,7 @@ import {
 } from '@/app/automation/agents'
 import {
   queueRender,
+  awaitRenderPreparation,
   markRenderStep,
   readRenderStatus,
   startRender,
@@ -140,6 +141,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const run = async () => {
       let renderPageId = target.pageId
       if (toolName === 'render') {
+        const admittedGraph = target.store.graph
         if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
           throw new Error('Page closed before render started')
         const placementInput = parseToolArgs(def.name, def.input, {
@@ -151,6 +153,19 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           placementInput,
           target.pageId
         ).pageId
+        if (renderPageId !== target.pageId) {
+          const ready = await awaitRenderPreparation(
+            target.store.preparePageNodes(renderPageId),
+            context
+          )
+          if (
+            !ready ||
+            target.store.graph !== admittedGraph ||
+            admittedGraph.getNode(renderPageId)?.type !== 'CANVAS'
+          ) {
+            throw new Error('Render destination changed during preparation')
+          }
+        }
         startRender(target.store.graph, context, renderPageId)
       }
       if (toolName === 'render' && toolArgs.tree) {
