@@ -166,6 +166,12 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
             throw new Error('Render destination changed during preparation')
           }
         }
+        if (
+          resolveRenderPlacement(admittedGraph, placementInput, target.pageId).pageId !==
+          renderPageId
+        ) {
+          throw new Error('Render placement changed pages during preparation')
+        }
         startRender(target.store.graph, context, renderPageId)
       }
       if (toolName === 'render' && toolArgs.tree) {

@@ -14,6 +14,46 @@ import {
 } from '@/app/automation/bridge/render-admission'
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
+import { createDeferred } from '@/app/runtime/deferred'
+
+test('moving a render parent during destination preparation aborts before snapshots', async () => {
+  const store = createEditorStore()
+  const shown = store.state.currentPageId
+  const original = store.graph.addPage('Original destination')
+  const moved = store.graph.addPage('Moved destination')
+  const parent = store.graph.createNode('FRAME', original.id)
+  const ready = createDeferred<boolean>()
+  const entered = createDeferred<void>()
+  const prepare = spyOn(store, 'preparePageNodes').mockImplementation((id) => {
+    if (id === shown) return Promise.resolve(true)
+    entered.resolve()
+    return ready.promise
+  })
+  const snapshot = spyOn(store, 'snapshotPage')
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const pending = handleTargetCommand(
+    { store, documentId: 'owned', documentName: 'Owned', pageId: shown, pageName: 'Page' },
+    'tool',
+    {
+      name: 'render',
+      args: { jsx: '<Frame />', parent_id: parent.id }
+    }
+  )
+  try {
+    await entered.promise
+    store.graph.reparentNode(parent.id, moved.id)
+    ready.resolve(true)
+    await expect(pending).rejects.toThrow('placement changed pages')
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(store.graph.getNode(parent.id)?.parentId).toBe(moved.id)
+    expect(store.graph.getChildren(parent.id)).toHaveLength(0)
+  } finally {
+    ready.resolve(false)
+    prepare.mockRestore()
+    snapshot.mockRestore()
+    store.dispose()
+  }
+})
 
 test('partial construction defers paints only in its admitted page and always releases on failure', async () => {
   const graph = new SceneGraph()
