@@ -127,8 +127,6 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     if (command === 'update_settings') return handleUpdateSettings(args)
 
     if (command === 'open_file' || command === 'new_document') {
-      if (isRenderCommand(command, args) && target.store.graph !== admittedGraph)
-        throw new Error('Document changed before render started')
       const handler = commandHandlers[command]
       if (handler) return handler(resolveAutomationTarget(store, undefined), args)
     }

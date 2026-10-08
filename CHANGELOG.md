@@ -250,6 +250,8 @@
 
 ### Performance
 
+- Prepare fonts only for rendered JSX roots and reflow changed subtrees on free-positioned pages; MCP runtime status separates render construction, fonts, layout, and Undo timings.
+
 - Retire obsolete FIG workers, preserve unchanged-file Save across page population, recover exited app-managed MCP servers, and expose read-only per-surface renderer, GPU resource-cache and Undo diagnostics through `get_runtime_status`.
 
 - Open and draw large pages faster: guides no longer scan every layer of the page on each frame, a layout pass only writes the layers it moved and asks for one redraw, and opening a `.fig` keeps one copy of the file on the main thread instead of three.

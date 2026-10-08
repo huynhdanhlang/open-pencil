@@ -51,13 +51,18 @@ export async function executeWithPageUndo<T>(
   store: EditorStore,
   pageId: string,
   label: string,
-  run: () => Promise<T>
+  run: () => Promise<T>,
+  onPhase?: (phase: 'snapshot-before' | 'construction' | 'snapshot-after' | 'undo-commit') => void
 ): Promise<T> {
+  onPhase?.('snapshot-before')
   const before = store.snapshotPage(pageId)
   try {
+    onPhase?.('construction')
     return await run()
   } finally {
+    onPhase?.('snapshot-after')
     const after = store.snapshotPage(pageId, before)
+    onPhase?.('undo-commit')
     // Read-only scripts and no-op edits must not leave empty steps in the user's history.
     if (!isEqual(before, after)) {
       store.pushUndoEntry({

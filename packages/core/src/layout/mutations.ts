@@ -35,7 +35,14 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
 
   function compactLayoutScope(impact: SceneMutationImpact): string[] {
     const graph = getGraph()
-    const candidates = new Set(mutationLayoutScopeIds(impact).filter((id) => graph.getNode(id)))
+    // A free page only owns root ordering; it cannot resize or position its children.
+    // Keeping it in the candidates masks every actual changed subtree below it.
+    const candidates = new Set(
+      mutationLayoutScopeIds(impact).filter((id) => {
+        const node = graph.getNode(id)
+        return node && !(node.type === 'CANVAS' && node.layoutMode === 'NONE')
+      })
+    )
     return [...candidates].filter((id) => {
       let parentId = graph.getNode(id)?.parentId ?? null
       while (parentId) {
@@ -62,7 +69,14 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
   function runLayoutForImpact(impact: SceneMutationImpact): boolean {
     const scopeIds = compactLayoutScope(impact)
     for (const id of scopeIds) runLayoutForNode(id)
-    return scopeIds.length > 0
+    // Deleting the last root only touches the surviving free page: handled, no reflow.
+    return (
+      scopeIds.length > 0 ||
+      mutationLayoutScopeIds(impact).some((id) => {
+        const node = getGraph().getNode(id)
+        return node?.type === 'CANVAS' && node.layoutMode === 'NONE'
+      })
+    )
   }
 
   return { runLayoutForNode, runLayoutForImpact, runMutationWithLayout }

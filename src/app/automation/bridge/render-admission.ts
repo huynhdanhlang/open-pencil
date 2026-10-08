@@ -8,12 +8,22 @@ export interface AutomationRequestContext {
 }
 
 type RenderPhase = 'preparing' | 'queued' | 'running' | 'completed' | 'expired' | 'failed'
+export type RenderStep =
+  | 'snapshot-before'
+  | 'construction'
+  | 'fonts'
+  | 'layout-sync'
+  | 'snapshot-after'
+  | 'undo-commit'
 interface RenderStatus {
   requestId: string | null
   phase: RenderPhase
   receivedAt: number
   startedAt: number | null
   finishedAt: number | null
+  step: RenderStep | null
+  stepStartedAt: number | null
+  stepMs: Partial<Record<RenderStep, number>>
 }
 const renders = new WeakMap<SceneGraph, RenderStatus>()
 
@@ -48,7 +58,10 @@ export async function admitRender<T>(
     phase: 'preparing',
     receivedAt: Date.now(),
     startedAt: null,
-    finishedAt: null
+    finishedAt: null,
+    step: null,
+    stepStartedAt: null,
+    stepMs: {}
   }
   renders.set(graph, status)
   try {
@@ -65,8 +78,26 @@ export async function admitRender<T>(
         : 'failed'
     throw error
   } finally {
+    finishRenderStep(status)
     status.finishedAt = Date.now()
   }
+}
+
+function finishRenderStep(status: RenderStatus): void {
+  if (status.step && status.stepStartedAt !== null)
+    status.stepMs[status.step] =
+      (status.stepMs[status.step] ?? 0) + Date.now() - status.stepStartedAt
+  status.step = null
+  status.stepStartedAt = null
+}
+
+/** Bounded numeric timings only, independent of recipe text and document contents. */
+export function markRenderStep(graph: SceneGraph, step: RenderStep): void {
+  const status = renders.get(graph)
+  if (!status || status.phase !== 'running') return
+  finishRenderStep(status)
+  status.step = step
+  status.stepStartedAt = Date.now()
 }
 
 export function queueRender(graph: SceneGraph): void {
@@ -90,6 +121,7 @@ export function readRenderStatus(graph: SceneGraph) {
     ? {
         scope: 'document-automation-render' as const,
         ...status,
+        stepMs: { ...status.stepMs },
         elapsedMs: (status.finishedAt ?? Date.now()) - status.receivedAt,
         queueWaitMs: status.startedAt === null ? null : status.startedAt - status.receivedAt,
         cancellation: 'before-start-only' as const

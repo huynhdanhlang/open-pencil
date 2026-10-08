@@ -8,6 +8,54 @@ import { createAutomationCommandHandlers } from '@/app/automation/bridge/handler
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
 
+test('raw JSX prepares fonts only in its returned roots and retains one reversible edit', async () => {
+  Object.assign(globalThis, { window: { innerWidth: 1024, innerHeight: 768 } })
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const existing = store.graph.createNode('TEXT', pageId, { name: 'Unrelated existing text' })
+  const fontWait = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const target = { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' }
+  try {
+    const response = (await handleTargetCommand(target, 'tool', {
+      name: 'render',
+      args: { jsx: '<Frame name="New root"><Text>Hello</Text></Frame>' }
+    })) as { result: { id: string } }
+    expect(fontWait.mock.calls.at(-1)?.[1]).toEqual([response.result.id])
+    expect(fontWait.mock.calls.at(-1)?.[1]).not.toContain(existing.id)
+    expect(store.undo.canUndo).toBe(true)
+    await handleTargetCommand(target, 'undo', {})
+    expect(store.graph.getNode(response.result.id)).toBeUndefined()
+    expect(store.graph.getNode(existing.id)?.name).toBe('Unrelated existing text')
+    await handleTargetCommand(target, 'redo', {})
+    expect(store.graph.getNode(response.result.id)?.name).toBe('New root')
+    const status = (await handleTargetCommand(target, 'tool', {
+      name: 'get_runtime_status',
+      args: {}
+    })) as {
+      result: {
+        automationRender: { phase: string; step: string | null; stepMs: Record<string, number> }
+      }
+    }
+    expect(status.result.automationRender.phase).toBe('completed')
+    expect(status.result.automationRender.step).toBeNull()
+    expect(Object.keys(status.result.automationRender.stepMs).sort()).toEqual(
+      [
+        'snapshot-before',
+        'construction',
+        'fonts',
+        'layout-sync',
+        'snapshot-after',
+        'undo-commit'
+      ].sort()
+    )
+    expect(Object.values(status.result.automationRender.stepMs).every((ms) => ms >= 0)).toBe(true)
+  } finally {
+    fontWait.mockRestore()
+    store.dispose()
+  }
+})
+
 for (const payload of [
   { jsx: '<Frame name="Expired" />' },
   { tree: { type: 'frame', props: { name: 'Expired' }, children: [] } }

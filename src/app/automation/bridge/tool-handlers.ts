@@ -24,6 +24,7 @@ import {
 } from '@/app/automation/agents'
 import {
   queueRender,
+  markRenderStep,
   readRenderStatus,
   startRender,
   type AutomationRequestContext
@@ -71,13 +72,16 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           },
           placement.pageId,
           async (nodes) => {
+            markRenderStep(store.graph, 'fonts')
             await ensureGraphFonts(
               store.graph,
               nodes.map((node) => node.id),
               store.renderer
             )
+            markRenderStep(store.graph, 'layout-sync')
           }
-        )
+        ),
+      (phase) => markRenderStep(store.graph, phase)
     )
     store.requestRender()
     store.flashNodes(results.map((node) => node.id))
@@ -174,14 +178,23 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           store.runMutationWithLayout(
             () => def.execute(figma, toolArgs),
             figma.currentPageId,
-            async () => {
+            async (rendered) => {
               const pageNode = store.graph.getNode(figma.currentPageId)
-              if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
+              const nodeIds = toolName === 'render' ? extractNodeIds(rendered) : pageNode?.childIds
+              if (toolName === 'render') markRenderStep(store.graph, 'fonts')
+              if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
+              if (toolName === 'render') markRenderStep(store.graph, 'layout-sync')
             }
           )
         // View tools (selection, viewport, pages) leave the document and its history alone.
         result = toolChangesDocument(def)
-          ? await executeWithPageUndo(store, pageId, automationUndoLabel(def.name), mutate)
+          ? await executeWithPageUndo(
+              store,
+              pageId,
+              automationUndoLabel(def.name),
+              mutate,
+              toolName === 'render' ? (phase) => markRenderStep(store.graph, phase) : undefined
+            )
           : await mutate()
       } else {
         result = await def.execute(figma, toolArgs)
@@ -209,6 +222,12 @@ function extractNodeIds(result: unknown): string[] {
   if (typeof obj.deleted === 'string') return []
   const ids: string[] = []
   if (typeof obj.id === 'string') ids.push(obj.id)
+  if (Array.isArray(obj.siblings)) {
+    for (const sibling of obj.siblings) {
+      if (sibling && typeof sibling === 'object' && typeof (sibling as JSONObject).id === 'string')
+        ids.push((sibling as JSONObject).id as string)
+    }
+  }
   if (Array.isArray(obj.results)) {
     for (const item of obj.results) {
       if (item && typeof item === 'object' && typeof (item as JSONObject).id === 'string')
