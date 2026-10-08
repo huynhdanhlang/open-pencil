@@ -54,6 +54,7 @@ export function createDocumentSourceActions({
   getSavedVersion,
   setSavedVersion,
   setLastWriteTime,
+  beginWrite,
   getRenderer
 }: DocumentSourceOptions) {
   const changes = createDocumentChanges(editor)
@@ -145,6 +146,7 @@ export function createDocumentSourceActions({
     setSourceIdentity,
     setSavedVersion,
     setLastWriteTime,
+    beginWrite,
     startWatchingFile: () => {
       void startWatchingFile()
     },

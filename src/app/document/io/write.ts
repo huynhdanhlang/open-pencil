@@ -12,6 +12,7 @@ type DocumentWriterOptions = {
   getStorageBinding: () => StorageDocumentBinding | null
   setSavedVersion: (version: number) => void
   setLastWriteTime: (time: number) => void
+  beginWrite: () => () => void
   onWriteSuccess?: (version: number) => void | Promise<void>
 }
 
@@ -22,10 +23,15 @@ export function createDocumentWriter({
   getStorageBinding,
   setSavedVersion,
   setLastWriteTime,
+  beginWrite,
   onWriteSuccess
 }: DocumentWriterOptions) {
-  async function finishWrite(version: number): Promise<true> {
+  async function finishWrite(version: number, release: () => void): Promise<true> {
+    // Large native writes can exceed the watch suppression window. Measure from
+    // completed disk I/O so its delayed modify event does not reload our own Save.
+    setLastWriteTime(Date.now())
     setSavedVersion(version)
+    release()
     try {
       await onWriteSuccess?.(version)
     } catch (error) {
@@ -35,6 +41,7 @@ export function createDocumentWriter({
   }
 
   return async function writeFile(data: Uint8Array, version: number): Promise<boolean> {
+    const release = beginWrite()
     setLastWriteTime(Date.now())
     try {
       const storage = getStorageBinding()
@@ -45,7 +52,7 @@ export function createDocumentWriter({
           name: state.documentName || 'Untitled',
           figBytes: data
         })
-        return await finishWrite(version)
+        return await finishWrite(version, release)
       }
 
       const filePath = getFilePath()
@@ -53,13 +60,13 @@ export function createDocumentWriter({
       if (filePath && isTauri()) {
         const { writeFile: tauriWrite } = await import('@tauri-apps/plugin-fs')
         await tauriWrite(filePath, data)
-        return await finishWrite(version)
+        return await finishWrite(version, release)
       }
       if (fileHandle) {
         const writable = await fileHandle.createWritable()
         await writable.write(new Uint8Array(data))
         await writable.close()
-        return await finishWrite(version)
+        return await finishWrite(version, release)
       }
       return false
     } catch (error) {
@@ -70,6 +77,8 @@ export function createDocumentWriter({
         retryable: describeDiagnosticError(error).retryable
       })
       throw error
+    } finally {
+      release()
     }
   }
 }

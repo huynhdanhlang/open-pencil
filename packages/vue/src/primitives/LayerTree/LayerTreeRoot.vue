@@ -11,6 +11,7 @@ import type {
   LayerSelectionMode,
   LayerTreeVirtualizer
 } from '#vue/primitives/LayerTree/context'
+import { createLayerTreeEvents } from '#vue/primitives/LayerTree/events'
 import {
   buildLayerTreeModel,
   layerSelectionForTarget,
@@ -53,27 +54,12 @@ const { draggingId, instruction, instructionTargetId, setupItem } = useLayerDrag
   expandNode
 )
 
-let rebuildPending = false
-let rebuildToken = 0
-
 function rebuildTree() {
-  rebuildPending = false
-  rebuildToken++
   const model = buildLayerTreeModel(editor.graph, editor.state.currentPageId)
   items.value = model.items
   nodesById = model.byId
   expanded.value = expanded.value.filter((id) => nodesById.has(id))
   treeVersion.value++
-}
-
-function scheduleTreeRebuild() {
-  if (rebuildPending) return
-  rebuildPending = true
-  const token = ++rebuildToken
-  queueMicrotask(() => {
-    if (!rebuildPending || token !== rebuildToken) return
-    rebuildTree()
-  })
 }
 
 rebuildTree()
@@ -87,10 +73,6 @@ const PATCHABLE_NODE_KEYS = new Set<keyof SceneNode>([
 ])
 
 function patchTreeNode(id: string, changes: Partial<SceneNode>) {
-  if ('childIds' in changes || 'parentId' in changes) {
-    rebuildTree()
-    return
-  }
   if (!(Object.keys(changes) as (keyof SceneNode)[]).some((key) => PATCHABLE_NODE_KEYS.has(key))) {
     return
   }
@@ -137,20 +119,8 @@ function onSelectionChanged(ids: string[]) {
   if (selectionAnchorId) scrollToNode(selectionAnchorId)
 }
 
-const unsubscribe = [
-  editor.onEditorEvent('graph:replaced', rebuildTree),
-  editor.onEditorEvent('page:changed', rebuildTree),
-  editor.onEditorEvent('node:created', scheduleTreeRebuild),
-  editor.onEditorEvent('node:deleted', scheduleTreeRebuild),
-  editor.onEditorEvent('node:reparented', scheduleTreeRebuild),
-  editor.onEditorEvent('node:reordered', scheduleTreeRebuild),
-  editor.onEditorEvent('node:updated', patchTreeNode),
-  editor.onEditorEvent('selection:changed', onSelectionChanged)
-]
-
-onScopeDispose(() => {
-  for (const stop of unsubscribe) stop()
-})
+const treeEvents = createLayerTreeEvents(editor, rebuildTree, patchTreeNode, onSelectionChanged)
+onScopeDispose(treeEvents.dispose)
 
 function syncCanvasScope(nodeId: string) {
   const node = editor.graph.getNode(nodeId)
@@ -168,6 +138,7 @@ function syncCanvasScope(nodeId: string) {
 }
 
 function select(id: string, selection: boolean | LayerSelectionMode) {
+  treeEvents.flush()
   const mode = typeof selection === 'boolean' ? { additive: selection, range: false } : selection
   emit('select', id, mode.additive)
   const visibleIds = visibleRows.value.map((row) => row.node.id)

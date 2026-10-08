@@ -250,6 +250,8 @@
 
 ### Performance
 
+- Coalesce the displayed layer tree per frame during async structural authoring, flushing before selection and cancelling stale work on page/graph changes. Suppress file-watch reload throughout disk writes and prepare the restored lazy page before publishing it on external reload.
+
 - Prepare fonts only for rendered JSX roots and reflow changed subtrees on free-positioned pages; MCP runtime status separates render construction, fonts, layout, and Undo timings.
 
 - Retire obsolete FIG workers, preserve unchanged-file Save across page population, recover exited app-managed MCP servers, and expose read-only per-surface renderer, GPU resource-cache and Undo diagnostics through `get_runtime_status`.

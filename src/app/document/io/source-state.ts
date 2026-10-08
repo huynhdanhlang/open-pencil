@@ -9,8 +9,19 @@ export function createDocumentSourceState() {
   let storageBinding: StorageDocumentBinding | null = null
   let savedVersion = 0
   let lastWriteTime = 0
+  let pendingWrites = 0
 
   return {
+    isWriting: () => pendingWrites > 0,
+    beginWrite: () => {
+      pendingWrites++
+      let released = false
+      return () => {
+        if (released) return
+        released = true
+        pendingWrites--
+      }
+    },
     getFileHandle: () => fileHandle,
     setFileHandle: (handle: FileSystemFileHandle | null) => {
       fileHandle = handle

@@ -7,17 +7,20 @@ import type { EditorPreparationHandle as DocumentLoadSession } from '@/app/edito
 export async function applyImportedDocument(
   editor: Editor,
   imported: SceneGraph,
-  load?: DocumentLoadSession
+  load?: DocumentLoadSession,
+  requestedPageId?: string
 ) {
   const firstPage = imported.getPages()[0] as SceneNode | undefined
-  const pageId = firstPage?.id ?? imported.rootId
+  const requestedPage = requestedPageId ? imported.getNode(requestedPageId) : undefined
+  const page = requestedPage?.type === 'CANVAS' ? requestedPage : firstPage
+  const pageId = page?.id ?? imported.rootId
   const stagingEditor = createEditor({
     graph: imported,
     loadFont,
     skipInitialGraphSetup: true
   })
   try {
-    load?.update({ phase: 'populating-page', detail: firstPage?.name ?? null })
+    load?.update({ phase: 'populating-page', detail: page?.name ?? null })
     const prepared = await stagingEditor.preparePage(pageId, {
       signal: load?.signal,
       onProgress: (progress) => load?.update(progress)
@@ -28,6 +31,12 @@ export async function applyImportedDocument(
     editor.replaceGraph(imported)
     editor.undo.clear()
     editor.clearSelection()
+    // The live editor owns page generations and publishes page:changed to views.
+    // A prepared staging page alone does not switch the replacement's first page.
+    const livePage = await editor.preparePage(pageId, { signal: load?.signal })
+    if (!livePage || !editor.commitPageSwitch(livePage)) {
+      throw new Error('Imported page switch was superseded')
+    }
   } finally {
     stagingEditor.dispose()
   }

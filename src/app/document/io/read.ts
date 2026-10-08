@@ -118,7 +118,8 @@ export function createReloadActions({
         succeeded = true
         return
       }
-      await applyImportedDocument(editor, imported, load)
+      // A reload keeps its shown page, not merely that page's ID on a lazy graph.
+      await applyImportedDocument(editor, imported, load, snapshot.pageId)
       restoreReloadState(editor, state, snapshot)
       editor.requestRender()
       markDocumentSaved()

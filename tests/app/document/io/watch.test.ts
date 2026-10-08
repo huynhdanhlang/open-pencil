@@ -4,6 +4,7 @@ import { createFileWatcher } from '@/app/document/io/watch'
 import { createDeferred } from '@/app/runtime/deferred'
 
 function fixture() {
+  let writing = false
   const registrations: {
     reload: () => void
     complete: () => void
@@ -15,6 +16,7 @@ function fixture() {
       getFilePath: () => '/owned.fig',
       getFileHandle: () => null,
       getLastWriteTime: () => 0,
+      isWriting: () => writing,
       reloadFromDisk: () => {
         reloads++
       }
@@ -37,8 +39,29 @@ function fixture() {
       }
     }
   )
-  return { watcher, registrations, reloads: () => reloads }
+  return {
+    watcher,
+    registrations,
+    reloads: () => reloads,
+    setWriting: (value: boolean) => {
+      writing = value
+    }
+  }
 }
+
+test('file notifications cannot reload during an in-flight write', async () => {
+  const { watcher, registrations, reloads, setWriting } = fixture()
+  const pending = watcher.startWatchingFile()
+  registrations[0].complete()
+  await pending
+  setWriting(true)
+  registrations[0].reload()
+  expect(reloads()).toBe(0)
+  setWriting(false)
+  registrations[0].reload()
+  expect(reloads()).toBe(1)
+  watcher.dispose()
+})
 
 test('stop unregisters a file watch whose native registration completes late', async () => {
   const { watcher, registrations, reloads } = fixture()

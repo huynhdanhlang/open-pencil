@@ -35,6 +35,7 @@ export function createSaveActions({
   setSourceIdentity,
   setSavedVersion,
   setLastWriteTime,
+  beginWrite,
   startWatchingFile,
   onWriteSuccess,
   onDownloadSuccess
@@ -46,6 +47,7 @@ export function createSaveActions({
     getStorageBinding,
     setSavedVersion,
     setLastWriteTime,
+    beginWrite,
     onWriteSuccess
   })
 
