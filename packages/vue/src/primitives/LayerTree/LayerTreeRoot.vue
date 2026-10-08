@@ -20,8 +20,10 @@ import {
 } from '#vue/primitives/LayerTree/model'
 import { useLayerDrag } from '#vue/primitives/LayerTree/useLayerDrag'
 
-const { indentPerLevel = 16 } = defineProps<{
+const { indentPerLevel = 16, shouldDeferStructuralUpdates } = defineProps<{
   indentPerLevel?: number
+  /** Defer structural projection during a bulk operation; selection/page changes still flush. */
+  shouldDeferStructuralUpdates?: () => boolean
 }>()
 
 const emit = defineEmits<{
@@ -119,7 +121,13 @@ function onSelectionChanged(ids: string[]) {
   if (selectionAnchorId) scrollToNode(selectionAnchorId)
 }
 
-const treeEvents = createLayerTreeEvents(editor, rebuildTree, patchTreeNode, onSelectionChanged)
+const treeEvents = createLayerTreeEvents(
+  editor,
+  rebuildTree,
+  patchTreeNode,
+  onSelectionChanged,
+  () => shouldDeferStructuralUpdates?.() === true
+)
 onScopeDispose(treeEvents.dispose)
 
 function syncCanvasScope(nodeId: string) {

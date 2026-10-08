@@ -22,6 +22,7 @@ test('displayed tree batches async graph edits, flushes selection and cancels st
   const page = graph.getPages()[0].id
   const editor = createEditor({ graph })
   let builds = 0
+  let deferring = true
   let model = buildLayerTreeModel(graph, page)
   const events = createLayerTreeEvents(
     editor,
@@ -32,13 +33,17 @@ test('displayed tree batches async graph edits, flushes selection and cancels st
     () => undefined,
     (ids) => {
       for (const id of ids) expect(model.byId.has(id)).toBe(true)
-    }
+    },
+    () => deferring
   )
   try {
     let last = ''
     for (let i = 0; i < 20; i++) {
       last = graph.createNode('RECTANGLE', page).id
       await Promise.resolve()
+      const queued = [...frames.values()]
+      frames.clear()
+      for (const callback of queued) callback(0)
     }
     expect(builds).toBe(0)
     expect(frames.size).toBe(1)
@@ -47,6 +52,12 @@ test('displayed tree batches async graph edits, flushes selection and cancels st
     expect(model.items).toHaveLength(20)
     expect(frames.size).toBe(0)
     graph.createNode('RECTANGLE', page)
+    deferring = false
+    const completed = [...frames.values()]
+    frames.clear()
+    for (const callback of completed) callback(0)
+    expect(model.items).toHaveLength(21)
+    expect(builds).toBe(2)
     const replacement = new SceneGraph()
     editor.replaceGraph(replacement)
     expect(model.items).toHaveLength(0)

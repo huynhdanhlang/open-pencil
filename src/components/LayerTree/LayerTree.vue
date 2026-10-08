@@ -17,6 +17,7 @@ import type {
   LayerTreeVirtualizer
 } from '@open-pencil/vue'
 
+import { shouldDeferRenderLayerTree } from '@/app/automation/bridge/render-admission'
 import { useEditorStore } from '@/app/editor/active-store'
 import { layerIssueMarks } from '@/app/editor/design-check/layers'
 import { appPreferences } from '@/app/settings/preferences/store'
@@ -162,7 +163,13 @@ function onFocusOut(event: FocusEvent, actions: LayerTreeRootActions) {
 </script>
 
 <template>
-  <LayerTreeRoot v-slot="scope" :indent-per-level="INDENT">
+  <LayerTreeRoot
+    v-slot="scope"
+    :indent-per-level="INDENT"
+    :should-defer-structural-updates="
+      () => shouldDeferRenderLayerTree(store.graph, store.state.currentPageId)
+    "
+  >
     <ContextMenuRoot :modal="false">
       <div
         v-bind="attrs"

@@ -26,6 +26,7 @@ interface RenderStatus {
   stepMs: Partial<Record<RenderStep, number>>
   pageId: string | null
   paintDeferrals: Partial<Record<PaintLayer, number>>
+  layerTreeDeferrals: number
   paintMs: Partial<Record<RenderStep, Partial<Record<PaintLayer, PaintTiming>>>>
 }
 type PaintLayer = 'scene' | 'overlays' | 'full'
@@ -73,6 +74,7 @@ export async function admitRender<T>(
     stepMs: {},
     pageId: null,
     paintDeferrals: {},
+    layerTreeDeferrals: 0,
     paintMs: {}
   }
   renders.set(graph, status)
@@ -139,9 +141,22 @@ export function shouldDeferRenderPaint(
   layer: PaintLayer
 ): boolean {
   const status = renders.get(graph)
-  if (status?.phase !== 'running' || status.step !== 'construction' || status.pageId !== pageId)
-    return false
+  if (!status || !isRenderConstruction(graph, pageId)) return false
   status.paintDeferrals[layer] = (status.paintDeferrals[layer] ?? 0) + 1
+  return true
+}
+
+/** Presentation batching only; graph mutation/Undo owners continue unchanged. */
+export function isRenderConstruction(graph: SceneGraph, pageId: string): boolean {
+  const status = renders.get(graph)
+  return status?.phase === 'running' && status.step === 'construction' && status.pageId === pageId
+}
+
+/** Count only the displayed tree's deferred RAF refresh checks. */
+export function shouldDeferRenderLayerTree(graph: SceneGraph, pageId: string): boolean {
+  const status = renders.get(graph)
+  if (!status || !isRenderConstruction(graph, pageId)) return false
+  status.layerTreeDeferrals++
   return true
 }
 

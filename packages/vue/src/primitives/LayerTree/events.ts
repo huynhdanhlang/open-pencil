@@ -8,11 +8,16 @@ export function createLayerTreeEvents(
   editor: Editor,
   rebuild: () => void,
   patch: (id: string, changes: Partial<SceneNode>) => void,
-  selectionChanged: (ids: string[]) => void
+  selectionChanged: (ids: string[]) => void,
+  shouldDeferStructuralUpdates?: () => boolean
 ) {
   let pending = false
   let disposed = false
-  const frame = createRafScheduler(flush)
+  const frame = createRafScheduler(() => {
+    if (disposed || !pending) return
+    if (shouldDeferStructuralUpdates?.()) frame.schedule()
+    else flush()
+  })
 
   function flush() {
     frame.cancel()
