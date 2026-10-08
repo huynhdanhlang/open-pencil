@@ -14,7 +14,6 @@ import {
   toolChangesDocument
 } from '@open-pencil/core/tools'
 import { decodeTreeFromTransport } from '@open-pencil/design-jsx'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   agentFinished,
@@ -36,6 +35,7 @@ import {
   AUTOMATION_UNDO_LABEL,
   automationUndoLabel,
   executeAtomicEditorTool,
+  extractToolNodeIds,
   executeWithPageUndo
 } from '@/app/automation/execution/editor'
 import { ensureGraphFonts } from '@/app/editor/fonts'
@@ -211,7 +211,10 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
             figma.currentPageId,
             async (rendered) => {
               const pageNode = store.graph.getNode(figma.currentPageId)
-              const nodeIds = toolName === 'render' ? extractNodeIds(rendered) : pageNode?.childIds
+              const nodeIds =
+                toolName === 'render' || toolName === 'batch_update'
+                  ? extractToolNodeIds(rendered)
+                  : pageNode?.childIds
               if (toolName === 'render') markRenderStep(store.graph, 'fonts')
               if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
               if (toolName === 'render') markRenderStep(store.graph, 'layout-sync')
@@ -233,7 +236,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
 
       if (def.mutates && def.execution.mutation !== 'view') {
         store.requestRender()
-        store.flashNodes(extractNodeIds(result))
+        store.flashNodes(extractToolNodeIds(result))
       }
       if (toolName === 'get_runtime_status' && result && typeof result === 'object')
         result = { ...result, automationRender: readRenderStatus(store.graph) }
@@ -245,25 +248,4 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       ? run()
       : target.store.runDocumentOperation(run, toolName === 'render' ? context?.signal : undefined)
   }
-}
-
-function extractNodeIds(result: unknown): string[] {
-  if (!result || typeof result !== 'object') return []
-  const obj = result as JSONObject
-  if (typeof obj.deleted === 'string') return []
-  const ids: string[] = []
-  if (typeof obj.id === 'string') ids.push(obj.id)
-  if (Array.isArray(obj.siblings)) {
-    for (const sibling of obj.siblings) {
-      if (sibling && typeof sibling === 'object' && typeof (sibling as JSONObject).id === 'string')
-        ids.push((sibling as JSONObject).id as string)
-    }
-  }
-  if (Array.isArray(obj.results)) {
-    for (const item of obj.results) {
-      if (item && typeof item === 'object' && typeof (item as JSONObject).id === 'string')
-        ids.push((item as JSONObject).id as string)
-    }
-  }
-  return ids
 }

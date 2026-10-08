@@ -49,26 +49,34 @@ export const getComponents = defineTool({
   }),
   execute: async (figma, args) => {
     const limit = args.limit ?? 50
+    if (limit === 0) return { count: 0, components: [] }
     const source = args.source
     const nameFilter = args.name?.toLowerCase()
     const documentComponents: DocumentComponentResult[] = []
 
     if (source !== 'libraries') {
-      for (const page of figma.root.children) {
+      for (const page of figma.graph.getPages(true)) {
         if (documentComponents.length >= limit) break
-        page.findAll((node) => {
-          if (documentComponents.length >= limit) return false
-          if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') return false
-          if (nameFilter && !node.name.toLowerCase().includes(nameFilter)) return false
-          documentComponents.push({
-            id: node.id,
-            name: node.name,
-            type: node.type,
-            page: page.name,
-            source: 'document'
-          })
-          return false
-        })
+        // Preserve findAll's preorder without wrapping every unrelated descendant.
+        const pending = [...page.childIds].reverse()
+        while (pending.length && documentComponents.length < limit) {
+          const node = figma.graph.getNode(pending.pop()!)
+          if (!node) continue
+          if (
+            (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') &&
+            (!nameFilter || node.name.toLowerCase().includes(nameFilter))
+          ) {
+            documentComponents.push({
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              page: page.name,
+              source: 'document'
+            })
+          }
+          if (documentComponents.length >= limit) break
+          for (let i = node.childIds.length - 1; i >= 0; i--) pending.push(node.childIds[i])
+        }
       }
     }
 

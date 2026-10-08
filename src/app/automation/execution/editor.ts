@@ -3,9 +3,27 @@ import { isEqual } from 'es-toolkit'
 import { executeAtomicTool } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import type { ToolDef } from '@open-pencil/core/tools'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
+
+/** Existing result IDs, shared by bridge presentation and AI font preparation. */
+export function extractToolNodeIds(result: unknown): string[] {
+  if (!result || typeof result !== 'object') return []
+  const obj = result as JSONObject
+  if (typeof obj.deleted === 'string') return []
+  const ids: string[] = []
+  if (typeof obj.id === 'string') ids.push(obj.id)
+  for (const field of [obj.siblings, obj.results]) {
+    if (!Array.isArray(field)) continue
+    for (const item of field) {
+      if (item && typeof item === 'object' && typeof (item as JSONObject).id === 'string')
+        ids.push((item as JSONObject).id as string)
+    }
+  }
+  return [...new Set(ids)]
+}
 
 /** Undo steps made through the automation bridge (MCP, CLI) start with this label. */
 export const AUTOMATION_UNDO_LABEL = 'Agent'

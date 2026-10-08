@@ -26,7 +26,7 @@ Examples:
   execute: async (figma, args) => {
     try {
       const nodes = await queryByXPath(figma.graph, args.selector, {
-        page: args.page ?? figma.currentPage.name,
+        ...(args.page === undefined ? { pageId: figma.currentPageId } : { page: args.page }),
         limit: args.limit
       })
       return {

@@ -18,6 +18,32 @@ import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
 import { createDeferred } from '@/app/runtime/deferred'
 
+test('batch update prepares fonts only in changed roots and preserves one reversible edit', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const frame = store.graph.createNode('FRAME', pageId, { name: 'Before' })
+  store.graph.createNode('TEXT', frame.id)
+  const unrelated = store.graph.createNode('TEXT', pageId)
+  const fontWait = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const target = { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' }
+  try {
+    await handleTargetCommand(target, 'tool', {
+      name: 'batch_update',
+      args: { operations: JSON.stringify([{ id: frame.id, props: { name: 'After', padding: 8 } }]) }
+    })
+    expect(fontWait.mock.calls.at(-1)?.[1]).toEqual([frame.id])
+    expect(fontWait.mock.calls.at(-1)?.[1]).not.toContain(unrelated.id)
+    await handleTargetCommand(target, 'undo', {})
+    expect(store.graph.getNode(frame.id)?.name).toBe('Before')
+    await handleTargetCommand(target, 'redo', {})
+    expect(store.graph.getNode(frame.id)?.name).toBe('After')
+  } finally {
+    fontWait.mockRestore()
+    store.dispose()
+  }
+})
+
 test('render work measurements preserve results/errors and retain only admitted numeric timings', async () => {
   const graph = new SceneGraph()
   const pageId = graph.getPages()[0].id
