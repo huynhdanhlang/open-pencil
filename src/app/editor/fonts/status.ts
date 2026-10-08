@@ -1,28 +1,32 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import { documentFontStatus, fontManager, fontResolver } from '@open-pencil/core/text'
 import { useEditorEvent } from '@open-pencil/vue'
 
-import { measureRenderWork } from '@/app/automation/bridge/render-admission'
+import { isRenderConstruction, measureRenderWork } from '@/app/automation/bridge/render-admission'
 import { useEditorStore } from '@/app/editor/active-store'
 import { loadFont, requestLocalFontAccess } from '@/app/editor/fonts'
+import { createFontStatusRefresh } from '@/app/editor/fonts/status-refresh'
 
 export function useDocumentFontStatus() {
   const editor = useEditorStore()
   const revision = ref(0)
   const retrying = ref(false)
 
-  const refresh = () => {
-    revision.value++
-  }
+  const updates = createFontStatusRefresh(
+    () => revision.value++,
+    () => isRenderConstruction(editor.graph, editor.state.currentPageId)
+  )
+  const refresh = updates.immediate
+  onScopeDispose(updates.dispose)
 
   useEditorEvent('font:resolution-changed', refresh)
   useEditorEvent('graph:replaced', refresh)
   useEditorEvent('page:changed', refresh)
-  useEditorEvent('node:created', refresh)
-  useEditorEvent('node:updated', refresh)
-  useEditorEvent('node:deleted', refresh)
+  useEditorEvent('node:created', updates.mutated)
+  useEditorEvent('node:updated', updates.mutated)
+  useEditorEvent('node:deleted', updates.mutated)
 
   const status = computed(() => {
     void revision.value
@@ -40,6 +44,7 @@ export function useDocumentFontStatus() {
       if (fontManager.localAccessState() === 'prompt') {
         await requestLocalFontAccess().catch(() => [])
       }
+      refresh()
       const issues = status.value.issues
       await Promise.all(
         issues.map(async ({ family, style }) => {
@@ -77,6 +82,7 @@ export function useDocumentFontStatus() {
   }
 
   function selectAffectedNodes() {
+    refresh()
     editor.select(status.value.issues.flatMap((issue) => issue.nodeIds))
   }
 
