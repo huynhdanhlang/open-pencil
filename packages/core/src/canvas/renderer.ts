@@ -6,7 +6,6 @@ import type { RenderColorSpace, ResolvedRenderColor } from '@open-pencil/scene-g
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
-import { ResourceCache } from '#core/cache/resource'
 /* eslint-disable max-lines -- SkiaRenderer facade owns CanvasKit state and delegates domain drawing */
 import {
   SELECTION_COLOR,
@@ -24,6 +23,8 @@ import { RenderProfiler } from '#core/profiler'
 import type { TextEditor } from '#core/text/editor'
 import type { FontResolutionSnapshot } from '#core/text/resolver'
 
+import { createImageCache } from './images/cache'
+import { ImagePreviewCache } from './images/previews'
 import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
 import { LabelParagraphCache } from './labels/paragraph-cache'
@@ -41,7 +42,6 @@ import { createGlyphSilhouetteCache } from './text/derived'
 import { TextPreparationCache } from './text/preparation-cache'
 export type { MeasurementMode, PresenceCursor, RenderOverlays, RulerTheme } from './renderer/types'
 import type {
-  Image as CKImage,
   Path,
   CanvasKit,
   Surface,
@@ -117,13 +117,12 @@ export class SkiaRenderer {
   pendingFontNodes = new Map<string, PendingFontNode>()
   textPictureGenerations = new Map<string, { data: Uint8Array; generation: number }>()
   readonly transientPreviews = new Map<string, TransientCanvasPreview>()
-  imageCache = new ResourceCache<string, CKImage>({
-    maxEntries: 256,
-    maxWeight: 256 * 1024 * 1024,
-    // Conservative RGBA + mipmaps bound, including thin (1×N) images.
-    weight: (image) => image.width() * image.height() * 8,
-    dispose: (image) => image.delete()
-  })
+  imageCache = createImageCache()
+  viewportImageRendering = false
+  imageMemoryGraph: SceneGraph | null = null
+  imageMemoryPage: string | null = null
+  onImagePreviewReady: (() => void) | null = null
+  readonly imagePreviews = new ImagePreviewCache(() => this.onImagePreviewReady?.())
   vectorPathCache = new Map<string, Path[]>()
   vectorStrokePathCache = new Map<string, Path[]>()
   vectorStrokeOutlineCache = new Map<string, Path[]>()
@@ -575,8 +574,9 @@ export class SkiaRenderer {
     RendererState.invalidateAllPictures(this)
   }
 
-  invalidateNodePicture(nodeId: string): void {
-    RendererState.invalidateNodePicture(this, nodeId)
+  /** Drops `nodeId`'s cached drawing; `changedKeys`, when known, lets text keep its glyph coverage. */
+  invalidateNodePicture(nodeId: string, changedKeys?: readonly (keyof SceneNode)[]): void {
+    RendererState.invalidateNodePicture(this, nodeId, changedKeys)
   }
 
   flashNode(nodeId: string): void {

@@ -20,6 +20,7 @@ export * from './slots/content'
 export * from './slots/authoring'
 export * from './slots/limits'
 export * from './behaviours/kinds'
+export * from './behaviours/layers'
 export * from './behaviours/model'
 export * from './behaviours/spec'
 export * from './copy'
@@ -338,8 +339,20 @@ export class SceneGraph {
     return Variables.resolveNumberVariableForNode(this, nodeId, variableId, fallback)
   }
 
-  resolveStringVariableForNode(nodeId: string, variableId: string): string | undefined {
-    return Variables.resolveStringVariableForNode(this, nodeId, variableId)
+  resolveVariableForNode(
+    nodeId: string,
+    variableId: string,
+    fallback?: VariableModeFallback
+  ): VariableValue | undefined {
+    return Variables.resolveVariableForNode(this, nodeId, variableId, fallback)
+  }
+
+  resolveStringVariableForNode(
+    nodeId: string,
+    variableId: string,
+    fallback?: VariableModeFallback
+  ): string | undefined {
+    return Variables.resolveStringVariableForNode(this, nodeId, variableId, fallback)
   }
 
   getVariablesForCollection(collectionId: string): Variable[] {
@@ -877,6 +890,10 @@ export class SceneGraph {
 
   syncInstances(componentId: string, removedSourceIds?: ReadonlySet<string>): void {
     Instances.syncInstances(this, componentId, removedSourceIds)
+  }
+
+  syncInstance(instanceId: string): void {
+    Instances.syncInstance(this, instanceId)
   }
 
   detachInstance(instanceId: string): void {

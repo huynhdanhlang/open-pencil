@@ -29,10 +29,7 @@ export function createDocumentIOActions(
     state,
     getFilePath: sourceState.getFilePath,
     getFileHandle: sourceState.getFileHandle,
-    setSavedVersion: (version) => {
-      sourceState.setSavedVersion(version)
-      sourceActions.markDocumentSaved()
-    },
+    markDocumentSaved: () => sourceActions.markDocumentSaved(),
     preparationController
   })
   const {
@@ -105,6 +102,7 @@ export function createDocumentIOActions(
     importDOMText,
     hasUnsavedChanges: sourceActions.hasUnsavedChanges,
     getPersistenceStatus: sourceActions.getPersistenceStatus,
+    markDocumentSaved: () => sourceActions.markDocumentSaved(),
     saveFigFile: sourceActions.saveFigFile,
     saveFigFileAs: sourceActions.saveFigFileAs
   }

@@ -136,13 +136,11 @@ export function parseFigFileViaWorker(
       worker.terminate()
       reject(new Error(err.message || 'Worker failed to parse .fig file'))
     }
-    // Parsing only reads the archive. Both worker owners can borrow one transferred
-    // buffer; preserve a separate immutable host copy for recovery after retirement.
+    // Transfer one worker buffer while retaining the immutable host archive for recovery.
     const workerBuffer = archive.slice(0)
     const request: FigSessionOpenRequest = {
       type: 'open',
-      originalBuffer: workerBuffer,
-      archiveBuffer: workerBuffer,
+      buffer: workerBuffer,
       options: { populate: options.populate },
       port: channel.port2
     }
@@ -156,13 +154,13 @@ export async function parseFigFile(
 ): Promise<SceneGraph> {
   options.signal?.throwIfAborted()
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
-    const copy = buffer.slice(0)
     try {
+      // The worker gets its own copy, so `buffer` is still whole for the fallback.
       return await parseFigFileViaWorker(buffer, options)
     } catch (error) {
       if (options.signal?.aborted || error instanceof ReaderSemanticError) throw error
       console.warn('Worker parsing failed, falling back to main thread:', error)
-      return parseFigFileSync(copy, options)
+      return parseFigFileSync(buffer, options)
     }
   }
   options.signal?.throwIfAborted()

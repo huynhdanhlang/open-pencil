@@ -4,6 +4,8 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { usesDetachedDerivedLayout } from './derived'
 
+type LayoutGeometry = Partial<Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>>
+
 export type ComputeLayoutFn = (graph: SceneGraph, frameId: string) => void
 
 /** Equal computed values must not invalidate pictures, text geometry and instance sync. */
@@ -65,7 +67,7 @@ function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode)
 
   const computedW = yogaNode.getComputedWidth()
   const computedH = yogaNode.getComputedHeight()
-  const updates: Partial<SceneNode> = {}
+  const updates: LayoutGeometry = {}
 
   if (frame.primaryAxisSizing === 'HUG') {
     if (frame.layoutMode === 'HORIZONTAL')

@@ -1,11 +1,9 @@
 import { watchDebounced } from '@vueuse/core'
 
-import type { EditorState } from '@open-pencil/core/editor'
-
-type AutosaveState = EditorState & { autosaveEnabled: boolean }
-
 type AutosaveOptions = {
-  state: AutosaveState
+  state: { autosaveEnabled: boolean }
+  /** The document's content revision; rendering and layout do not advance it. */
+  version: () => number
   getSavedVersion: () => number
   hasUnsavedChanges: () => boolean
   hasWritableSource: () => boolean
@@ -14,6 +12,7 @@ type AutosaveOptions = {
 
 export function createAutosave({
   state,
+  version: currentVersion,
   getSavedVersion,
   hasUnsavedChanges,
   hasWritableSource,
@@ -61,7 +60,7 @@ export function createAutosave({
   }
 
   const stop = watchDebounced(
-    () => state.sceneVersion,
+    currentVersion,
     (version) => {
       void requestSave(version).catch(reportFailure)
     },

@@ -1,18 +1,16 @@
 import { watchDebounced } from '@vueuse/core'
 import { watch, type WatchHandle } from 'vue'
 
-import type { EditorState } from '@open-pencil/core/editor'
 import type { RuntimePersistenceStatus } from '@open-pencil/core/figma-api'
 
 import { getRecoveryStore } from '@/app/document/recovery/store'
 import type { RecoveryStore } from '@/app/document/recovery/types'
 import { createCanvasId } from '@/app/storage/id'
 
-type RecoveryState = EditorState & { documentName: string }
-
 interface DocumentRecoveryOptions {
-  state: RecoveryState
-  getRevision: () => number
+  state: { documentName: string }
+  /** The document's content revision; rendering and layout do not advance it. */
+  version: () => number
   buildFigFile: () => Promise<Uint8Array> | Uint8Array
   isEnabled?: () => boolean
   store?: RecoveryStore
@@ -31,14 +29,14 @@ export interface DocumentRecoveryController {
 
 export function createDocumentRecovery({
   state,
-  getRevision,
+  version: currentVersion,
   buildFigFile,
   isEnabled = () => true,
   store = getRecoveryStore(),
   recoveryId = createCanvasId()
 }: DocumentRecoveryOptions): DocumentRecoveryController {
   let id = recoveryId
-  let protectedVersion = getRevision()
+  let protectedVersion = currentVersion()
   let persistedVersion: number | null = null
   let requestedVersion = protectedVersion
   let lifecycleGeneration = 0
@@ -58,7 +56,6 @@ export function createDocumentRecovery({
     if (disposed || generation !== lifecycleGeneration || !isEnabled()) return
     if (requestedVersion === protectedVersion || requestedVersion === persistedVersion) return
     const version = requestedVersion
-    const sceneVersion = state.sceneVersion
     let bytes: Uint8Array
     metrics.building = true
     try {
@@ -74,7 +71,7 @@ export function createDocumentRecovery({
     if (generation !== lifecycleGeneration || !isEnabled()) return
     metrics.writingBytes = bytes.byteLength
     try {
-      await store.write({ id, documentName: state.documentName, sceneVersion, figBytes: bytes })
+      await store.write({ id, documentName: state.documentName, figBytes: bytes })
       metrics.writes++
     } catch (error) {
       metrics.failures++
@@ -91,7 +88,7 @@ export function createDocumentRecovery({
   async function persistNow(): Promise<void> {
     await cleanup
     if (disposed || !isEnabled()) return
-    requestedVersion = getRevision()
+    requestedVersion = currentVersion()
     if (requestedVersion === protectedVersion || requestedVersion === persistedVersion) return
     if (!writing) {
       const generation = lifecycleGeneration
@@ -103,7 +100,7 @@ export function createDocumentRecovery({
   }
 
   const stopVersionWatch: WatchHandle = watchDebounced(
-    () => getRevision(),
+    currentVersion,
     () => {
       void persistNow().catch((error) => console.warn('[Recovery] Snapshot failed:', error))
     },
@@ -114,15 +111,15 @@ export function createDocumentRecovery({
     isEnabled,
     (enabled) => {
       if (enabled) {
-        protectedVersion = getRevision()
-        requestedVersion = getRevision()
+        protectedVersion = currentVersion()
+        requestedVersion = currentVersion()
         return
       }
       lifecycleGeneration++
       const cleanupGeneration = lifecycleGeneration
       const snapshotId = id
-      requestedVersion = getRevision()
-      protectedVersion = getRevision()
+      requestedVersion = currentVersion()
+      protectedVersion = currentVersion()
       const activeWrite = writing
       cleanup = cleanup
         .then(async () => {
@@ -153,11 +150,11 @@ export function createDocumentRecovery({
       const previousId = id
       await invalidateActiveWrite()
       id = nextId
-      // Persisted version counters belong to the old editor lifetime. Rebase the
-      // adopted draft so a successful Save in this editor can protect and clean it.
-      protectedVersion = getRevision()
-      persistedVersion = getRevision()
-      requestedVersion = getRevision()
+      // The adopted snapshot holds the document as it is now.
+      const version = currentVersion()
+      protectedVersion = version
+      persistedVersion = version
+      requestedVersion = version
       disposed = false
       if (previousId !== nextId) await store.remove(previousId)
     },
@@ -165,7 +162,7 @@ export function createDocumentRecovery({
     async markProtectedVersion(version) {
       await invalidateActiveWrite()
       protectedVersion = version
-      requestedVersion = getRevision()
+      requestedVersion = currentVersion()
       if (persistedVersion == null || persistedVersion <= version) {
         await store.remove(id)
         persistedVersion = null
@@ -176,9 +173,9 @@ export function createDocumentRecovery({
     },
     async discardRecovery() {
       await invalidateActiveWrite()
-      protectedVersion = getRevision()
+      protectedVersion = currentVersion()
       persistedVersion = null
-      requestedVersion = getRevision()
+      requestedVersion = currentVersion()
       await store.remove(id)
     },
     disposeRecovery() {

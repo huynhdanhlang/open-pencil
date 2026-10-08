@@ -129,6 +129,22 @@ export function syncInstances(
   componentId: string,
   removedSourceIds?: ReadonlySet<string>
 ): void {
+  syncInstancesOf(graph, componentId, getInstances(graph, componentId), removedSourceIds)
+}
+
+/** Sync one instance using the same binding and removal rules as a component sync. */
+export function syncInstance(graph: SceneGraph, instanceId: string): void {
+  const instance = graph.nodes.get(instanceId)
+  if (instance?.type !== 'INSTANCE' || !instance.componentId) return
+  syncInstancesOf(graph, instance.componentId, [instance])
+}
+
+function syncInstancesOf(
+  graph: SceneGraph,
+  componentId: string,
+  instances: Iterable<SceneNode>,
+  removedSourceIds?: ReadonlySet<string>
+): void {
   const component = graph.nodes.get(componentId)
   if (component?.type !== 'COMPONENT') return
   let syncing = syncingComponentsByGraph.get(graph)
@@ -139,7 +155,7 @@ export function syncInstances(
   if (syncing.has(componentId)) return
   syncing.add(componentId)
   try {
-    for (const instance of getInstances(graph, componentId)) {
+    for (const instance of instances) {
       const enclosing = enclosingInstanceOverrideFields(graph, instance)
       enclosing.push(new Set(instance.instanceOverrides.self.keys()))
       const protectedField = bindingProtection(enclosing)

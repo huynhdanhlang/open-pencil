@@ -3,8 +3,8 @@ import { computed, ref } from 'vue'
 import type { Editor } from '@open-pencil/core/editor'
 
 /**
- * Content-only revisions: viewport repainting, layout, and recovery never mark a document
- * changed or saved.
+ * Content-only revisions: viewport repainting, layout, loading a page's layers, and recovery
+ * never mark a document changed or saved. Autosave and recovery follow the same revision.
  */
 export function createDocumentChanges(editor: Editor) {
   const revision = ref(0)
@@ -13,8 +13,8 @@ export function createDocumentChanges(editor: Editor) {
   const changed = () => {
     revision.value++
   }
-  // Lazy import materializes content already in the file. It must still reach the
-  // renderer, but must not queue another full FIG export for Save or recovery.
+  // A page's layers load from the opened file when it is first shown; they are the document
+  // as saved, not an edit.
   const contentChanged = () => {
     if (!editor.graph.isApplyingImportedState) changed()
   }

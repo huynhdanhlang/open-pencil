@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { exportFigFile, parseFigFile } from '@open-pencil/core/io'
+import { populateFigPage } from '@open-pencil/core/io/formats/fig'
 import { initCodec } from '@open-pencil/core/kiwi'
 import { applyFigPopulationDelta } from '@open-pencil/core/kiwi/fig/population/delta'
 import { recoverReaderPage } from '@open-pencil/core/kiwi/fig/session/document-state'
@@ -129,7 +130,7 @@ test('imported population does not build recovery archives; real edits are prote
   const store = createMemoryRecoveryStore()
   const recovery = createDocumentRecovery({
     state: { ...editor.state, documentName: 'Owned population regression' },
-    getRevision: changes.capture,
+    version: changes.capture,
     store,
     recoveryId: 'imported-population',
     buildFigFile: () => {
@@ -178,6 +179,29 @@ test('reader fallback page loading preserves clean and authored dirty revisions'
     expect(changes.capture()).toBe(dirty)
     expect(changes.hasUnsavedChanges()).toBe(true)
     expect(graph.getNode(first.id)?.name).toBe('Authored edit')
+  } finally {
+    changes.dispose()
+    editor.dispose()
+  }
+})
+
+test("loading a page's layers from the opened file does not dirty a document", async () => {
+  await initCodec()
+  const source = new SceneGraph()
+  source.createNode('RECTANGLE', source.addPage('Second').id, { name: 'Loaded later' })
+  const bytes = await exportFigFile(source)
+  const graph = await parseFigFile(bytes.slice().buffer, { populate: 'first-page' })
+  const editor = createEditor({ graph })
+  const changes = createDocumentChanges(editor)
+  try {
+    const page = graph.getPages()[1]
+    expect(populateFigPage(graph, page.id)).toBe(true)
+    computeAllLayouts(graph, page.id)
+    expect(graph.getChildren(page.id)).toHaveLength(1)
+    expect(changes.hasUnsavedChanges()).toBe(false)
+
+    editor.graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
+    expect(changes.hasUnsavedChanges()).toBe(true)
   } finally {
     changes.dispose()
     editor.dispose()

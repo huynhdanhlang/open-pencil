@@ -1,14 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  createEditor,
-  layerPath,
-  playIslandRoots,
-  resolvePlayState
-} from '@open-pencil/core/editor'
+import { createEditor, playIslandRoots, resolvePlayState } from '@open-pencil/core/editor'
 import {
   emptyBehaviour,
   instanceMainComponent,
+  layerPath,
   readBehaviour,
   SceneGraph
 } from '@open-pencil/scene-graph'

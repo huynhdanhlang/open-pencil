@@ -120,7 +120,8 @@ export function createComponentSyncScheduler(
   function scheduleComponentSync(nodeId: string, removedSourceId?: string) {
     // Import/materialization has already resolved component overrides. These updates
     // are not authored component edits and must not reset instances to their defaults.
-    if (getGraph().isApplyingImportedState) return
+    const graph = getGraph()
+    if (graph.isApplyingImportedState || graph.isApplyingLayout) return
     if (removedSourceId) (activeRemovedSourceIds ?? removedSourceIds).add(removedSourceId)
     if (isFlushingComponentSync) return
     if (!pendingComponentSync) {

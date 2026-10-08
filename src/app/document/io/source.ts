@@ -80,8 +80,7 @@ export function createDocumentSourceActions({
     return saved
   }
 
-  async function buildFigFile() {
-    const version = state.sceneVersion
+  async function buildFigFile(version: number) {
     if (renderingFailed) return buildRendererIndependentFigFile(version)
     const renderer = getRenderer()
     try {
@@ -119,7 +118,7 @@ export function createDocumentSourceActions({
 
   const recovery = createDocumentRecovery({
     state,
-    getRevision: changes.capture,
+    version: changes.capture,
     isEnabled: () => recoveryEnabled.value,
     buildFigFile: () => figBuildQueue.run(buildRecoveryFigFile)
   })
@@ -133,7 +132,8 @@ export function createDocumentSourceActions({
 
   const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({
     state,
-    buildFigFile: () => figBuildQueue.run(buildFigFile),
+    version: changes.capture,
+    buildFigFile: (version) => figBuildQueue.run(() => buildFigFile(version)),
     getFilePath,
     setFilePath,
     getFileHandle,
@@ -154,18 +154,26 @@ export function createDocumentSourceActions({
 
   const autosave = createAutosave({
     state,
+    version: changes.capture,
     getSavedVersion,
     hasUnsavedChanges: changes.hasUnsavedChanges,
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding(),
     saveCurrentDocument: async (version) => {
       const revision = changes.capture()
-      const data = await figBuildQueue.run(buildFigFile)
+      const data = await figBuildQueue.run(() => buildFigFile(version))
       if (await writeFile(data, version)) {
         changes.markSaved(revision)
         await protectSavedRevision(revision)
       }
     }
   })
+
+  function markDocumentSaved() {
+    const revision = changes.capture()
+    changes.markSaved(revision)
+    setSavedVersion(revision)
+    void protectSavedRevision(revision)
+  }
 
   function setDocumentSource(
     fileName: string,
@@ -180,9 +188,7 @@ export function createDocumentSourceActions({
     setFilePath(isFig ? (path ?? null) : null)
     setDownloadName(figDownloadName(fileName, sourceFormat))
     setSourceIdentity({ handle: handle ?? null, path: path ?? null })
-    setSavedVersion(state.sceneVersion)
-    changes.markSaved()
-    void protectSavedRevision(changes.capture())
+    markDocumentSaved()
     if (isFig && (handle || path)) {
       void startWatchingFile()
     }
@@ -197,9 +203,7 @@ export function createDocumentSourceActions({
     setStorageBinding(binding)
     state.documentName = documentName
     state.autosaveEnabled = true
-    setSavedVersion(state.sceneVersion)
-    changes.markSaved()
-    void protectSavedRevision(changes.capture())
+    markDocumentSaved()
   }
 
   function setPlannedFilePath(path: string) {
@@ -274,11 +278,7 @@ export function createDocumentSourceActions({
         recovery: recovery.getDiagnostics()
       }
     },
-    markDocumentSaved: () => {
-      const revision = changes.capture()
-      changes.markSaved(revision)
-      void protectSavedRevision(revision)
-    },
+    markDocumentSaved,
     getStorageBinding,
     getRecoveryId: () => recovery.getRecoveryId(),
     adoptRecoverySnapshot: (id: string) => {

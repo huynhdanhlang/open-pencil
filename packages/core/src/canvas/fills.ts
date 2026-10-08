@@ -5,6 +5,7 @@ import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { figmaBlendModeToSkia } from './blend'
 import { makeDiamondGradient } from './gradients/diamond'
+import { previewEdge } from './images/previews'
 import type { SkiaRenderer } from './renderer'
 import { makeSmoothRRectPath, nodeHasSmoothCorners } from './shapes'
 
@@ -446,23 +447,29 @@ export function applyImageFill(
 ): boolean {
   const hash = fill.imageHash
   if (!hash) return false
-  let img = r.imageCache.get(hash)
-  let cached = true
+  const preview = r.viewportImageRendering
+    ? // eslint-disable-next-line open-pencil/no-zoom-in-scene-drawing -- picks the preview resolution, not a size; preview mode draws the scene uncached on every frame.
+      r.imagePreviews.get(graph, hash, previewEdge(node, r.zoom, r.dpr))
+    : undefined
+  if (r.viewportImageRendering && !preview) return false
+  const key = preview?.key ?? hash
+  let img = r.imageCache.get(key)
+  let temporary = false
   if (!img) {
-    const data = graph.images.get(hash)
+    const data = preview?.preview.bytes ?? graph.images.get(hash)
     if (!data) return false
-    const decoded = r.ck.MakeImageFromEncoded(data) ?? undefined
+    const decoded = r.ck.MakeImageFromEncoded(data)
     if (!decoded) return false
     try {
       img = decoded.makeCopyWithDefaultMipmaps()
     } finally {
       decoded.delete()
     }
-    cached = false
+    temporary = true
     try {
-      cached = r.imageCache.set(hash, img)
+      temporary = !r.imageCache.set(key, img)
     } catch (error) {
-      if (r.imageCache.peek(hash) !== img) img.delete()
+      if (r.imageCache.peek(key) !== img) img.delete()
       throw error
     }
   }
@@ -471,33 +478,24 @@ export function applyImageFill(
     const imgW = img.width()
     const imgH = img.height()
     const scaleMode = fill.imageScaleMode ?? 'FILL'
-
-    const localMatrix = makeImageFillLocalMatrix(r, fill, node, imgW, imgH)
-
-    if (scaleMode === 'TILE') {
-      const shader = img.makeShaderCubic(
-        r.ck.TileMode.Repeat,
-        r.ck.TileMode.Repeat,
-        1 / 3,
-        1 / 3,
-        localMatrix
-      )
-      try {
-        paint.setShader(shader)
-      } finally {
-        shader.delete()
-      }
-      return true
-    }
-
+    const localMatrix =
+      scaleMode === 'TILE' && !fill.imageTransform && preview
+        ? r.ck.Matrix.scaled(
+            preview.preview.originalWidth / imgW,
+            preview.preview.originalHeight / imgH
+          )
+        : makeImageFillLocalMatrix(r, fill, node, imgW, imgH)
     const tileMode = scaleMode === 'FIT' ? r.ck.TileMode.Decal : r.ck.TileMode.Clamp
-    const shader = img.makeShaderOptions(
-      tileMode,
-      tileMode,
-      r.ck.FilterMode.Linear,
-      r.ck.MipmapMode.Linear,
-      localMatrix
-    )
+    const shader =
+      scaleMode === 'TILE'
+        ? img.makeShaderCubic(r.ck.TileMode.Repeat, r.ck.TileMode.Repeat, 1 / 3, 1 / 3, localMatrix)
+        : img.makeShaderOptions(
+            tileMode,
+            tileMode,
+            r.ck.FilterMode.Linear,
+            r.ck.MipmapMode.Linear,
+            localMatrix
+          )
     try {
       paint.setShader(shader)
     } finally {
@@ -505,9 +503,7 @@ export function applyImageFill(
     }
     return true
   } finally {
-    // The paint/shader holds its own native reference. A rejected cache insert
-    // leaves handle ownership here, rather than leaking an oversized image.
-    if (!cached) img.delete()
+    if (temporary) img.delete()
   }
 }
 

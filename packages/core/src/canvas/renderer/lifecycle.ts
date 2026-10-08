@@ -33,6 +33,8 @@ export function destroyRenderer(r: SkiaRenderer): void {
   r.resourceCacheContext = null
   r.transientPreviews.clear()
 
+  r.onImagePreviewReady = null
+  r.imagePreviews.destroy()
   r.imageCache.clear()
   disposeNodeEditPaints(r)
   disposePathCaches(r)
