@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 
 import { FigmaAPI, SceneGraph, matchByXPath, nodeToXPath, queryByXPath } from '@open-pencil/core'
 
@@ -64,6 +64,146 @@ describe('queryByXPath', () => {
 
     const results = await queryByXPath(graph, '//RECTANGLE', { limit: 3 })
     expect(results.length).toBe(3)
+  })
+
+  test('wide sibling traversal avoids repeated full sibling scans', async () => {
+    const { graph, figma } = setup()
+    const expected = []
+    for (let i = 0; i < 2000; i++) {
+      const rect = figma.createRectangle()
+      expected.push(rect.id)
+    }
+    // Warm the module before measuring the cost of this query's traversal.
+    await queryByXPath(graph, '//RECTANGLE[@width >= 0]', { limit: 1 })
+    let scannedCapacity = 0
+    const originalIndexOf = Array.prototype.indexOf
+    const scans = spyOn(Array.prototype, 'indexOf').mockImplementation(function (
+      this: unknown[],
+      value: unknown,
+      fromIndex?: number
+    ) {
+      if (this.length >= 2000) scannedCapacity += this.length
+      return originalIndexOf.call(this, value, fromIndex)
+    })
+    try {
+      const results = await queryByXPath(graph, '//RECTANGLE[@width >= 0]', {
+        pageId: figma.currentPageId,
+        limit: Infinity
+      })
+      expect(results.map((node) => node.id)).toEqual(expected)
+      expect(scannedCapacity).toBeLessThanOrEqual(4000)
+    } finally {
+      scans.mockRestore()
+    }
+  })
+
+  test('a bounded type query stops before visiting unrelated subtrees', async () => {
+    const { graph, figma } = setup()
+    const expected = []
+    for (let i = 0; i < 40; i++) {
+      const frame = figma.createFrame()
+      for (let j = 0; j < 30; j++) {
+        const rect = figma.createRectangle()
+        frame.appendChild(rect)
+        expected.push(rect.id)
+      }
+    }
+    const reads = spyOn(graph, 'getNode')
+    try {
+      const results = await queryByXPath(graph, '//RECTANGLE', { limit: 1 })
+      expect(results.map((node) => node.id)).toEqual(expected.slice(0, 1))
+      expect(reads.mock.calls.length).toBeLessThan(100)
+    } finally {
+      reads.mockRestore()
+    }
+  })
+
+  test('limits preserve sequence order, positional predicates, axes and page exclusion', async () => {
+    const { graph, figma } = setup()
+    for (let i = 0; i < 6; i++) {
+      const frame = figma.createFrame()
+      frame.name = `Frame ${i}`
+      for (let j = 0; j < 3; j++) {
+        const rect = figma.createRectangle()
+        rect.name = `Rect ${i}-${j}`
+        frame.appendChild(rect)
+      }
+    }
+    const selectors = [
+      '//RECTANGLE',
+      '//*',
+      '//CANVAS',
+      '//NOT_A_TYPE',
+      '//CANVAS | //RECTANGLE',
+      '(//RECTANGLE, //FRAME)',
+      '(//FRAME, //RECTANGLE)',
+      '//RECTANGLE[position() = last()]',
+      '(//RECTANGLE)[last()]',
+      '//RECTANGLE/ancestor::FRAME',
+      '//RECTANGLE/preceding-sibling::RECTANGLE',
+      '//RECTANGLE[ends-with(@name, "-2")]',
+      '//FRAME[@name="Frame 2"]//RECTANGLE'
+    ]
+    for (const selector of selectors) {
+      const full = await queryByXPath(graph, selector, { limit: Infinity })
+      for (const limit of [0, 0.5, 1, 2, 3.5, 7, 1000]) {
+        const bounded = await queryByXPath(graph, selector, { limit })
+        expect(bounded.map((node) => node.id)).toEqual(
+          full.slice(0, Math.ceil(limit)).map((node) => node.id)
+        )
+      }
+    }
+    await expect(queryByXPath(graph, '///invalid[[[[', { limit: 1 })).rejects.toThrow()
+    await expect(queryByXPath(graph, '(//FRAME, error())', { limit: 1 })).rejects.toThrow()
+  })
+
+  test('bare type queries preserve exact and name-based page scope with missing child gaps', async () => {
+    const { graph, figma } = setup()
+    const first = figma.currentPage
+    first.name = 'Repeated'
+    figma.createRectangle().name = 'First'
+    const second = figma.createPage()
+    second.name = 'Repeated'
+    figma.currentPage = second
+    figma.createRectangle().name = 'Second'
+    const page = graph.getNode(first.id)
+    if (!page) throw new Error('First page missing')
+    page.childIds.unshift('missing-child')
+    for (const selector of ['//RECTANGLE', '//*']) {
+      for (const options of [{}, { page: 'Repeated' }, { pageId: second.id }]) {
+        const full = await queryByXPath(graph, selector, { ...options, limit: Infinity })
+        for (const limit of [1, 2, 1000]) {
+          expect(
+            (await queryByXPath(graph, selector, { ...options, limit })).map((node) => node.id)
+          ).toEqual(full.slice(0, limit).map((node) => node.id))
+        }
+      }
+    }
+  })
+
+  test('sibling axes observe reordered and deleted children on the next query', async () => {
+    const { graph, figma } = setup()
+    const frame = figma.createFrame()
+    const children = ['First', 'Middle', 'Last'].map((name) => {
+      const node = figma.createRectangle()
+      node.name = name
+      frame.appendChild(node)
+      return node
+    })
+    const selector = '//RECTANGLE[@name="First"]/following-sibling::RECTANGLE'
+    expect((await queryByXPath(graph, selector)).map((node) => node.name)).toEqual([
+      'Middle',
+      'Last'
+    ])
+    frame.insertChild(0, children[2])
+    expect((await queryByXPath(graph, selector)).map((node) => node.name)).toEqual(['Middle'])
+    children[1].remove()
+    expect(await queryByXPath(graph, selector)).toEqual([])
+    expect(
+      (await queryByXPath(graph, '//RECTANGLE[@name="First"]/preceding-sibling::RECTANGLE')).map(
+        (node) => node.name
+      )
+    ).toEqual(['Last'])
   })
 
   test('filters by page option', async () => {

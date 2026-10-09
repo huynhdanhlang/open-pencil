@@ -65,13 +65,15 @@ interface XPathNode {
   _sceneNode: SceneNode
   _attrs?: XPathAttr[]
   _parent?: XPathNode | XPathDocument | null
+  _siblingIndex?: number
   _children?: XPathNode[]
 }
 
 function wrapNode(
   _graph: SceneGraph,
   node: SceneNode,
-  parent?: XPathNode | XPathDocument | null
+  parent?: XPathNode | XPathDocument | null,
+  siblingIndex?: number
 ): XPathNode {
   const wrapped: XPathNode = {
     nodeType: NODE_TYPES.ELEMENT_NODE,
@@ -80,7 +82,8 @@ function wrapNode(
     namespaceURI: null,
     prefix: null,
     _sceneNode: node,
-    _parent: parent
+    _parent: parent,
+    _siblingIndex: siblingIndex
   }
   return wrapped
 }
@@ -135,7 +138,7 @@ function getChildren(graph: SceneGraph, wrapped: XPathNode): XPathNode[] {
   wrapped._children = node.childIds
     .map((id) => graph.getNode(id))
     .filter((n): n is SceneNode => n !== undefined)
-    .map((child) => wrapNode(graph, child, wrapped))
+    .map((child, index) => wrapNode(graph, child, wrapped, index))
 
   return wrapped._children
 }
@@ -153,8 +156,10 @@ function siblingNode(
   const parent = node._parent
   if (!parent || isDocument(parent)) return null
   const siblings = getChildren(graph, parent)
-  const index = siblings.indexOf(node)
-  if (index === -1) return null
+  // Wrappers and their child arrays live only for this synchronous evaluation. Their
+  // positions cannot change mid-query, so avoid a linear scan at every sibling step.
+  const index = node._siblingIndex
+  if (index === undefined) return null
   return siblings[index + offset] ?? null
 }
 
@@ -232,6 +237,29 @@ export interface XPathQueryOptions {
   pageId?: string
 }
 
+/** Exact bare descendant-type queries need neither a DOM projection nor XPath sorting. */
+function appendTypeMatches(
+  graph: SceneGraph,
+  root: SceneNode,
+  type: string,
+  limit: number,
+  results: SceneNode[]
+): void {
+  const stack = [{ node: root, nextChild: 0 }]
+  while (stack.length > 0 && results.length < limit) {
+    const current = stack[stack.length - 1]
+    if (current.nextChild >= current.node.childIds.length) {
+      stack.pop()
+      continue
+    }
+    const child = graph.getNode(current.node.childIds[current.nextChild++])
+    if (!child) continue
+    if (child.type !== 'CANVAS' && (type === '*' || child.type === type)) results.push(child)
+    if (results.length < limit && child.childIds.length > 0)
+      stack.push({ node: child, nextChild: 0 })
+  }
+}
+
 export async function queryByXPath(
   graph: SceneGraph,
   selector: string,
@@ -247,6 +275,18 @@ export async function queryByXPath(
         : pages
 
   if (targetPages.length === 0) return []
+
+  // Only this exact XPath subset is equivalent to a preorder type walk. Expressions
+  // with predicates, axes, namespaces or sequence operators stay with fontoxpath.
+  const descendantType = /^\/\/(\*|[A-Z][A-Z0-9_]*)$/.exec(selector)?.[1]
+  if (descendantType && Number.isFinite(limit) && limit > 0) {
+    const results: SceneNode[] = []
+    for (const page of targetPages) {
+      appendTypeMatches(graph, page, descendantType, limit, results)
+      if (results.length >= limit) break
+    }
+    return results
+  }
 
   const { evaluateXPathToNodes } = await loadFontoxpath()
   const domFacade = createDomFacade(graph) as FontoxpathModule.IDomFacade
