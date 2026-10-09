@@ -303,11 +303,20 @@ function materializeReader(
         populateInstances(child)
       const id = sources.get(child.sourceId)
       if (!id) throw new Error(`Missing assembled child ${child.sourceId}`)
-      ordered.push(id)
+      // Loaded nodes may have moved or been deleted since this archive was opened.
+      // Resuming a dependency must not reattach them to their archived parent.
+      if (graph.getNode(id)?.parentId === parentId) ordered.push(id)
     }
     const parent = graph.getNode(parentId)
-    if (parent)
-      parent.childIds = [...ordered, ...parent.childIds.filter((id) => !ordered.includes(id))]
+    if (parent) {
+      const live = parent.childIds.filter((id) => graph.getNode(id)?.parentId === parentId)
+      // Revisiting a fully loaded container preserves live sibling insertion/order.
+      // New archived children still need archive order during first population.
+      parent.childIds =
+        previous && ordered.every((id) => existingNodeIds.has(id))
+          ? live
+          : [...ordered, ...live.filter((id) => !ordered.includes(id))]
+    }
   }
   for (const page of pages) populateInstances(page)
   for (const instanceId of resync) graph.syncInstance(instanceId)

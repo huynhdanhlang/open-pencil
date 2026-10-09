@@ -1,11 +1,64 @@
 import { expect, test } from 'bun:test'
 
+import { parseFigBuffer } from '@open-pencil/fig'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { exportFigFile } from '#core/io/formats/fig/export'
 import { registerReaderSession } from '#core/kiwi/fig/session/document-state'
 import { openReaderSession } from '#core/kiwi/fig/session/reader'
+
+test('saving pending pages keeps a moved component under its live parent exactly once', async () => {
+  await initCodec()
+  const source = new SceneGraph()
+  const page = source.getPages()[0]
+  const oldParent = source.createNode('FRAME', page.id, { name: 'Old owner' })
+  const component = source.createNode('COMPONENT', oldParent.id, { name: 'Phase=Shots' })
+  source.createNode('RECTANGLE', oldParent.id, { name: 'First' })
+  source.createNode('RECTANGLE', oldParent.id, { name: 'Last' })
+  const child = source.createNode('FRAME', component.id, { name: 'Body' })
+  source.createNode('TEXT', child.id, { name: 'Title', text: 'Shots' })
+  const pending = source.addPage('Pending instances')
+  source.createInstance(component.id, pending.id)
+  const archive = await exportFigFile(source)
+  const bytes = archive.slice().buffer as ArrayBuffer
+  const reader = openReaderSession(bytes, 'first-page')
+  registerReaderSession(bytes, reader.session)
+  const find = (name: string) => {
+    const node = [...reader.graph.getAllNodes()].find((node) => node.name === name)
+    if (!node) throw new Error(`Missing ${name}`)
+    return node
+  }
+  const moved = find('Phase=Shots')
+  const old = find('Old owner')
+  const liveParent = reader.graph.createNode('FRAME', reader.graph.getPages()[0].id, {
+    name: 'New owner'
+  })
+  reader.graph.reparentNode(moved.id, liveParent.id)
+  const inserted = reader.graph.createNode('RECTANGLE', old.id, { name: 'Live middle' })
+  reader.graph.reorderChild(inserted.id, old.id, 1)
+  const before = structuredClone([...reader.graph.nodes])
+  const saved = await exportFigFile(reader.graph)
+  expect([...reader.graph.nodes]).toEqual(before)
+  const parsed = parseFigBuffer(saved.slice().buffer as ArrayBuffer)
+  const guids = parsed.nodeChanges.map((node) => `${node.guid?.sessionID}:${node.guid?.localID}`)
+  expect(new Set(guids).size).toBe(guids.length)
+  const cold = openReaderSession(saved.slice().buffer as ArrayBuffer, 'all').graph
+  const masters = [...cold.getAllNodes()].filter(
+    (node) => node.name === 'Phase=Shots' && node.type === 'COMPONENT'
+  )
+  expect(masters).toHaveLength(1)
+  expect(cold.getNode(masters[0].parentId!)?.name).toBe('New owner')
+  const coldOld = [...cold.getAllNodes()].find((node) => node.name === old.name)
+  expect(coldOld && cold.getChildren(coldOld.id).map((node) => node.name)).toEqual([
+    'First',
+    'Live middle',
+    'Last'
+  ])
+  const instance = [...cold.getAllNodes()].find((node) => node.type === 'INSTANCE')
+  expect(instance?.componentId).toBe(masters[0].id)
+  expect(instance && cold.getChildren(cold.getChildren(instance.id)[0].id)[0].text).toBe('Shots')
+})
 
 async function sessionWithComponent() {
   await initCodec()

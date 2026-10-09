@@ -10,6 +10,7 @@ import {
 import type { Editor } from '#core/editor/create'
 import type { FigmaAPI } from '#core/figma-api'
 import { setConstraints, setLayout, setLayoutChild } from '#core/tools/modify/layout'
+import { setFill } from '#core/tools/modify/paint'
 import { updateNode } from '#core/tools/modify/update'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
 
@@ -17,7 +18,13 @@ import { executeAtomicNodeTool } from './atomic-node'
 
 // Capture property changes across pages. Component synchronization remains editor-owned.
 const MAX_TRANSACTION_NODES = 20_000
-const SCOPED_NODE_TOOLS = new Set<ToolDef>([updateNode, setLayout, setLayoutChild, setConstraints])
+const SCOPED_NODE_TOOLS = new Set<ToolDef>([
+  updateNode,
+  setLayout,
+  setLayoutChild,
+  setConstraints,
+  setFill
+])
 
 export type MutationEditor = Pick<
   Editor,

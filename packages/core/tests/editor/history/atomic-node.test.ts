@@ -7,6 +7,7 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import { computeLayout } from '#core/layout'
+import { setFill } from '#core/tools/modify/paint'
 
 function setup() {
   const graph = new SceneGraph()
@@ -24,6 +25,80 @@ function setup() {
 }
 
 describe('scoped atomic node properties', () => {
+  test('solid and gradient fills on a large document retain scoped Undo without cloning foreign pages', () => {
+    const { graph, figma, undo, editor } = setup()
+    const target = figma.createFrame()
+    const original = structuredClone(target.fills)
+    const foreign = figma.createPage()
+    while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', foreign.id)
+    const untouched = graph.getChildren(foreign.id)[0]
+    untouched.source.fig.rawNodeFields.notCloneable = () => undefined
+    executeAtomicTool(editor, figma, setFill, { id: target.id, color: '#123456' })
+    const solid = structuredClone(target.fills)
+    expect(solid[0].type).toBe('SOLID')
+    expect(solid[0].color).toEqual({ r: 18 / 255, g: 52 / 255, b: 86 / 255, a: 1 })
+    executeAtomicTool(editor, figma, setFill, {
+      id: target.id,
+      color: '#123456',
+      color_end: '#abcdef',
+      gradient: 'left-right'
+    })
+    const gradient = structuredClone(target.fills)
+    expect(gradient[0].type).toBe('GRADIENT_LINEAR')
+    expect(gradient[0].gradientStops).toHaveLength(2)
+    untouched.name = 'Later foreign edit'
+    undo.undo()
+    expect(target.fills).toEqual(solid)
+    undo.undo()
+    expect(target.fills).toEqual(original)
+    undo.redo()
+    expect(target.fills).toEqual(solid)
+    undo.redo()
+    expect(target.fills).toEqual(gradient)
+    expect(untouched.name).toBe('Later foreign edit')
+    expect(() =>
+      executeAtomicTool(
+        editor,
+        figma,
+        { ...setFill },
+        {
+          id: target.id,
+          color: '#ffffff'
+        }
+      )
+    ).toThrow('maximum 20000')
+  })
+
+  test('a failed fill restores nested instance overrides and layout writes without adding history', () => {
+    const { graph, figma, undo, editor } = setup()
+    const component = figma.createComponent()
+    component.appendChild(figma.createRectangle())
+    const instance = component.createInstance()
+    const target = instance.children[0]
+    const sibling = figma.createRectangle()
+    const original = structuredClone([
+      graph.getNode(instance.id),
+      graph.getNode(target.id),
+      graph.getNode(sibling.id)
+    ])
+    editor.runLayoutForNode = () => {
+      graph.updateNode(sibling.id, { x: 55 })
+      throw new Error('Layout failed')
+    }
+    expect(() =>
+      executeAtomicTool(editor, figma, setFill, {
+        id: target.id,
+        color: '#123456'
+      })
+    ).toThrow('Layout failed')
+    expect([
+      graph.getNode(instance.id),
+      graph.getNode(target.id),
+      graph.getNode(sibling.id)
+    ]).toEqual(original)
+    expect(undo.canUndo).toBe(false)
+  })
+
   test('a bounded edit works above the document ceiling without copying foreign FIG payloads', () => {
     const { graph, figma, undo, editor, definition } = setup()
     const target = figma.createFrame()
