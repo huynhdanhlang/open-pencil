@@ -75,6 +75,9 @@ test('leaf Fill survives component instances, complete JSX and FIG Save at large
   try {
     const savedInstance = [...restored.nodes.values()].find((node) => node.type === 'INSTANCE')
     if (!savedInstance) throw new Error('Missing saved instance')
+    expect(savedInstance.width).toBe(1000)
+    expect(savedInstance.source.editedFields).not.toContain('width')
+    expect(restoredSource.source.editedFields).not.toContain('width')
     // Exercise the imported-instance preservation branch as well as generated source metadata.
     savedInstance.source.format = 'fig'
     const importedWidths = restored.getChildren(savedInstance.id).map((node) => node.width)

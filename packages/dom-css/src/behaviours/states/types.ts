@@ -14,6 +14,11 @@ export type StateCondition =
 /** What a variant changes on a layer, and the conditions that show that variant. */
 export interface StateRule {
   conditions: StateCondition[]
+  /**
+   * The layer the conditions test when it is not the control's root, such as a tab trigger
+   * that Reka and Radix mark active itself: the layer the rule styles, or one around it.
+   */
+  on?: StateElement
   style: DesignStyleDeclaration
 }
 
@@ -22,6 +27,8 @@ export interface StateElement {
   type: 'element'
   /** The layer path below the variant, with the text when variants label a layer differently. */
   key: string
+  /** What the layer draws other than its own box, such as an instance or an icon (`layerKind`). */
+  kind: string | undefined
   /** The layer's name, for class names. */
   name: string
   tagName: string
@@ -36,5 +43,7 @@ export type StateNode = StateElement | DesignText
 export interface StateStyles {
   /** The set's name, for the root's class name. */
   name: string
+  /** The variant drawing the rest state, which the merged tree starts from. */
+  restId: string
   root: StateElement
 }

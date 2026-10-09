@@ -122,6 +122,24 @@ Each collection's default mode goes in `:root`. Every other mode overrides the v
 
 Tokens that cannot be written, such as boolean variables or a condition that is not a selector or query, are listed on stderr and left out. The command works in file mode and against the running app.
 
+### W3C design tokens
+
+`--format dtcg` writes the variables and styles as [W3C design tokens](https://www.designtokens.org/tr/2025.10/format/) into a folder:
+
+```sh
+openpencil tokens design.fig --format dtcg --out tokens
+```
+
+Each collection mode is one file, `Theme/Light.tokens.json` and `Theme/Dark.tokens.json`, in the shape Figma imports as a mode: lengths in `px`, times in `s`, booleans as numbers marked `com.figma.type`, and aliases to another collection naming it in `com.figma.aliasData`. Text and effect styles become typography and shadow tokens in `styles.tokens.json`, kept apart because Figma's import refuses composite tokens. `tokens.resolver.json` is a DTCG resolver that switches each collection's modes and layers the rest, for tools such as Style Dictionary. OpenPencil's own fields, such as a token's `rem` unit, CSS name, scopes, or `clamp()` expression, and each mode's condition, ride in `$extensions["dev.openpencil"]`, so the export reads back exactly.
+
+Import token files into a document with the `import_design_tokens` tool, passing each file's path and text:
+
+```sh
+openpencil tool call import_design_tokens design.fig --args-file tokens.json --write
+```
+
+It reads a file per mode grouped by folder, a resolver with the files it refers to, or a Tokens Studio file with `$themes`. Collections and modes with existing names, and variables and styles by name, are updated; the rest is added, and nothing is deleted. The result lists what was added, updated, and skipped, with the reason for each skip.
+
 ## Storybook Export
 
 Generate one CSF3 `.stories.ts` file per component set or component:
@@ -140,11 +158,17 @@ Keep each component's design file in the component's folder and export with `--b
 
 Pass several documents, or a quoted glob such as `'src/**/*.pen'` that OpenPencil expands itself (Node.js 22 or later). Several documents need `--beside` or `--output`; `--page` works with one document only. Documents are exported one after another, and when one fails the rest are still exported before the command exits with an error. `--watch` watches every matched document; a document created after the watch started needs another run.
 
-Each variant of a component set becomes a story, and its variant properties become `select` controls, so switching a control shows the matching variant. A set with a behaviour gets the control's own props instead: a Switch or Checkbox has a `checked` boolean, a Toggle `pressed`, a Collapsible `open`, and `disabled` when the set draws a disabled state; hover, pressed, and focus stay stories of their own. Standalone components named with slashes, such as `Button/Primary` and `Button/Secondary`, are grouped into one `Button` file with a `Variant` control. A combination the design has no variant for throws a named error in Storybook rather than showing a different variant.
+Stories are titled by the document's file name, and then the page when more than one page has components: `pricing.fig` gives `pricing/Plan picker`, so documents exported together keep their stories apart. Each variant of a component set becomes a story, and its variant properties become `select` controls, so switching a control shows the matching variant. A set with a behaviour gets the control's own props instead: a Switch or Checkbox has a `checked` boolean, a Toggle `pressed`, a Collapsible `open`, and `disabled` when the set draws a disabled state; hover, pressed, and focus stay stories of their own. Standalone components named with slashes, such as `Button/Primary` and `Button/Secondary`, are grouped into one `Button` file with a `Variant` control. A combination the design has no variant for throws a named error in Storybook rather than showing a different variant.
 
-Stories render the component as HTML with inline styles, like `-f html`, so they need no OpenPencil runtime; `--framework` (`react`, `vue`, or `html`) only changes the wrapper and the `Meta`/`StoryObj` import from `@storybook/react-vite`, `@storybook/vue3-vite`, or `@storybook/html-vite`. Text uses the document's font families, which Storybook has to load itself. Text, boolean, and instance-swap properties are not exported yet.
+Stories render the component as HTML with inline styles, like `-f html`, so they need no OpenPencil runtime; `--framework` (`react`, `vue`, or `html`) only changes the wrapper and the `Meta`/`StoryObj` import from `@storybook/react-vite`, `@storybook/vue3-vite`, or `@storybook/html-vite`. Text uses the document's font families, which Storybook has to load itself. Static stories don't export text, boolean, or instance-swap properties yet.
 
-With `--framework vue` or `--framework react`, a component set whose behaviour is a Button, Switch, Checkbox, Toggle, or Collapsible becomes a real component instead: `<Name>.vue` built on Reka UI, or `<Name>.tsx` with a `<Name>.module.css` built on Radix UI's `radix-ui` package. Its variants are compiled into a stylesheet keyed on the states Reka and Radix set (`data-state`, `data-disabled`, hover, and focus), and every other variant property is a prop the component sets as a `data-*` attribute. In Vue its value is a `v-model` such as `checked` or `open`; in React the component takes the Radix root's props, such as `checked`, `defaultChecked`, and `onCheckedChange`. Its stories render the component, and a play function clicks the control and checks its state, so the Storybook project needs `reka-ui` or `radix-ui` installed.
+With `--framework vue` or `--framework react`, a component set or component whose behaviour is a Button, Switch, Checkbox, Toggle, Collapsible, Tabs, Radio group, Toggle group, or Accordion becomes a real component instead: `<Name>.vue` built on Reka UI, or `<Name>.tsx` with a `<Name>.module.css` built on Radix UI's `radix-ui` package. Its variants are compiled into a stylesheet keyed on the states Reka and Radix set (`data-state`, `data-disabled`, hover, and focus), and every other variant property is a prop the component sets as a `data-*` attribute. In Vue its value is a `v-model` such as `checked` or `open`; in React the component takes the Radix root's props, such as `checked`, `defaultChecked`, and `onCheckedChange`. Its text properties are string props, defaulting to the design's words, which the layers bound to them draw, with a text control in its stories.
+
+Tabs take the open tab as `value` (`v-model:value`, or `defaultValue` and `onValueChange` in React), named by each trigger's words as a slug, such as `account` or `password`, and starting on the first; each trigger and its panel are Reka's or Radix's `Tabs` parts around the design's layers, every trigger drawn like the design's other triggers and taking the first trigger's look while its tab is active, and the stories get a `select` control and a story per tab. A Radio group, Toggle group, or Accordion writes two components: the group, which chooses one item the same way, starting on the item the design draws on, and `<Group>Item` from its items' component set, built as the group's item primitive (`RadioGroupItem`, `ToggleGroupItem`, or `AccordionItem` with its trigger in a header) and taking the `value` it stands for. The group uses it once per item in its items slot, with each item's value, named by its label property or else its words, and its text values. A Radio is only generated as a group's item; a Toggle or Collapsible used on its own still becomes its own component.
+
+Inside a generated component, an instance of another component generated in the same export uses that component rather than drawing its layers: `<Switch>` imported from `./Switch.vue` or `./Switch`, set to the variant, text, and `disabled` values the instance shows. A control the design draws on, such as a checked switch, starts on and stays operable: a local `ref` bound with `v-model` in Vue, `defaultChecked` in React. The parent only places it, so the control keeps its own look and state styles. Instances of components not exported, or exported only as static stories, are drawn as before. An icon placed from a set, unless its paths were edited, is Iconify's component, `<Icon icon="lucide:bell">` from `@iconify/vue` or `@iconify/react`, which loads the icon when shown.
+
+Its stories render the component, and a play function clicks the control and checks its state, so the Storybook project needs `reka-ui` or `radix-ui` installed, and `@iconify/vue` or `@iconify/react` when components hold icons.
 
 Stories carry `parameters.design` entries for [`@storybook/addon-designs`](https://github.com/storybookjs/addon-designs):
 

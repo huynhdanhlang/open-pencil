@@ -28,5 +28,7 @@
   "deepLinkNodeNotFound": "在“{file}”中未找到图层“{node}”。",
   "openQueuedFilesFailed": "无法打开传递给 OpenPencil 的文件：{error}",
   "tokensLeftOut": "未写入样式表：{names}",
-  "savedWithoutPreview": "渲染器出错，设计已保存，但未生成新的预览。请重新打开编辑器以恢复渲染。"
+  "savedWithoutPreview": "渲染器出错，设计已保存，但未生成新的预览。请重新打开编辑器以恢复渲染。",
+  "designTokensLeftOut": "未写入设计令牌：{names}",
+  "designTokensImported": "已导入 {count} 个设计令牌。"
 }

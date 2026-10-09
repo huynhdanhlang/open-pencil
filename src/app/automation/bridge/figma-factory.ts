@@ -16,6 +16,7 @@ export function makeFigmaFromStore(
   api.runtimePersistence = store.getPersistenceStatus
   api.runtimeDiagnostics = diagnostics.getRuntimeStatus
   api.runtimeRenderers = () => store.canvasRenderers.map((renderer) => renderer.getResourceUsage())
+  api.icons = store.iconProvider
   api.theme = store.state.theme ?? 'light'
   api.currentPage = api.wrapNode(pageId)
   const requireShownPage = () => {

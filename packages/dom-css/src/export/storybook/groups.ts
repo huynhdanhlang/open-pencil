@@ -1,7 +1,7 @@
 import { behaviourArgs } from '#dom-css/behaviours/args'
 import { uniq } from 'es-toolkit/array'
 
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { readBehaviour, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { deriveSlashVariantProperties } from '@open-pencil/scene-graph/variant-properties'
 
 import type { StoryProp } from './module'
@@ -21,7 +21,10 @@ export interface StoryGroup {
   variants: StoryVariant[]
   /** Layer the story file links to, when the group has a layer of its own. */
   linkNode?: string
-  /** The component set the group shows, which may generate a component of its own. */
+  /**
+   * The component set, or standalone component with a behaviour, the group shows, which may
+   * generate a component of its own.
+   */
   set?: SceneNode
 }
 
@@ -44,7 +47,12 @@ function distinctVariants(group: StoryGroup): StoryGroup {
   }
 }
 
-function componentSetGroup(graph: SceneGraph, page: SceneNode, set: SceneNode): StoryGroup {
+function componentSetGroup(
+  graph: SceneGraph,
+  page: SceneNode,
+  section: string,
+  set: SceneNode
+): StoryGroup {
   const definitions = set.componentPropertyDefinitions.filter((def) => def.type === 'VARIANT')
   const variants = graph
     .getChildren(set.id)
@@ -71,7 +79,7 @@ function componentSetGroup(graph: SceneGraph, page: SceneNode, set: SceneNode): 
   })
   return distinctVariants({
     page,
-    title: `${page.name}/${set.name}`,
+    title: `${section}/${set.name}`,
     name: set.name,
     props,
     variants,
@@ -80,21 +88,28 @@ function componentSetGroup(graph: SceneGraph, page: SceneNode, set: SceneNode): 
   })
 }
 
-function componentGroup(page: SceneNode, component: SceneNode): StoryGroup {
+function componentGroup(page: SceneNode, section: string, component: SceneNode): StoryGroup {
   return {
     page,
-    title: `${page.name}/${component.name}`,
+    title: `${section}/${component.name}`,
     name: component.name,
     props: [],
     variants: [{ values: [], node: component }],
-    linkNode: component.name
+    linkNode: component.name,
+    // A standalone component with a behaviour, such as tabs, may generate a component too.
+    ...(readBehaviour(component) ? { set: component } : {})
   }
 }
 
 /** `Button/Primary`, `Button/Secondary` → one `Button` group with a derived variant property. */
-function slashGroups(page: SceneNode, prefix: string, components: SceneNode[]): StoryGroup[] {
+function slashGroups(
+  page: SceneNode,
+  section: string,
+  prefix: string,
+  components: SceneNode[]
+): StoryGroup[] {
   const derived = deriveSlashVariantProperties(components, () => '')
-  if (!derived) return components.map((component) => componentGroup(page, component))
+  if (!derived) return components.map((component) => componentGroup(page, section, component))
   const props = derived.definitions.map((def) => ({
     name: def.name,
     options: def.variantOptions ?? []
@@ -103,32 +118,38 @@ function slashGroups(page: SceneNode, prefix: string, components: SceneNode[]): 
     const values = derived.variants.get(component.id)?.componentPropertyValues ?? {}
     return { values: props.map((prop) => values[prop.name] ?? ''), node: component }
   })
-  return [
-    distinctVariants({ page, title: `${page.name}/${prefix}`, name: prefix, props, variants })
-  ]
+  return [distinctVariants({ page, title: `${section}/${prefix}`, name: prefix, props, variants })]
 }
 
-/** The story files a page produces, in layer order. Instances are never exported. */
-export function collectGroups(graph: SceneGraph, page: SceneNode): StoryGroup[] {
+/**
+ * The story files a page produces, in layer order, titled under `section`, the page's name by
+ * default. Instances are never exported.
+ */
+export function collectGroups(
+  graph: SceneGraph,
+  page: SceneNode,
+  section = page.name
+): StoryGroup[] {
   const groups: StoryGroup[] = []
   const slashed = new Map<string, SceneNode[]>()
   const visit = (node: SceneNode) => {
     if (!isExported(node) || node.type === 'INSTANCE') return
     if (node.type === 'COMPONENT_SET') {
-      const group = componentSetGroup(graph, page, node)
+      const group = componentSetGroup(graph, page, section, node)
       if (group.variants.length > 0) groups.push(group)
       return
     }
     if (node.type === 'COMPONENT') {
       const [prefix, ...rest] = node.name.split('/')
       const name = prefix.trim()
-      if (rest.length === 0 || !name) groups.push(componentGroup(page, node))
+      if (rest.length === 0 || !name) groups.push(componentGroup(page, section, node))
       else slashed.set(name, [...(slashed.get(name) ?? []), node])
       return
     }
     for (const child of graph.getChildren(node.id)) visit(child)
   }
   for (const child of graph.getChildren(page.id)) visit(child)
-  for (const [prefix, components] of slashed) groups.push(...slashGroups(page, prefix, components))
+  for (const [prefix, components] of slashed)
+    groups.push(...slashGroups(page, section, prefix, components))
   return groups
 }

@@ -1,4 +1,5 @@
 import { tool } from 'ai'
+import { isEqual } from 'es-toolkit'
 
 import { graphFromPageSnapshot } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
@@ -112,13 +113,14 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
           }
         }
         const before = store.snapshotPage(pageId)
-        if (toolChangesDocument(def)) recordRunBaseline(store, before)
+        if (!runBaseline(store, pageId)) recordRunBaseline(store, before)
+        const undoBefore = store.undo.peekUndo()
         try {
           return await runTool(def, figma, args, pageId)
         } finally {
           const after = store.snapshotPage(pageId, before)
           // Atomic tools record their own undo entry.
-          if (!isAtomicTool(def)) {
+          if (!isAtomicTool(def) && !isEqual(before, after)) {
             store.pushUndoEntry({
               label: `AI: ${def.name}`,
               forward: () => store.restorePageFromSnapshot(after),
@@ -128,7 +130,7 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
           // Every entry the run pushes belongs to its turn, view changes included: one left on
           // top, such as a closing zoom to fit, would otherwise keep the turn from reverting.
           // Atomic and snapshot edits both label their entries this way.
-          recordRunUndoEntry(store, `AI: ${def.name}`)
+          recordRunUndoEntry(store, `AI: ${def.name}`, undoBefore)
           // View tools (selection, viewport, pages) cannot change the document.
           if (toolChangesDocument(def)) {
             try {

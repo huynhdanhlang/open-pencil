@@ -1,4 +1,4 @@
-import { REKA_ELEMENTS, rekaRole } from './behaviours'
+import { REKA_ELEMENTS, rekaRole } from './behaviours/roles'
 
 function rekaDescription(namespace: string, part: string): string {
   const role = rekaRole(`${namespace}.${part}`)

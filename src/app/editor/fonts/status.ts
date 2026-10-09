@@ -21,7 +21,7 @@ export function useDocumentFontStatus() {
   const refresh = updates.immediate
   onScopeDispose(updates.dispose)
 
-  useEditorEvent('font:resolution-changed', refresh)
+  useEditorEvent('font:resolution-changed', updates.mutated)
   useEditorEvent('graph:replaced', refresh)
   useEditorEvent('page:changed', refresh)
   useEditorEvent('node:created', updates.mutated)

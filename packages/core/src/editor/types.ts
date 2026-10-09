@@ -21,6 +21,7 @@ import type { InterfaceTheme } from '#core/constants'
 import type { PlayState } from '#core/editor/play/actions'
 import type { SnappingPreferences } from '#core/editor/preferences'
 import type { RotationPreview } from '#core/geometry'
+import type { IconProvider } from '#core/icons/provider'
 import type { TextEditor } from '#core/text/editor'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
 
@@ -40,6 +41,8 @@ export type Tool =
 export interface EditorSharedState {
   activeTool: Tool
   snappingPreferences: SnappingPreferences
+  /** Draw the pixel grid once zoomed in far enough, as Figma's View › Pixel grid; shown unless false. */
+  showPixelGrid?: boolean
   presenceCursors: PresenceCursor[]
   documentName: string
   /** Design check markers and highlight, shared by every canvas pane. */
@@ -166,6 +169,8 @@ export interface EditorOptions {
   ) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages?: FigmaClipboardImageResolver
   getViewportSize?: () => { width: number; height: number }
+  /** Where icons are searched and fetched; defaults to Iconify. */
+  icons?: IconProvider
   skipInitialGraphSetup?: boolean
 }
 
@@ -182,6 +187,7 @@ export interface EditorContext {
   ) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages: FigmaClipboardImageResolver | null
   getViewportSize: () => { width: number; height: number }
+  icons: IconProvider
   getCk: () => CanvasKit | null
   getRenderer: () => SkiaRenderer | null
   getTextEditor: () => TextEditor | null

@@ -9,8 +9,6 @@ import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import { createEditorStore, type EditorStore } from '@/app/editor/session/create'
 
-import { preprocessRPC } from '#mcp/jsx-preprocess'
-
 const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
 let store: EditorStore
 
@@ -24,7 +22,8 @@ afterEach(() => {
 })
 
 async function render(args: Record<string, unknown>) {
-  const body = preprocessRPC({ command: 'tool', args: { name: 'render', args } })
+  // The MCP server forwards authored JSX unchanged; the editor owns evaluation.
+  const body = { command: 'tool', args: { name: 'render', args } }
   const wire = v.parse(
     v.pipe(v.string(), v.parseJson(), v.object({ args: v.record(v.string(), v.unknown()) })),
     JSON.stringify(body)
@@ -82,7 +81,7 @@ test('wire fragment inserts every root contiguously and reports its siblings', a
   expect(store.graph.getChildren(parent.id).map((n) => n.name)).toEqual(['Before', 'After'])
 })
 
-test('actual JSON preprocessing preserves name and ID variable bindings', async () => {
+test('raw JSX over JSON preserves name and ID variable bindings', async () => {
   const collection = store.graph.createCollection('Tokens')
   const color = store.graph.createVariable('Canvas', 'COLOR', collection.id, {
     r: 0.2,

@@ -24,6 +24,24 @@ const TreeSchema: v.GenericSchema<TreeNode> = v.object({
   source: v.optional(v.object({ line: v.number() }))
 })
 
+/** Authored JSX may use branded variables, never forge their wire envelope. No tree copy. */
+export function assertAuthoredTreeVariables(tree: TreeNode): void {
+  const visited = new WeakSet<object>()
+  const visitValue = (value: unknown): void => {
+    if (value === null || typeof value !== 'object' || isVariable(value)) return
+    if (VARIABLE_TAG in value)
+      throw new Error(`Design JSX transport key ${VARIABLE_TAG} is reserved`)
+    if (visited.has(value)) return
+    visited.add(value)
+    for (const item of Object.values(value)) visitValue(item)
+  }
+  const visitTree = (node: TreeNode): void => {
+    visitValue(node.props)
+    for (const child of node.children) if (typeof child !== 'string') visitTree(child)
+  }
+  visitTree(tree)
+}
+
 function mapValue(value: unknown, decode: boolean): unknown {
   if (!decode && isVariable(value)) {
     return { [VARIABLE_TAG]: { version: 1, id: value.id, name: value.name, value: value.value } }

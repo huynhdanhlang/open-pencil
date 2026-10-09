@@ -13,7 +13,7 @@ export const getJSX = defineTool({
   description:
     'Get JSX representation of a node and its children. Inline results over 12,000 characters are truncated previews; supply path for complete file output. Uses the render tool syntax, with documented export fidelity limitations.',
   execution: { kind: 'sync', mutation: 'none' },
-  input: v.object({
+  input: v.strictObject({
     id: nodeIdInput,
     path: v.optional(
       v.pipe(

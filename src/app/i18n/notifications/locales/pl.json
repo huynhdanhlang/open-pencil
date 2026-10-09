@@ -28,5 +28,7 @@
   "deepLinkNodeNotFound": "Nie znaleziono warstwy „{node}” w „{file}”.",
   "openQueuedFilesFailed": "Nie udało się otworzyć plików przekazanych do OpenPencil: {error}",
   "tokensLeftOut": "Pominięte w arkuszu stylów: {names}.",
-  "savedWithoutPreview": "Projekt zapisano bez nowego podglądu z powodu błędu renderowania. Otwórz edytor ponownie, aby przywrócić wyświetlanie."
+  "savedWithoutPreview": "Projekt zapisano bez nowego podglądu z powodu błędu renderowania. Otwórz edytor ponownie, aby przywrócić wyświetlanie.",
+  "designTokensLeftOut": "Pominięte w tokenach projektowych: {names}.",
+  "designTokensImported": "Zaimportowano tokeny projektowe: {count}."
 }

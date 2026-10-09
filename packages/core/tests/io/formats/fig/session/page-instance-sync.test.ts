@@ -5,6 +5,71 @@ import { initCodec } from '@open-pencil/core/kiwi'
 import { createFigDocumentSession } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+for (const editMaster of [false, true]) {
+  test(`a later page retains placed root dimensions${editMaster ? ' except a live master size edit' : ''}`, async () => {
+    const source = new SceneGraph()
+    const library = source.getPages()[0]
+    const master = source.createNode('COMPONENT', library.id, {
+      name: 'Resizable',
+      width: 752,
+      height: 120
+    })
+    source.createNode('RECTANGLE', master.id, { width: 80, height: 24 })
+    const placed = source.createInstance(master.id, source.addPage('Placed').id)
+    if (!placed) throw new Error('Missing placed instance')
+    source.updateNode(placed.id, { width: 1000, height: 240 })
+    const bytes = await exportFigFile(source, undefined, undefined, undefined, false, {
+      rendering: 'none'
+    })
+    const session = createFigDocumentSession(bytes.buffer as ArrayBuffer, { derivedBounds: true })
+    const importedEvents: boolean[] = []
+    const stop = session.graph.onNodeEvents({
+      created: () => importedEvents.push(session.graph.isApplyingImportedState),
+      updated: () => importedEvents.push(session.graph.isApplyingImportedState)
+    })
+    session.loadPage(session.pages[0].id)
+    expect(importedEvents.length).toBeGreaterThan(0)
+    expect(importedEvents.every(Boolean)).toBe(true)
+    stop()
+    const libraryId = session.graphPageId(session.pages[0].id) ?? ''
+    const loadedMaster = session.graph
+      .getChildren(libraryId)
+      .find((node) => node.name === 'Resizable')
+    if (!loadedMaster) throw new Error('Missing loaded master')
+    expect(loadedMaster.source.editedFields).not.toContain('width')
+    if (editMaster) session.graph.updateNode(loadedMaster.id, { width: 800 })
+    const page = session.pages.find((candidate) => candidate.name === 'Placed')
+    if (!page) throw new Error('Missing placed page')
+    session.loadPage(page.id)
+    const loaded = session.graph.getChildren(session.graphPageId(page.id) ?? '')[0]
+    expect(loaded.width).toBe(editMaster ? 800 : 1000)
+    expect(loaded.height).toBe(240)
+    expect(loaded.source.editedFields).not.toContain('width')
+    expect(loaded.source.editedFields).not.toContain('height')
+  })
+}
+
+test('saved root sizes do not suppress an instance width variable binding', async () => {
+  const source = new SceneGraph()
+  const page = source.getPages()[0]
+  const collection = source.createCollection('Sizing')
+  const width = source.createVariable('width', 'FLOAT', collection.id, 360)
+  const master = source.createNode('COMPONENT', page.id, { width: 752, height: 120 })
+  const instance = source.createInstance(master.id, page.id)
+  if (!instance) throw new Error('Missing bound instance')
+  source.updateNode(instance.id, { width: 1000, boundVariables: { width: width.id } })
+  const bytes = await exportFigFile(source, undefined, undefined, undefined, false, {
+    rendering: 'none'
+  })
+  const session = createFigDocumentSession(bytes.buffer as ArrayBuffer, { derivedBounds: true })
+  session.loadPage(session.pages[0].id)
+  const loaded = session.graph
+    .getChildren(session.graphPageId(session.pages[0].id) ?? '')
+    .find((node) => node.type === 'INSTANCE')
+  expect(loaded?.width).toBe(360)
+  expect(loaded?.source.editedFields).not.toContain('width')
+})
+
 test('loading a later page keeps the derived sizes of instances earlier pages placed', async () => {
   await initCodec()
   const source = new SceneGraph()

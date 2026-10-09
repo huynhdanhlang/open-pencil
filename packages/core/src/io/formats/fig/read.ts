@@ -1,6 +1,5 @@
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
-import { randomHex } from '@open-pencil/scene-graph/random'
 
 import { IS_BROWSER } from '#core/constants'
 import { deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
@@ -8,6 +7,11 @@ import {
   registerFigPopulationWorker,
   registerOriginalArchiveRequest
 } from '#core/kiwi/fig/population/client'
+import {
+  localFigArchive,
+  registerFigArchive,
+  workerFigArchive
+} from '#core/kiwi/fig/session/archive'
 import { createFigSessionWorker } from '#core/kiwi/fig/session/client'
 import {
   registerReaderRecovery,
@@ -33,7 +37,11 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
   options.signal?.throwIfAborted()
   const bytes = buffer.slice(0)
   registerReaderSession(bytes, reader.session, reader.diagnostics)
-  registerOriginalArchiveRequest(reader.graph, async () => new Uint8Array(bytes.slice(0)))
+  // Taken now, while the records are decoded: the archive outlives the reader's session.
+  const archiveInfo = reader.session.archiveRecordInfo()
+  const archive = localFigArchive(bytes, () => archiveInfo)
+  registerFigArchive(reader.graph, archive)
+  registerOriginalArchiveRequest(reader.graph, () => archive.original())
   return reader.graph
 }
 
@@ -43,13 +51,10 @@ export function parseFigFileViaWorker(
 ): Promise<SceneGraph> {
   return new Promise((resolve, reject) => {
     options.signal?.throwIfAborted()
-    // Capture immutable recovery bytes before yielding to the worker. The caller may
-    // reuse its input while parsing; a later copy would silently change Save/recovery.
-    const archive = buffer.slice(0)
+    // Own bytes before yielding: callers may reuse the input while the worker parses.
+    const ownedArchive = buffer.slice(0)
     const worker = createFigSessionWorker()
     const channel = new MessageChannel()
-    const pendingArchives = new Map<string, (bytes: Uint8Array) => void>()
-    let visiblePageIds: string[] | undefined
     const abort = () => {
       channel.port1.postMessage({ type: 'dispose' })
       channel.port1.close()
@@ -59,20 +64,8 @@ export function parseFigFileViaWorker(
     options.signal?.addEventListener('abort', abort, { once: true })
     const cleanupAbort = () => options.signal?.removeEventListener('abort', abort)
 
-    // A listener of its own: registerFigPopulationWorker takes over port1.onmessage
-    // once the graph arrives, and archive requests are made after that.
-    channel.port1.addEventListener('message', (e: MessageEvent<FigSessionResponse>) => {
-      if (e.data.type !== 'original-archive-result') return
-      const resolveArchive = pendingArchives.get(e.data.requestId)
-      if (!resolveArchive) return
-      pendingArchives.delete(e.data.requestId)
-      resolveArchive(e.data.bytes)
-    })
     channel.port1.onmessage = (e: MessageEvent<FigSessionResponse>) => {
       if (e.data.type === 'page-manifest') {
-        visiblePageIds = e.data.pages
-          .filter((page) => !page.internalOnly)
-          .map((page) => page.sourceId)
         options.onPages?.(e.data.pages)
         return
       }
@@ -88,34 +81,17 @@ export function parseFigFileViaWorker(
         const graph = deserializeSceneGraph(e.data.graph)
         if (options.populate === 'first-page' || options.populate === 'none') {
           cleanupAbort()
-          if (!e.data.checkpoint) throw new Error('Missing reader checkpoint')
-          registerReaderRecovery(graph, archive, e.data.checkpoint)
-          registerOriginalArchiveRequest(
-            graph,
-            () =>
-              new Promise<Uint8Array>((resolveArchive) => {
-                const requestId = randomHex()
-                pendingArchives.set(requestId, resolveArchive)
-                channel.port1.postMessage({ type: 'original-archive', requestId })
-              }),
-            () => {
-              for (const resolveArchive of pendingArchives.values())
-                resolveArchive(new Uint8Array())
-              pendingArchives.clear()
-            }
+          const { checkpoint, archiveInfo } = e.data
+          if (!checkpoint || !archiveInfo) throw new Error('Missing reader checkpoint')
+          const bytes = ownedArchive
+          registerReaderRecovery(graph, bytes, checkpoint)
+          // The worker writes the archive back; without it the main thread does, from its copy.
+          const archive = workerFigArchive(channel.port1, worker, () =>
+            localFigArchive(bytes, () => archiveInfo)
           )
-          registerFigPopulationWorker(
-            graph,
-            worker,
-            channel.port1,
-            visiblePageIds === undefined
-              ? undefined
-              : {
-                  pageIds: visiblePageIds,
-                  loadedPageIds: e.data.checkpoint.loadedPageIds,
-                  originalArchive: async () => new Uint8Array(archive.slice(0))
-                }
-          )
+          registerFigPopulationWorker(graph, worker, channel.port1, () => archive.dropWorker())
+          registerFigArchive(graph, archive)
+          registerOriginalArchiveRequest(graph, () => archive.original())
         } else {
           cleanupAbort()
           channel.port1.close()
@@ -136,8 +112,7 @@ export function parseFigFileViaWorker(
       worker.terminate()
       reject(new Error(err.message || 'Worker failed to parse .fig file'))
     }
-    // Transfer one worker buffer while retaining the immutable host archive for recovery.
-    const workerBuffer = archive.slice(0)
+    const workerBuffer = buffer.slice(0)
     const request: FigSessionOpenRequest = {
       type: 'open',
       buffer: workerBuffer,

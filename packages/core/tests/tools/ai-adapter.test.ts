@@ -21,7 +21,7 @@ function adapt(output: unknown): ModelOutputTool {
     name: 'image_tool',
     description: 'Returns a fixed result',
     execution: { kind: 'sync', mutation: 'none' },
-    input: v.object({}),
+    input: v.strictObject({}),
     execute: () => output
   })
   const figma = new FigmaAPI(new SceneGraph())
@@ -95,7 +95,7 @@ async function runLogged(execute: () => unknown) {
     name: 'logged_tool',
     description: 'Runs the given body',
     execution: { kind: 'sync', mutation: 'none' },
-    input: v.object({}),
+    input: v.strictObject({}),
     execute
   })
   const figma = new FigmaAPI(new SceneGraph())
@@ -122,7 +122,10 @@ describe('AI adapter tool log', () => {
   })
 
   test('logs a returned error as a failure, like a thrown one', async () => {
-    const { entries } = await runLogged(() => ({ id: '999:999', error: 'Node "999:999" not found' }))
+    const { entries } = await runLogged(() => ({
+      id: '999:999',
+      error: 'Node "999:999" not found'
+    }))
     expect(entries).toMatchObject([{ error: 'Node "999:999" not found', cause: undefined }])
   })
 

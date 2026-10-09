@@ -41,6 +41,8 @@ export function destroyRenderer(r: SkiaRenderer): void {
   r.fillPaint.delete()
   r.diamondGradientEffect?.delete()
   r.diamondGradientEffect = null
+  r.pixelGridEffect?.delete()
+  r.pixelGridEffect = null
   r.strokePaint.delete()
   r.selectionPaint.delete()
   r.parentOutlinePaint.delete()

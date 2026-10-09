@@ -148,8 +148,9 @@ export function createCanvasSurfaceManager({
     }
     const startedAt = performance.now()
     state.renderer.overlayObstacles = overlayObstacles()
+    const view = options?.getRenderState?.() ?? editor.state
     state.renderer.renderFromEditorState(
-      options?.getRenderState?.() ?? editor.state,
+      view,
       editor.graph,
       editor.textEditor,
       canvasRef.value?.clientWidth ?? 0,
@@ -159,6 +160,7 @@ export function createCanvasSurfaceManager({
       editor.isInteractiveEditing()
     )
     renderLoop.markRendered()
+    options?.onFrame?.({ panX: view.panX, panY: view.panY, zoom: view.zoom })
     acknowledgePresentation(performance.now() - startedAt)
     clearSceneBackingRenderTimer()
     if (options?.layer === 'scene' && state.renderer.tiledScenePending) {

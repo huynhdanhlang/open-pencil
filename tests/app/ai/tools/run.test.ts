@@ -8,7 +8,14 @@ import { toRaw } from 'vue'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import { createToolLoopTransport } from '@/app/ai/chat/transports'
-import { createAITools, endRun, markRunPreview, runPageId, startRun } from '@/app/ai/tools'
+import {
+  createAITools,
+  endRun,
+  markRunPreview,
+  runPageId,
+  runUndoEntries,
+  startRun
+} from '@/app/ai/tools'
 import { aiToolOverrides } from '@/app/ai/tools/preferences'
 import { markRunWork } from '@/app/ai/tools/run'
 import * as figmaFactory from '@/app/automation/bridge/figma-factory'
@@ -267,4 +274,18 @@ test('the agent moves through streamed JSX, then onto the layers the tool made',
   } finally {
     store.preparationController.dispose()
   }
+})
+
+test("an edit that changes nothing adds no undo step and does not claim an earlier reply's", async () => {
+  await withStore(async (store, { a }) => {
+    aiToolOverrides.value = { ...aiToolOverrides.value, delete_node: true }
+    const node = store.graph.createNode('RECTANGLE', a, { name: 'Card' })
+    await runMessage(store, [{ toolName: 'delete_node', input: { id: node.id } }])
+    const deleted = expectDefined(store.undo.peekUndo(), 'delete entry')
+    expect(runUndoEntries(store)).toEqual([deleted])
+
+    await runMessage(store, [{ toolName: 'delete_node', input: { id: 'missing' } }])
+    expect(store.undo.peekUndo()).toBe(deleted)
+    expect(runUndoEntries(store)).toEqual([])
+  })
 })

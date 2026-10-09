@@ -28,5 +28,7 @@
   "deepLinkNodeNotFound": "Ebene „{node}“ wurde in „{file}“ nicht gefunden.",
   "openQueuedFilesFailed": "Die an OpenPencil übergebenen Dateien konnten nicht geöffnet werden: {error}",
   "tokensLeftOut": "Nicht im Stylesheet enthalten: {names}.",
-  "savedWithoutPreview": "Das Design wurde ohne neue Vorschau gespeichert, weil der Renderer fehlgeschlagen ist. Öffne den Editor erneut, um die Darstellung wiederherzustellen."
+  "savedWithoutPreview": "Das Design wurde ohne neue Vorschau gespeichert, weil der Renderer fehlgeschlagen ist. Öffne den Editor erneut, um die Darstellung wiederherzustellen.",
+  "designTokensLeftOut": "Nicht in den Design-Tokens enthalten: {names}.",
+  "designTokensImported": "{count} Design-Tokens importiert."
 }

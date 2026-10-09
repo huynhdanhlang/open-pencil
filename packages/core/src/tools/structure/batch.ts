@@ -110,7 +110,7 @@ export const batchUpdate = defineTool({
   description:
     'Execute multiple modifications in one call. Each operation is {id, props} where props can include: spacing, padding, padding_horizontal, padding_vertical, counter_align, align, sizing_horizontal, sizing_vertical, grow, name, visible, corner_radius, opacity, auto_resize (for text), direction. Validates the complete batch before changing any node. Runs all updates with one layout recompute. Use node_resize or update_node for geometry.',
   execution: { kind: 'sync', mutation: 'document' },
-  input: v.object({
+  input: v.strictObject({
     operations: v.pipe(
       v.string(),
       v.description(

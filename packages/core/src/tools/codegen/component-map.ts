@@ -115,7 +115,7 @@ export const designToComponentMap = defineTool({
   description:
     'Analyze one page and return components (with variants, props and page-local instance counts), screens and dependencies. Zero instances on a source page does not imply zero consumers on other pages.',
   execution: { kind: 'sync', mutation: 'none' },
-  input: v.object({
+  input: v.strictObject({
     page: v.optional(
       v.pipe(v.string(), v.description('Page name to analyze (default: current page)'))
     )

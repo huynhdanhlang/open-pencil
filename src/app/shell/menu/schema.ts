@@ -73,6 +73,7 @@ export const APP_MENU_SCHEMA = [
       { type: 'separator' },
       { id: 'save', label: 'Save', shortcut: 'MOD+S' },
       { id: 'save-as', label: 'Save As…', shortcut: 'MOD+SHIFT+S' },
+      { id: 'save-to-storage', label: 'Save to Storage…' },
       { type: 'separator' },
       {
         id: 'export-selection',
@@ -184,8 +185,15 @@ export const APP_MENU_SCHEMA = [
         }
       },
       { type: 'separator' },
-      { id: 'view-rulers', label: 'Rulers', checkbox: true },
-      { id: 'view-multiplayer-cursors', label: 'Multiplayer Cursors', checkbox: true },
+      { id: 'view-rulers', label: 'Rulers', checkbox: true, shortcut: 'SHIFT+R' },
+      // Figma's View › Pixel grid, shown once zoomed in far enough.
+      { id: 'view-pixel-grid', label: 'Pixel Grid', checkbox: true, shortcut: "SHIFT+'" },
+      {
+        id: 'view-multiplayer-cursors',
+        label: 'Multiplayer Cursors',
+        checkbox: true,
+        shortcut: 'ALT+MOD+\\'
+      },
       { id: 'view-design-issues', label: 'Design Issues', checkbox: true, handler: 'shell' },
       { type: 'separator' },
       {
@@ -219,6 +227,7 @@ export const APP_MENU_SCHEMA = [
             id: 'snap-pixel-grid',
             label: 'Snap to Pixel Grid',
             checkbox: true,
+            shortcut: "MOD+SHIFT+'",
             handler: 'shell'
           },
           { type: 'separator' },
@@ -262,6 +271,12 @@ export const APP_MENU_SCHEMA = [
         id: 'selection.ungroup',
         label: 'Ungroup Selection',
         command: 'selection.ungroup'
+      },
+      { type: 'separator' },
+      {
+        id: 'insert-icon',
+        label: 'Insert Icon…',
+        palette: { keywords: ['iconify', 'symbol', 'glyph', 'lucide'] }
       },
       { type: 'separator' },
       {
@@ -356,6 +371,11 @@ export const APP_MENU_SCHEMA = [
         id: 'selection.detachInstance',
         label: 'Detach Instance',
         command: 'selection.detachInstance'
+      },
+      {
+        id: 'selection.detachIcon',
+        label: 'Detach Icon',
+        command: 'selection.detachIcon'
       },
       { type: 'separator' },
       {

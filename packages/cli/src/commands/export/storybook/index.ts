@@ -12,7 +12,7 @@ import {
   sep
 } from 'node:path'
 
-import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+import { BUILTIN_IO_FORMATS, IORegistry, vectorElement } from '@open-pencil/core/io'
 import {
   exportStorybook,
   STORYBOOK_FRAMEWORKS,
@@ -153,7 +153,10 @@ async function writeStories(
   const files = await exportStorybook(graph, {
     framework,
     pageId,
+    // Titled by the document, so stories of documents exported together stay apart.
+    document: basename(file, extname(file)),
     linkPath: linkPath(file),
+    vectorElement,
     renderDesignImage: args['design-images']
       ? async (nodeId) => {
           const result = await io.exportContent(

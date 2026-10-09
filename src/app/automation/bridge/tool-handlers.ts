@@ -147,9 +147,10 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
         const admittedGraph = target.store.graph
         if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
           throw new Error('Page closed before render started')
+        const { tree: transportTree, ...authoredArgs } = toolArgs
         const placementInput = parseToolArgs(def.name, def.input, {
-          ...toolArgs,
-          ...(toolArgs.tree ? { jsx: '' } : {})
+          ...authoredArgs,
+          ...(transportTree ? { jsx: '' } : {})
         }) as RenderPlacementInput
         renderPageId = resolveRenderPlacement(
           target.store.graph,
@@ -179,7 +180,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       }
       if (toolName === 'render' && toolArgs.tree) {
         const placementInput = parseToolArgs(def.name, def.input, {
-          ...toolArgs,
+          ...Object.fromEntries(Object.entries(toolArgs).filter(([key]) => key !== 'tree')),
           jsx: ''
         }) as RenderPlacementInput
         return { result: await handleToolRender(target, toolArgs, placementInput), edited: true }

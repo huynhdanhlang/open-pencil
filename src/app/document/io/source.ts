@@ -19,8 +19,9 @@ import {
   isRecoveryStoreMemoryFallback
 } from '@/app/document/recovery/store'
 import { notificationMessages } from '@/app/i18n/notifications'
-import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import type { StorageDocumentBinding, StorageProviderID } from '@/app/integrations/storage/types'
 import { toast } from '@/app/shell/ui'
+import { createCanvasId } from '@/app/storage/id'
 
 type DocumentSourceState = EditorState & {
   documentName: string
@@ -218,8 +219,15 @@ export function createDocumentSourceActions({
     state.documentName = documentNameFromFigPath(downloadName)
   }
 
-  /** Save to a new path; when the write fails, the document keeps the source it had. */
-  async function saveFigFileToPath(path: string): Promise<boolean> {
+  let retargeting = false
+
+  /**
+   * Save to a new target; when the write fails, the document keeps the source it had. A second
+   * retarget while one is in flight is refused, so a failure never restores another save's target.
+   */
+  async function saveToNewTarget(planTarget: () => void): Promise<boolean> {
+    if (retargeting) return false
+    retargeting = true
     const previous = {
       filePath: getFilePath(),
       fileHandle: getFileHandle(),
@@ -235,16 +243,39 @@ export function createDocumentSourceActions({
       state.documentName = previous.documentName
       if (previous.filePath || previous.fileHandle) void startWatchingFile()
     }
-    setPlannedFilePath(path)
+    planTarget()
     try {
       const saved = await saveAndTrack(saveFigFile)
-      if (saved) void startWatchingFile()
-      else restore()
+      if (!saved) restore()
       return saved
     } catch (error) {
       restore()
       throw error
+    } finally {
+      retargeting = false
     }
+  }
+
+  async function saveFigFileToPath(path: string): Promise<boolean> {
+    const saved = await saveToNewTarget(() => setPlannedFilePath(path))
+    if (saved) void startWatchingFile()
+    return saved
+  }
+
+  /** Upload the document to storage as a new stored document and keep editing it there. */
+  async function saveFigFileToStorage(providerId: StorageProviderID): Promise<boolean> {
+    const saved = await saveToNewTarget(() => {
+      stopWatchingFile()
+      setFileHandle(null)
+      setFilePath(null)
+      setDownloadName(`${state.documentName}.fig`)
+      setStorageBinding({ providerId, documentId: createCanvasId() })
+    })
+    if (saved) {
+      setSourceIdentity({ handle: null, path: null })
+      state.autosaveEnabled = true
+    }
+    return saved
   }
 
   function startWatchingCurrentFile() {
@@ -264,6 +295,7 @@ export function createDocumentSourceActions({
     setStorageDocumentSource,
     setPlannedFilePath,
     saveFigFileToPath,
+    saveFigFileToStorage,
     startWatchingCurrentFile,
     disposeDocumentIO,
     runDocumentOperation: <T>(run: () => Promise<T>, signal?: AbortSignal) =>

@@ -28,6 +28,7 @@ export {
 export {
   createSVGNodes,
   createSVGNodesFromImport,
+  isSVGMarkup,
   prepareSVGImport,
   renderNodesToSVG,
   geometryBlobToSVGPath,
@@ -35,6 +36,7 @@ export {
   type SVGImportData,
   type SVGImportOptions
 } from './formats/svg'
+export { vectorElement } from './formats/html/vectors'
 export {
   renderNodesToPPTX,
   type PPTXExportOptions,

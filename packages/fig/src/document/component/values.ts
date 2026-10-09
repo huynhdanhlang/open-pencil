@@ -19,25 +19,40 @@ export function linkComponentPropertyValues(
     for (const node of graph.getAllNodes())
       for (const definition of node.componentPropertyDefinitions)
         definitions.set(definition.id, definition.type)
+  // Linked values replace the definitions and assignments rather than writing into them: a layer
+  // inside an instance holds its component layer's own objects until an override changes them.
   for (const node of materialized) {
-    for (const definition of node.componentPropertyDefinitions) {
+    let linked: typeof node.componentPropertyDefinitions | undefined
+    node.componentPropertyDefinitions.forEach((definition, index) => {
       definitions.set(definition.id, definition.type)
-      if (definition.type === 'INSTANCE_SWAP' || definition.type === 'SLOT')
-        definition.preferredValues = definition.preferredValues?.map((value) =>
+      if (definition.type === 'INSTANCE_SWAP' || definition.type === 'SLOT') {
+        const preferredValues = definition.preferredValues?.map((value) =>
           isAssetKey?.(value) ? value : (sources.get(value) ?? value)
         )
-      if (definition.type !== 'INSTANCE_SWAP') continue
+        if (preferredValues) {
+          linked ??= [...node.componentPropertyDefinitions]
+          linked[index] = { ...definition, preferredValues }
+        }
+      }
+      if (definition.type !== 'INSTANCE_SWAP') return
       const target = sources.get(definition.defaultValue)
-      if (target) definition.defaultValue = target
-    }
+      if (!target) return
+      linked ??= [...node.componentPropertyDefinitions]
+      linked[index] = { ...(linked[index] ?? definition), defaultValue: target }
+    })
+    if (linked) node.componentPropertyDefinitions = linked
   }
   for (const node of materialized) {
+    let linked: typeof node.componentPropertyAssignments | undefined
     // for-in skips the entry array that most nodes, which assign nothing, never need.
     for (const propertyId in node.componentPropertyAssignments) {
       if (definitions.get(propertyId) !== 'INSTANCE_SWAP') continue
       const target = sources.get(node.componentPropertyAssignments[propertyId])
-      if (target) node.componentPropertyAssignments[propertyId] = target
+      if (!target) continue
+      linked ??= { ...node.componentPropertyAssignments }
+      linked[propertyId] = target
     }
+    if (linked) node.componentPropertyAssignments = linked
   }
 }
 

@@ -146,7 +146,8 @@ export function updateVariantName(
       variant.componentPropertyValues[definition.name] ?? ''
     ])
   )
-  ctx.graph.updateNode(variant.id, { name: buildVariantName(values) })
+  if (Object.keys(values).length)
+    ctx.graph.updateNode(variant.id, { name: buildVariantName(values) })
 }
 
 export function refreshVariantOptions(ctx: EditorContext, componentSetId: string): void {

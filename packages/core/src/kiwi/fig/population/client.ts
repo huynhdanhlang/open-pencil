@@ -1,6 +1,8 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 import { randomHex } from '@open-pencil/scene-graph/random'
 
+import { releaseFigArchive } from '#core/kiwi/fig/session/archive'
+import { archiveChanges, trackArchiveChanges } from '#core/kiwi/fig/session/archive-changes'
 import { updateReaderRecovery, releaseReaderRecovery } from '#core/kiwi/fig/session/document-state'
 import type { FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 
@@ -21,20 +23,9 @@ interface OriginalArchiveRequest {
 }
 const originalArchiveRequests = new WeakMap<SceneGraph, OriginalArchiveRequest>()
 
-interface PopulationCompletion {
-  pageIds: readonly string[]
-  loadedPageIds: readonly string[]
-  originalArchive: () => Promise<Uint8Array>
-}
-
-function pagesComplete(pageIds: readonly string[], loadedPageIds: readonly string[]): boolean {
-  const loaded = new Set(loadedPageIds)
-  return pageIds.every((id) => loaded.has(id))
-}
-
 export interface FigPopulationWorkerTelemetry {
   event: 'registered' | 'populate' | 'fallback' | 'stale' | 'terminated'
-  reason?: 'oversized' | 'graph-mutation' | 'worker-error' | 'fully-populated'
+  reason?: 'oversized' | 'graph-mutation' | 'worker-error'
   durationMs?: number
   applyMs?: number
   created?: number
@@ -51,34 +42,18 @@ export function registerFigPopulationWorker(
   graph: SceneGraph,
   worker: Worker,
   port?: MessagePort,
-  completion?: PopulationCompletion
+  stopWorker?: () => void
 ): void {
-  if (completion && pagesComplete(completion.pageIds, completion.loadedPageIds)) {
-    registerOriginalArchiveRequest(graph, completion.originalArchive)
-    port?.postMessage({ type: 'dispose' })
-    port?.close()
-    worker.terminate()
-    emitTelemetry({ event: 'terminated', reason: 'fully-populated' })
-    return
-  }
   if (graph.nodes.size > MAX_FIG_POPULATION_WORKER_NODES) {
     emitTelemetry({ event: 'fallback', reason: 'oversized' })
     if (!port) {
       worker.terminate()
       return
     }
-    populationWorkers.set(graph, createDisposalOnlyWorker(worker, port))
+    populationWorkers.set(graph, createRetiredWorker(worker, port, !!stopWorker))
     return
   }
-  const client = createPopulationWorkerClient(
-    graph,
-    worker,
-    port,
-    completion && {
-      pageIds: completion.pageIds,
-      originalArchive: completion.originalArchive
-    }
-  )
+  const client = createPopulationWorkerClient(graph, worker, port, stopWorker)
   populationWorkers.set(graph, client)
   emitTelemetry({ event: 'registered' })
 }
@@ -120,6 +95,7 @@ export function registerOriginalArchiveRequest(
     reordered: invalidate
   })
   originalArchiveRequests.set(graph, entry)
+  trackArchiveChanges(graph)
   // Bind the successor before cancellation callbacks can cause a real live edit.
   previous?.unbind()
   previous?.invalidate()
@@ -129,9 +105,18 @@ function invalidateOriginalArchiveRequest(graph: SceneGraph): void {
   originalArchiveRequests.get(graph)?.invalidate()
 }
 
+/** Variables and document settings change without layer events. */
+function divergedOutsideLayers(graph: SceneGraph): boolean {
+  const changes = archiveChanges(graph)
+  return (
+    !!changes &&
+    (changes.changedVariables.size > 0 || changes.collectionsChanged || changes.documentChanged)
+  )
+}
+
 export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Array | null> {
   const entry = originalArchiveRequests.get(graph)
-  if (!entry?.valid) return null
+  if (!entry?.valid || divergedOutsideLayers(graph)) return null
   const archive = await Promise.race([entry.request(), entry.invalidated])
   return originalArchiveRequests.get(graph)?.valid === true &&
     originalArchiveRequests.get(graph) === entry
@@ -146,19 +131,30 @@ export function releaseFigPopulationWorker(graph: SceneGraph): void {
   populationWorkers.delete(graph)
   originalArchiveRequests.get(graph)?.unbind()
   originalArchiveRequests.delete(graph)
+  releaseFigArchive(graph)
 }
 
 export interface FigPopulationWorker {
   populate: (pageId: string, signal?: AbortSignal) => Promise<boolean | null>
+  /**
+   * Stop loading pages through the worker. The worker itself keeps serving the document's
+   * archive until the document closes, which releases it with the archive.
+   */
   terminate: () => void
 }
 
-function createDisposalOnlyWorker(worker: Worker, port: MessagePort): FigPopulationWorker {
+/** A worker too large to load pages through; one nothing else holds is disposed with it. */
+function createRetiredWorker(
+  worker: Worker,
+  port: MessagePort,
+  sharedWorker: boolean
+): FigPopulationWorker {
+  if (sharedWorker) port.postMessage({ type: 'retire' })
   let disposed = false
   return {
     populate: () => Promise.resolve(null),
     terminate() {
-      if (disposed) return
+      if (disposed || sharedWorker) return
       disposed = true
       emitTelemetry({ event: 'terminated' })
       port.postMessage({ type: 'dispose' })
@@ -173,12 +169,19 @@ export function createFigPopulationWorker(graph: SceneGraph): FigPopulationWorke
   return populationWorkers.get(graph) ?? null
 }
 
+/**
+ * The client owns the worker unless `stopWorker` is given: a document whose archive the worker
+ * also holds passes the archive's, so that retiring page loading leaves the worker serving it
+ * and stopping the worker lets the archive carry on without it.
+ */
 export function createPopulationWorkerClient(
   graph: SceneGraph,
   worker: Pick<Worker, 'postMessage' | 'terminate' | 'onerror' | 'onmessage'>,
   port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage'>,
-  completion?: { pageIds: readonly string[]; originalArchive: () => Promise<Uint8Array> }
+  stopWorker?: () => void
 ): FigPopulationWorker {
+  const sharedWorker = !!stopWorker
+  const stopWorkerNow = stopWorker ?? (() => worker.terminate())
   const pending = new Map<
     string,
     {
@@ -201,33 +204,29 @@ export function createPopulationWorkerClient(
     revision++
     stale = true
     emitTelemetry({ event: 'stale', reason: 'graph-mutation' })
-    // The recovery checkpoint/bytes stay with the live graph. Its stale worker mirror cannot
-    // contribute another delta or original archive, so release it during same-page editing.
-    fail(false)
   }
   let unbind: (() => void) | undefined
   const releaseSubscription = () => {
     unbind?.()
     unbind = undefined
   }
-  const fail = (emit = true, originalArchive?: () => Promise<Uint8Array>) => {
-    if (disposed) return
-    disposed = true
+  /**
+   * Stop loading pages here. A graph that diverged only retires the worker's session, so the
+   * worker keeps serving the archive; an abandoned or failed load stops the worker itself.
+   */
+  const fail = (emit = true, stop = true) => {
     stale = true
     if (emit) emitTelemetry({ event: 'fallback', reason: 'worker-error' })
-    releaseSubscription()
-    if (originalArchive) registerOriginalArchiveRequest(graph, originalArchive)
-    else invalidateOriginalArchiveRequest(graph)
-    port?.close()
-    worker.terminate()
-    populationWorkers.delete(graph)
     for (const request of pending.values()) {
       clearTimeout(request.timeout)
       request.abort?.()
       request.resolve(null)
     }
     pending.clear()
-    emitTelemetry({ event: 'terminated', reason: originalArchive ? 'fully-populated' : undefined })
+    releaseSubscription()
+    if (stop || !sharedWorker) stopWorkerNow()
+    else port?.postMessage({ type: 'retire' })
+    populationWorkers.delete(graph)
   }
   unbind = graph.onNodeEvents({
     created: invalidate,
@@ -237,7 +236,7 @@ export function createPopulationWorkerClient(
     reordered: invalidate
   })
   const receive = (result: WorkerResult) => {
-    if (result.type === 'population-error') return fail()
+    if (result.type === 'population-error') return fail(true, false)
     const request = pending.get(result.requestId)
     if (!request) return
     clearTimeout(request.timeout)
@@ -259,15 +258,7 @@ export function createPopulationWorkerClient(
     } finally {
       applyingDelta = false
     }
-    if (
-      !stale &&
-      !disposed &&
-      completion &&
-      result.checkpoint &&
-      pagesComplete(completion.pageIds, result.checkpoint.loadedPageIds)
-    ) {
-      fail(false, completion.originalArchive)
-    }
+    request.resolve(result.populated)
     emitTelemetry({
       event: 'populate',
       durationMs: performance.now() - request.startedAt,
@@ -276,7 +267,6 @@ export function createPopulationWorkerClient(
       updated: result.delta.updated.length,
       deleted: result.delta.deleted.length
     })
-    request.resolve(result.populated)
   }
   if (port) {
     port.onmessage = (event: MessageEvent<WorkerResult>) => receive(event.data)
@@ -315,8 +305,13 @@ export function createPopulationWorkerClient(
     },
     terminate() {
       if (disposed) return
-      port?.postMessage({ type: 'dispose' })
-      fail(false)
+      disposed = true
+      emitTelemetry({ event: 'terminated' })
+      if (!sharedWorker) {
+        port?.postMessage({ type: 'dispose' })
+        port?.close()
+      }
+      fail(false, false)
     }
   }
 }

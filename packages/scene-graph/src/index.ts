@@ -16,10 +16,20 @@ export * from './images'
 export * from './components/properties'
 export * from './slots/frames'
 export { instanceMainComponent } from './instances/main-component'
+export { canCreateInstance } from './instances/cycles'
+export {
+  exposableInstances,
+  exposedInstances,
+  instanceExposureIssue,
+  type InstanceExposureIssue
+} from './components/exposure'
 export * from './slots/content'
 export * from './slots/authoring'
 export * from './slots/limits'
 export * from './behaviours/kinds'
+export * from './icons/schema'
+export * from './icons/model'
+export * from './icons/glyph'
 export * from './behaviours/layers'
 export * from './behaviours/model'
 export * from './behaviours/spec'
@@ -183,6 +193,7 @@ export class SceneGraph {
   private sourceMetadataPreservationDepth = 0
   private importedStateApplicationDepth = 0
   private layoutMutationDepth = 0
+  private derivedLayoutDepth = 0
   positionPreviewVersion = 0
   instanceIndex = new Map<string, Set<string>>()
 
@@ -580,6 +591,23 @@ export class SceneGraph {
     return this.importedStateApplicationDepth > 0
   }
 
+  /**
+   * Lays out what the document already holds: a page as it loads, or again once its fonts
+   * arrive. What this writes derives from the document; an edit's own layout is not this.
+   */
+  applyDerivedLayoutDuring(fn: () => void): void {
+    this.derivedLayoutDepth++
+    try {
+      fn()
+    } finally {
+      this.derivedLayoutDepth--
+    }
+  }
+
+  get isApplyingDerivedLayout(): boolean {
+    return this.derivedLayoutDepth > 0
+  }
+
   withLayoutMutations(fn: () => void): void {
     this.layoutMutationDepth++
     try {
@@ -884,8 +912,12 @@ export class SceneGraph {
     Instances.populateInstanceChildren(this, instanceId, componentId, mode)
   }
 
-  swapInstanceComponent(instanceId: string, componentId: string): void {
-    Instances.swapInstanceComponent(this, instanceId, componentId)
+  swapInstanceComponent(
+    instanceId: string,
+    componentId: string,
+    options?: Instances.SwapInstanceOptions
+  ): void {
+    Instances.swapInstanceComponent(this, instanceId, componentId, options)
   }
 
   syncInstances(componentId: string, removedSourceIds?: ReadonlySet<string>): void {

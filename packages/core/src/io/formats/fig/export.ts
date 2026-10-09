@@ -1,84 +1,60 @@
-/* eslint-disable max-lines -- FIG export orchestration keeps shared GUID state in one pipeline */
 import type { CanvasKit } from 'canvaskit-wasm'
-import { deflateSync, inflateSync } from 'fflate'
 import { toUint8Array } from 'js-base64'
 
 import { compressFigDataSync } from '@open-pencil/fig'
 import {
   EMPTY_EXPORT_RUNTIME,
-  buildComponentPropIndex,
   placeSlotContent,
-  exportCanvasGuides,
-  importCanvasGuides,
-  stringToGuid,
   type FigNodeChangeExportRuntime
 } from '@open-pencil/fig/node-change'
-import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
+import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
-import {
-  ownsSlotContent,
-  readBehaviour,
-  renameBehaviourProperties,
-  withBehaviour,
-  type SceneGraph
-} from '@open-pencil/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 import { fractionalPosition } from '@open-pencil/scene-graph/order-keys'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
 import { withFigExportRuntime, withFigExportRuntimeForNodes } from '#core/canvas/text/shape'
-import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
-import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-metadata'
-import { findFigThumbnailPageId } from '#core/io/formats/fig/thumbnail-page'
+import { IS_BROWSER, IS_TAURI } from '#core/constants'
+import {
+  exportSchema,
+  figExportRecordOptions,
+  figFileExtras,
+  prepareFigExport,
+  type FigExportSetup,
+  type KiwiNodeChange
+} from '#core/io/formats/fig/export-setup'
+import { writePatchedFigFile } from '#core/io/formats/fig/patch-export'
 import { renderThumbnail } from '#core/io/formats/raster'
 import { buildFontDigestMapFromKeys } from '#core/kiwi/fig/node-change/font/digests'
-import {
-  sceneNodeToKiwi,
-  buildFontDigestMap,
-  makeDocumentNodeChange,
-  makeCanvasNodeChange
-} from '#core/kiwi/fig/node-change/serialize'
+import { sceneNodeToKiwi } from '#core/kiwi/fig/node-change/serialize'
 import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
-import { isReaderPagePending, populateReaderExport } from '#core/kiwi/fig/session/document-state'
+import {
+  hasPendingReaderPages,
+  isReaderPagePending,
+  populateFigInternalPages,
+  populateReaderExport
+} from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
 import { exportFigInWorker, type PreparedFigResources } from './isolated-export'
 import { encodeNativeFigPayload } from './native-payload'
+import { findFigThumbnailPageId } from './thumbnail-page'
 import {
   appendVariableNodeChanges,
   sequentialPositions,
-  assignSharedStyleGuids,
-  assignVariableGuid,
-  assignVariableGuids
+  assignSharedStyleGuids
 } from './variable-export'
 
 const THUMBNAIL_1X1 = toUint8Array(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
 )
 
-type KiwiNodeChange = NodeChange & Record<string, unknown>
-type FigExportPage = ReturnType<SceneGraph['getPages']>[number]
-
 interface FigWriteOptions {
   rendering?: 'none'
   /** Already shaped by the host's faithful font runtime for this isolated write. */
   prepared?: PreparedFigResources & { thumbnailPNG?: Uint8Array }
   packNative?: (payload: Uint8Array) => Promise<Uint8Array>
-}
-
-interface CanvasExportEntry {
-  page: FigExportPage
-  canvasGuid: GUID
-  canvasNc: KiwiNodeChange
-}
-
-function collectImageEntries(graph: SceneGraph): Array<{ name: string; data: Uint8Array }> {
-  const entries: Array<{ name: string; data: Uint8Array }> = []
-  for (const [hash, data] of graph.images) {
-    entries.push({ name: `images/${hash}`, data })
-  }
-  return entries
 }
 
 const THUMBNAIL_WIDTH = 512
@@ -107,179 +83,7 @@ async function renderFigThumbnail(
   )
 }
 
-interface ComponentPropertyGuidState {
-  ids: string[]
-  maxLocalId0: number
-  maxLocalId1: number
-}
-
-function collectComponentPropertyGuidState(graph: SceneGraph): ComponentPropertyGuidState {
-  const ids = new Set<string>()
-  let maxLocalId0 = 0
-  let maxLocalId1 = 0
-  for (const node of graph.getAllNodes()) {
-    for (const definition of node.componentPropertyDefinitions) ids.add(definition.id)
-    for (const reference of node.componentPropertyReferences) ids.add(reference.propertyId)
-    for (const propertyId of Object.keys(node.componentPropertyAssignments)) ids.add(propertyId)
-    for (const spec of node.variantPropSpecs) ids.add(spec.propDefId)
-  }
-  for (const propertyId of ids) {
-    const match = /^(\d+):(\d+)$/.exec(propertyId)
-    if (!match) continue
-    const sessionID = Number.parseInt(match[1], 10)
-    const localID = Number.parseInt(match[2], 10)
-    if (sessionID === 0) maxLocalId0 = Math.max(maxLocalId0, localID)
-    if (sessionID === 1) maxLocalId1 = Math.max(maxLocalId1, localID)
-  }
-  return { ids: [...ids], maxLocalId0, maxLocalId1 }
-}
-
-function assignComponentPropertyGuids(
-  propertyIds: readonly string[],
-  localIdCounter: { value: number },
-  propertyIdToGuid: Map<string, GUID>,
-  assignedGuidValues: Set<string>,
-  nodeSourceGuidValues: Set<string>
-): void {
-  for (const propertyId of propertyIds) {
-    const guid = assignVariableGuid(
-      propertyId,
-      localIdCounter,
-      assignedGuidValues,
-      nodeSourceGuidValues
-    )
-    propertyIdToGuid.set(propertyId, guid)
-  }
-}
-
-/** Behaviours bind component properties by id, so they follow the ids' new GUIDs. */
-function renameBehaviourPropertyIds(graph: SceneGraph, propertyIdToGuid: Map<string, GUID>): void {
-  const rename = (propertyId: string) => {
-    const guid = propertyIdToGuid.get(propertyId)
-    return guid ? `${guid.sessionID}:${guid.localID}` : propertyId
-  }
-  for (const node of graph.getAllNodes()) {
-    const behaviour = readBehaviour(node)
-    if (behaviour)
-      graph.updateNode(node.id, {
-        pluginData: withBehaviour(node, renameBehaviourProperties(behaviour, rename))
-      })
-  }
-}
-
-function applyImportedCanvasFields(page: FigExportPage, canvasNc: KiwiNodeChange): void {
-  if ('backgroundColor' in page.source.fig.rawNodeFields) {
-    canvasNc.backgroundColor = structuredClone(page.source.fig.rawNodeFields.backgroundColor)
-  }
-  if ('backgroundPaints' in page.source.fig.rawNodeFields) {
-    canvasNc.backgroundPaints = structuredClone(
-      page.source.fig.rawNodeFields.backgroundPaints
-    ) as NodeChange['backgroundPaints']
-  }
-  if (!page.source.id) return
-  if (!('pageType' in page.source.fig.rawNodeFields)) delete canvasNc.pageType
-  if (page.guides.length > 0) {
-    const normalized = exportCanvasGuides(page.guides)
-    const raw = page.source.fig.rawNodeFields.guides
-    canvasNc.guides =
-      Array.isArray(raw) && JSON.stringify(importCanvasGuides(raw)) === JSON.stringify(page.guides)
-        ? structuredClone(raw)
-        : normalized
-  }
-  const strokeJoin = page.source.fig.rawNodeFields.strokeJoin
-  if (typeof strokeJoin === 'string') canvasNc.strokeJoin = strokeJoin
-  const strokeWeight = page.source.fig.rawNodeFields.strokeWeight
-  if (typeof strokeWeight === 'number') canvasNc.strokeWeight = strokeWeight
-}
-
-function buildCanvasEntries(
-  graph: SceneGraph,
-  pages: FigExportPage[],
-  docGuid: GUID,
-  localIdCounter: { value: number },
-  nodeIdToGuid: Map<string, GUID>,
-  assignedGuidValues: Set<string>
-): { canvasEntries: CanvasExportEntry[]; internalCanvasGuid: GUID | null } {
-  const canvasEntries: CanvasExportEntry[] = []
-  let internalCanvasGuid: GUID | null = null
-  for (let p = 0; p < pages.length; p++) {
-    const page = pages[p]
-    const canvasGuid = (() => {
-      if (!page.source.id) return { sessionID: 0, localID: localIdCounter.value++ }
-
-      const importedGuid = stringToGuid(page.source.id)
-      const key = `${importedGuid.sessionID}:${importedGuid.localID}`
-
-      if (!assignedGuidValues.has(key)) return importedGuid
-
-      return { sessionID: 0, localID: localIdCounter.value++ }
-    })()
-    // Advance counter past any source.id-derived GUID to prevent collisions
-    // with subsequently generated variable/collection GUIDs.
-    if (page.source.id && canvasGuid.sessionID === 0) {
-      localIdCounter.value = Math.max(localIdCounter.value, canvasGuid.localID + 1)
-    }
-    nodeIdToGuid.set(page.id, canvasGuid)
-    assignedGuidValues.add(`${canvasGuid.sessionID}:${canvasGuid.localID}`)
-    if (page.internalOnly) internalCanvasGuid = canvasGuid
-
-    const canvasNc = makeCanvasNodeChange(
-      canvasGuid,
-      docGuid,
-      page.source.orderKey ?? fractionalPosition(p),
-      page.name,
-      {
-        backgroundOpacity: 1,
-        backgroundColor: { ...CANVAS_BG_COLOR },
-        backgroundEnabled: true
-      }
-    )
-    applyImportedCanvasFields(page, canvasNc)
-    if (page.internalOnly) canvasNc.internalOnly = true
-    canvasEntries.push({ page, canvasGuid, canvasNc })
-  }
-
-  const hasSharedStyles = [...graph.nodes.values()].some((node) => node.sharedStyleType !== null)
-  const hasSlotContent = [...graph.nodes.values()].some((node) => ownsSlotContent(graph, node))
-  if (
-    (graph.variableCollections.size > 0 || hasSharedStyles || hasSlotContent) &&
-    internalCanvasGuid === null
-  ) {
-    internalCanvasGuid = { sessionID: 0, localID: localIdCounter.value++ }
-    assignedGuidValues.add(`${internalCanvasGuid.sessionID}:${internalCanvasGuid.localID}`)
-    canvasEntries.push({
-      page: { id: '', name: 'Internal Only Canvas', internalOnly: true } as FigExportPage,
-      canvasGuid: internalCanvasGuid,
-      canvasNc: makeCanvasNodeChange(
-        internalCanvasGuid,
-        docGuid,
-        fractionalPosition(canvasEntries.length),
-        'Internal Only Canvas',
-        { internalOnly: true }
-      )
-    })
-  }
-
-  return { canvasEntries, internalCanvasGuid }
-}
-
-interface InternalResourceContext {
-  graph: SceneGraph
-  nodeChanges: KiwiNodeChange[]
-  internalCanvasGuid: GUID | null
-  localIdCounter: { value: number }
-  blobs: Uint8Array[]
-  nodeIdToGuid: Map<string, GUID>
-  fontDigestMap: Map<string, Uint8Array>
-  varIdToGuid: Map<string, GUID>
-  modeIdToGuid: Map<string, GUID>
-  glyphBlobMap: Map<string, number>
-  blobIndexByHex: Map<string, number>
-  assignedGuidValues: Set<string>
-  componentPropertyDefinitionsById: ReturnType<typeof buildComponentPropIndex>
-  propertyIdToGuid: Map<string, GUID>
-  runtime: FigNodeChangeExportRuntime
-}
+type InternalResourceContext = FigExportSetup & { nodeChanges: KiwiNodeChange[] }
 
 /**
  * Children already written under a canvas. Shared styles, variables and the canvas's own
@@ -325,6 +129,7 @@ function appendInternalResources(context: InternalResourceContext): void {
           componentPropertyDefinitionsById: context.componentPropertyDefinitionsById,
           modeIdToGuid: context.modeIdToGuid,
           propertyIdToGuid: context.propertyIdToGuid,
+          pluginDataOverrides: context.pluginDataOverrides,
           runtime: context.runtime
         }
       )
@@ -352,6 +157,12 @@ export async function exportFigFile(
 ): Promise<Uint8Array> {
   const originalArchive = await originalFigArchive(sourceGraph)
   if (originalArchive) return originalArchive.slice()
+  if (options.rendering !== 'none') {
+    const patched = await withFigExportRuntime(sourceGraph, ck, (runtime) =>
+      writePatchedFigFile(sourceGraph, runtime, { ck, renderer, pageId, renderHeadlessThumbnail })
+    )
+    if (patched) return patched
+  }
   if (options.rendering === 'none') {
     if (canUseWorker()) return exportFigInWorker(sourceGraph, pageId)
     return writeFigFile(
@@ -410,134 +221,33 @@ async function writeFigFile(
   renderHeadlessThumbnail: boolean,
   options: FigWriteOptions = {}
 ): Promise<Uint8Array> {
-  const graph = cloneSceneGraphForFigExport(sourceGraph)
-  populateReaderExport(sourceGraph, graph)
   await initCodec()
-
-  // When the document was imported from a .fig file, preserve the original
-  // kiwi schema for both encoding and embedding. For the current version of
-  // Figma, likely for quite some time, schema has more types/fields than our
-  // subset, and using our schema to encode would produce field IDs that don't
-  // align with the embedded schema. By compiling and using the original
-  // schema, we improve the roundtrip-ability... This requires further work.
-  let compiled: ReturnType<typeof getCompiledSchema>
-  let schemaDeflated: Uint8Array
-  if (graph.figSchemaDeflated) {
-    const schemaBytes = inflateSync(graph.figSchemaDeflated)
-    const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
-    compiled = compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>
-    schemaDeflated = graph.figSchemaDeflated
-  } else {
-    compiled = getCompiledSchema()
-    schemaDeflated = deflateSync(getSchemaBytes())
+  populateFigInternalPages(sourceGraph)
+  // The export reads the document itself and writes nothing to it. Only pages still in the
+  // archive need a copy, which they load into instead of the document.
+  let graph = sourceGraph
+  if (hasPendingReaderPages(sourceGraph)) {
+    graph = cloneSceneGraphForFigExport(sourceGraph)
+    populateReaderExport(sourceGraph, graph)
   }
-
-  const docGuid = { sessionID: 0, localID: 0 }
-  const localIdCounter = { value: 2 }
-
-  const documentNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
-  const rootNode = graph.getNode(graph.rootId)
-  if (rootNode) Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
-  applyEnabledLibrariesPluginData(documentNc, graph)
-  const nodeChanges: KiwiNodeChange[] = [documentNc]
-
-  const blobs: Uint8Array[] = []
-  const pages = graph.getPages(true)
-  const nodeIdToGuid = new Map<string, GUID>()
-  const assignedGuidValues = new Set<string>()
-  // Reserve the document GUID to prevent imported nodes with source.id "0:0"
-  // from reusing the document's own GUID slot.
-  assignedGuidValues.add(`${docGuid.sessionID}:${docGuid.localID}`)
-  const varIdToGuid = new Map<string, GUID>()
-  const modeIdToGuid = new Map<string, GUID>()
-  const propertyIdToGuid = new Map<string, GUID>()
-  const fontDigestMap = options.prepared?.fontDigests ?? (await buildFontDigestMap(graph))
-  if (options.prepared) {
-    const shapedText = options.prepared.shapedText
-    runtime = { shapeText: (node) => shapedText.get(node.id) ?? null }
-  }
-  const glyphBlobMap = new Map<string, number>()
-  const blobIndexByHex = new Map<string, number>()
-  const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
-
-  // Scan ALL imported source.ids BEFORE any new GUID assignment to find
-  // max sessionID:0 and sessionID:1 localID values. This guarantees the
-  // counter is past every imported GUID before any canvas, variable, or
-  // node claims a new counter-based GUID — preventing collisions.
-  let maxLocalId0 = localIdCounter.value - 1
-  let maxLocalId1 = localIdCounter.value - 1
-  const nodeSourceGuidValues = new Set<string>()
-  for (const node of graph.nodes.values()) {
-    if (node.source.id) {
-      nodeSourceGuidValues.add(node.source.id)
-      const g = stringToGuid(node.source.id)
-      if (g.sessionID === 0 && g.localID > maxLocalId0) {
-        maxLocalId0 = g.localID
-      }
-      if (g.sessionID === 1 && g.localID > maxLocalId1) {
-        maxLocalId1 = g.localID
-      }
-    }
-  }
-  const propertyGuidState = collectComponentPropertyGuidState(graph)
-  maxLocalId0 = Math.max(maxLocalId0, propertyGuidState.maxLocalId0)
-  maxLocalId1 = Math.max(maxLocalId1, propertyGuidState.maxLocalId1)
-  localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
-
-  const { canvasEntries, internalCanvasGuid } = buildCanvasEntries(
-    graph,
-    pages,
-    docGuid,
-    localIdCounter,
-    nodeIdToGuid,
-    assignedGuidValues
-  )
-
-  // Assign variable GUIDs AFTER canvas entries so that source.id-derived
-  // canvas GUIDs don't collide with generated variable GUIDs.
-  assignVariableGuids(
-    graph,
-    localIdCounter,
-    varIdToGuid,
-    modeIdToGuid,
-    assignedGuidValues,
-    nodeSourceGuidValues
-  )
-
-  assignComponentPropertyGuids(
-    propertyGuidState.ids,
-    localIdCounter,
-    propertyIdToGuid,
-    assignedGuidValues,
-    nodeSourceGuidValues
-  )
-  renameBehaviourPropertyIds(graph, propertyIdToGuid)
-
+  if (options.prepared)
+    runtime = { shapeText: (node) => options.prepared!.shapedText.get(node.id) ?? null }
+  const setup = await prepareFigExport(graph, runtime, {
+    fontDigestMap: options.prepared?.fontDigests
+  })
+  const { compiled, schemaDeflated } = exportSchema(graph)
+  const { canvasEntries, internalCanvasGuid, localIdCounter, blobs } = setup
+  const nodeChanges: KiwiNodeChange[] = [setup.documentNc]
   for (const entry of canvasEntries) nodeChanges.push(entry.canvasNc)
 
-  appendInternalResources({
-    graph,
-    nodeChanges,
-    internalCanvasGuid,
-    localIdCounter,
-    blobs,
-    nodeIdToGuid,
-    fontDigestMap,
-    varIdToGuid,
-    modeIdToGuid,
-    glyphBlobMap,
-    blobIndexByHex,
-    assignedGuidValues,
-    componentPropertyDefinitionsById,
-    propertyIdToGuid,
-    runtime
-  })
+  appendInternalResources({ ...setup, nodeChanges })
 
   const orderedCanvasEntries = [
     ...canvasEntries.filter((entry) => entry.page.internalOnly),
     ...canvasEntries.filter((entry) => !entry.page.internalOnly)
   ]
   const slotContentRecords: KiwiNodeChange[] = []
+  const recordOptions = { ...figExportRecordOptions(setup), slotContentRecords }
   for (const { page, canvasGuid } of orderedCanvasEntries) {
     const children = graph
       .getChildren(page.id)
@@ -545,19 +255,15 @@ async function writeFigFile(
     const base = countCanvasChildren(nodeChanges, canvasGuid)
     for (let i = 0; i < children.length; i++) {
       nodeChanges.push(
-        ...sceneNodeToKiwi(children[i], canvasGuid, base + i, localIdCounter, graph, blobs, {
-          nodeIdToGuid,
-          fontDigestMap,
-          varIdToGuid,
-          glyphBlobMap,
-          blobIndexByHex,
-          assignedGuidValues,
-          componentPropertyDefinitionsById,
-          modeIdToGuid,
-          propertyIdToGuid,
-          slotContentRecords,
-          runtime
-        })
+        ...sceneNodeToKiwi(
+          children[i],
+          canvasGuid,
+          base + i,
+          localIdCounter,
+          graph,
+          blobs,
+          recordOptions
+        )
       )
     }
   }
@@ -579,53 +285,33 @@ async function writeFigFile(
   }
 
   const kiwiData = compiled.encodeMessage(msg)
-
-  const currentPageId = pageId ?? findFigThumbnailPageId(pages)
-  const thumbnailPNG =
-    options.prepared?.thumbnailPNG ??
-    (await renderFigThumbnail(graph, currentPageId, ck, renderer, renderHeadlessThumbnail, options))
-
-  const metaJSON = JSON.stringify({
-    version: 1,
-    app: 'OpenPencil',
-    createdAt: new Date().toISOString()
-  })
-
-  const imageEntries = collectImageEntries(graph)
+  const extras = await figFileExtras(graph, pageId, ck, renderer, renderHeadlessThumbnail, options)
 
   const version = graph.figKiwiVersion ?? undefined
 
-  if (options.packNative) {
-    return options.packNative(
-      encodeNativeFigPayload(
-        schemaDeflated,
-        kiwiData,
-        thumbnailPNG,
-        metaJSON,
-        imageEntries,
-        version
-      )
+  const nativePayload = () =>
+    encodeNativeFigPayload(
+      schemaDeflated,
+      kiwiData,
+      extras.thumbnailPNG,
+      extras.metaJSON,
+      extras.images,
+      version
     )
-  }
-
+  if (options.packNative) return options.packNative(nativePayload())
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core')
-    return new Uint8Array(
-      await invoke<ArrayBuffer>(
-        'build_fig_file_binary',
-        encodeNativeFigPayload(
-          schemaDeflated,
-          kiwiData,
-          thumbnailPNG,
-          metaJSON,
-          imageEntries,
-          version
-        )
-      )
-    )
+    return new Uint8Array(await invoke<ArrayBuffer>('build_fig_file_binary', nativePayload()))
   }
 
-  return compressFigData(schemaDeflated, kiwiData, thumbnailPNG, metaJSON, imageEntries, version)
+  return compressFigData(
+    schemaDeflated,
+    kiwiData,
+    extras.thumbnailPNG,
+    extras.metaJSON,
+    extras.images,
+    version
+  )
 }
 
 export { compressFigDataSync } from '@open-pencil/fig'
