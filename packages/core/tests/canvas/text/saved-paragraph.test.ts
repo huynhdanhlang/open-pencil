@@ -19,7 +19,7 @@ describe('saved paragraph raster continuity', () => {
     fontManager.markLoaded('Inter', 'Regular', inter)
   })
 
-  test.each([13, 17, 24])(
+  test.each([12, 13, 17, 24])(
     'keeps live pixels after Save/import at size %p',
     async (fontSize) => {
       const ck = await getCanvasKit()
@@ -29,7 +29,7 @@ describe('saved paragraph raster continuity', () => {
         text: 'A sentence with arrows a->b and enough words to wrap onto two lines.',
         fontFamily: 'Inter',
         fontSize,
-        lineHeight: fontSize + 8,
+        lineHeight: fontSize === 12 ? null : fontSize + 8,
         width: 280,
         height: 100,
         textAlignVertical: 'CENTER',
@@ -78,6 +78,7 @@ describe('saved paragraph raster continuity', () => {
           [...reopened.getAllNodes()].find((n) => n.name === 'Message')
         )
         expect(imported.derivedTextGlyphs?.length).toBeGreaterThan(0)
+        expect(imported.lineHeight).toEqual(node.lineHeight)
         expect(capture(imported)).toEqual(live)
         expect(capture(imported)).toEqual(live)
         const blended = {

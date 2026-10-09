@@ -290,13 +290,6 @@ function convertCornerProps(
   }
 }
 
-function importedTextLineHeight(nc: NodeChange): number | null {
-  const derivedLineHeight = nc.derivedTextData?.baselines?.[0]?.lineHeight
-  if (derivedLineHeight !== undefined && Number.isFinite(derivedLineHeight))
-    return derivedLineHeight
-  return convertLineHeight(nc.lineHeight, nc.fontSize)
-}
-
 type TextProps = Pick<
   SceneNode,
   | 'text'
@@ -363,7 +356,9 @@ function convertTextProps(nc: NodeChange, blobs: Uint8Array[]): TextProps {
     textCase: (nc.textCase ?? 'ORIGINAL') as TextCase,
     ...convertTextDecorationProps(nc),
     leadingTrim: (nc.leadingTrim ?? 'NONE') as SceneNode['leadingTrim'],
-    lineHeight: importedTextLineHeight(nc),
+    // Saved baselines are paint geometry, not an explicit leading declaration.
+    // Promoting AUTO to a rounded baseline height changes paragraph positioning.
+    lineHeight: convertLineHeight(nc.lineHeight, nc.fontSize),
     letterSpacing: convertLetterSpacing(nc.letterSpacing, nc.fontSize),
     maxLines: (nc.maxLines ?? null) as number | null,
     styleRuns: importStyleRuns(nc),

@@ -2,25 +2,30 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { fontManager, weightToStyle } from '#core/text/fonts'
 
-const fontDigestCache = new Map<string, Uint8Array>()
+// Face names can be reloaded with different immutable bytes. Weak buffer keys
+// follow the actual registration and release retired faces with their owner.
+const fontDigestCache = new WeakMap<ArrayBuffer, Promise<Uint8Array>>()
 
 async function computeFontDigest(data: ArrayBuffer): Promise<Uint8Array> {
-  if (typeof crypto !== 'undefined') {
-    const hash = await crypto.subtle.digest('SHA-1', data)
-    return new Uint8Array(hash)
-  }
-  return new Uint8Array(20)
+  if (typeof crypto === 'undefined' || !crypto.subtle)
+    throw new Error('Font byte identity is unavailable: SHA-1 support is required')
+  const hash = await crypto.subtle.digest('SHA-1', data)
+  return new Uint8Array(hash)
 }
 
 async function getFontDigest(family: string, style: string): Promise<Uint8Array | null> {
-  const key = `${family}|${style}`
-  const cached = fontDigestCache.get(key)
-  if (cached) return cached
   const data = fontManager.loadedData(family, style)
   if (!data) return null
-  const digest = await computeFontDigest(data)
-  fontDigestCache.set(key, digest)
-  return digest
+  const cached = fontDigestCache.get(data)
+  if (cached) return cached
+  const pending = computeFontDigest(data)
+  fontDigestCache.set(data, pending)
+  try {
+    return await pending
+  } catch (error) {
+    fontDigestCache.delete(data)
+    throw error
+  }
 }
 
 /** Every `family|style` the document's text uses, read synchronously. */

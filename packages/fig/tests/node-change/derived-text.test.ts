@@ -4,6 +4,7 @@ import { expectDefined } from '#fig-tests/helpers/assert'
 import {
   buildNodeDerivedTextData,
   convertFigmaDerivedTextGlyphs,
+  nodeChangeToProps,
   type DerivedTextBuildContext,
   type ShapedText
 } from '#fig/node-change/index'
@@ -18,6 +19,20 @@ const SQUARE = [
   { type: 'L', x: 8, y: -8 },
   { type: 'Z' }
 ]
+
+test('saved baseline height does not replace explicit leading or turn AUTO into pixels', () => {
+  const record: NodeChange = {
+    type: 'TEXT',
+    fontSize: 16,
+    lineHeight: { value: 24, units: 'PIXELS' },
+    derivedTextData: earlierOpenPencilData('Leading', 99)
+  }
+  expect(nodeChangeToProps(record, []).lineHeight).toBe(24)
+  record.lineHeight = { value: 150, units: 'PERCENT' }
+  expect(nodeChangeToProps(record, []).lineHeight).toBe(24)
+  delete record.lineHeight
+  expect(nodeChangeToProps(record, []).lineHeight).toBeNull()
+})
 
 function textNode(props: Partial<SceneNode> = {}): SceneNode {
   const graph = new SceneGraph()
