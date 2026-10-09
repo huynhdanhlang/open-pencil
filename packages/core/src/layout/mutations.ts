@@ -56,11 +56,11 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
   async function runMutationWithLayout<T>(
     operation: () => T | Promise<T>,
     fallbackId?: string,
-    beforeLayout?: (result: T) => Promise<void> | void
+    beforeLayout?: (result: T, impact: SceneMutationImpact) => Promise<void> | void
   ): Promise<T> {
     const graph = getGraph()
     const { result, impact } = await collectSceneMutation(graph, operation)
-    await beforeLayout?.(result)
+    await beforeLayout?.(result, impact)
     if (!runLayoutForImpact(impact) && fallbackId) computeAllLayouts(graph, fallbackId)
     return result
   }

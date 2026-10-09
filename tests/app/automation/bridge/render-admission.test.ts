@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { expect, spyOn, test } from 'bun:test'
 
 import { BUILTIN_IO_FORMATS, IORegistry, parseFigFile } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, collectSceneMutation } from '@open-pencil/scene-graph'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
@@ -14,9 +14,206 @@ import {
   measureRenderWork,
   readRenderStatus
 } from '@/app/automation/bridge/render-admission'
+import { structuralFontRoots } from '@/app/automation/execution/editor'
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
 import { createDeferred } from '@/app/runtime/deferred'
+
+test('font roots cover nested additions once and retain disjoint forests', async () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]!.id
+  const { result, impact } = await collectSceneMutation(graph, () => {
+    const outer = graph.createNode('FRAME', page)
+    const inner = graph.createNode('FRAME', outer.id)
+    graph.createNode('TEXT', inner.id, { text: 'Nested' })
+    const separate = graph.createNode('TEXT', page, { text: 'Separate root' })
+    return { outer, separate }
+  })
+  expect(structuralFontRoots(graph, 'diff_apply', impact)).toEqual([
+    result.outer.id,
+    result.separate.id
+  ])
+})
+
+test('reparent font preparation keeps the moved subtree and preserves Undo', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const unrelated = store.graph.createNode('TEXT', pageId, { text: 'Unrelated' })
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const target = { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' }
+  try {
+    const response = (await handleTargetCommand(target, 'tool', {
+      name: 'render',
+      args: { jsx: '<Frame name="Container" />' }
+    })) as { result: { id: string } }
+    const container = response.result.id
+    await handleTargetCommand(target, 'tool', {
+      name: 'reparent_node',
+      args: { id: unrelated.id, parent_id: container }
+    })
+    const roots = prepareFonts.mock.calls.at(-1)?.[1]
+    expect(roots).toContain(unrelated.id)
+    expect(roots).not.toContain(pageId)
+    expect(store.graph.getNode(unrelated.id)?.parentId).toBe(container)
+    store.undo.undo()
+    expect(store.graph.getNode(unrelated.id)?.parentId).toBe(pageId)
+    store.undo.redo()
+    expect(store.graph.getNode(unrelated.id)?.parentId).toBe(container)
+  } finally {
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
+
+test('diff fonts include every root added by one fragment hunk', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const parent = store.graph.createNode('FRAME', pageId, { name: 'Parent' })
+  const unrelated = store.graph.createNode('TEXT', pageId, { text: 'Unrelated' })
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  try {
+    await handleTargetCommand(
+      { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' },
+      'tool',
+      {
+        name: 'diff_apply',
+        args: {
+          patch: `@@ /Parent/Added added to #${parent.id} at 0\n+<><Text name="First">A</Text><Text name="Second">B</Text></>`
+        }
+      }
+    )
+    const children = store.graph.getChildren(parent.id)
+    expect(children.map((node) => node.name)).toEqual(['First', 'Second'])
+    const roots = prepareFonts.mock.calls.at(-1)?.[1]
+    for (const child of children) expect(roots).toContain(child.id)
+    expect(roots).not.toContain(unrelated.id)
+    store.undo.undo()
+    expect(store.graph.getChildren(parent.id)).toHaveLength(0)
+    store.undo.redo()
+    expect(store.graph.getChildren(parent.id).map((node) => node.name)).toEqual(['First', 'Second'])
+  } finally {
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
+
+test('a started structural edit finishes and remains reversible after caller cancellation', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const frame = store.graph.createNode('FRAME', pageId, { name: 'Before' })
+  const waiting = createDeferred<void>()
+  const release = createDeferred<void>()
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockImplementation(async () => {
+    waiting.resolve()
+    await release.promise
+    return false
+  })
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const cancel = new AbortController()
+  const pending = handleTargetCommand(
+    { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' },
+    'tool',
+    {
+      name: 'diff_apply',
+      args: { patch: `@@ /Before #${frame.id}\n-name="Before"\n+name="After"` }
+    },
+    { id: 'started-structural', signal: cancel.signal }
+  )
+  try {
+    await waiting.promise
+    cancel.abort(new Error('Caller timed out'))
+    release.resolve()
+    await pending
+    expect(store.graph.getNode(frame.id)?.name).toBe('After')
+    store.undo.undo()
+    expect(store.graph.getNode(frame.id)?.name).toBe('Before')
+    store.undo.redo()
+    expect(store.graph.getNode(frame.id)?.name).toBe('After')
+  } finally {
+    release.resolve()
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
+
+test('expired queued structural edits do not run later or retain an Undo snapshot', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const frame = store.graph.createNode('FRAME', pageId, { name: 'Before' })
+  let release!: () => void
+  const lane = store.runDocumentOperation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  await Promise.resolve()
+  const cancel = new AbortController()
+  const snapshot = spyOn(store, 'snapshotPage')
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const pending = handleTargetCommand(
+    { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' },
+    'tool',
+    {
+      name: 'diff_apply',
+      args: { patch: `@@ /Before #${frame.id}\n-name="Before"\n+name="After"` }
+    },
+    { id: 'expired-structural', signal: cancel.signal }
+  )
+  // Observe rejection immediately, before releasing the queued document owner.
+  const outcome = pending.then(
+    () => 'applied',
+    (error: Error) => error.message
+  )
+  try {
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    const manual = store.graph.createNode('RECTANGLE', pageId, { name: 'Manual work' })
+    cancel.abort(new Error('Request expired'))
+    release()
+    await lane
+    expect(await outcome).toBe('Request expired')
+    expect(store.graph.getNode(frame.id)?.name).toBe('Before')
+    expect(store.graph.getNode(manual.id)?.name).toBe('Manual work')
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(store.undo.canUndo).toBe(false)
+  } finally {
+    release()
+    await lane
+    snapshot.mockRestore()
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
+
+test('diff apply prepares fonts from actual changed nodes, excluding the unrelated page', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const frame = store.graph.createNode('FRAME', pageId, { name: 'Before' })
+  store.graph.createNode('TEXT', frame.id, { text: 'Changed subtree' })
+  const unrelated = store.graph.createNode('TEXT', pageId, { text: 'Unrelated' })
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const target = { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' }
+  try {
+    await handleTargetCommand(target, 'tool', {
+      name: 'diff_apply',
+      args: { patch: `@@ /Before #${frame.id}\n-name="Before"\n+name="After"` }
+    })
+    expect(prepareFonts.mock.calls.at(-1)?.[1]).toEqual([frame.id])
+    expect(prepareFonts.mock.calls.at(-1)?.[1]).not.toContain(unrelated.id)
+    expect(store.graph.getNode(frame.id)?.name).toBe('After')
+    store.undo.undo()
+    expect(store.graph.getNode(frame.id)?.name).toBe('Before')
+    store.undo.redo()
+    expect(store.graph.getNode(frame.id)?.name).toBe('After')
+  } finally {
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
 
 test('batch update prepares fonts only in changed roots and preserves one reversible edit', async () => {
   const store = createEditorStore()

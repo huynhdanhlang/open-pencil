@@ -1,5 +1,3 @@
-import { isEqual } from 'es-toolkit'
-
 import {
   CommittedGraphEventError,
   restorePageCheckpoint,
@@ -9,6 +7,8 @@ import {
 
 import type { EditorContext } from '#core/editor/types'
 import { computeAllLayouts } from '#core/layout'
+
+import { equalSnapshotValues } from './snapshot-equality'
 
 export type PageSnapshot = Map<string, SceneNode>
 type DependentRoot = { parentId: string; index: number }
@@ -37,7 +37,7 @@ export function snapshotPage(
     const node = graph.getNode(id)
     if (!node || snapshot.has(id)) return
     const saved = previous?.get(id)
-    snapshot.set(id, saved && isEqual(saved, node) ? saved : node)
+    snapshot.set(id, saved && equalSnapshotValues(saved, node) ? saved : node)
     if (snapshot.get(id) === node) changed.push(node)
     else if (saved) {
       for (const [key, value] of Object.entries(node)) {
@@ -133,10 +133,18 @@ function copyChangedSnapshotNodes(
     const reused: Record<string, unknown> = {}
     const fresh: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(node)) {
-      if (saved && Object.hasOwn(saved, key) && isEqual(saved[key as keyof SceneNode], value)) {
+      if (
+        saved &&
+        Object.hasOwn(saved, key) &&
+        equalSnapshotValues(saved[key as keyof SceneNode], value)
+      ) {
         reused[key] = saved[key as keyof SceneNode]
         if (value && typeof value === 'object') sharedFields.set(value, reused[key])
-      } else if (key === 'source' && saved && isEqual(saved.source.fig, node.source.fig)) {
+      } else if (
+        key === 'source' &&
+        saved &&
+        equalSnapshotValues(saved.source.fig, node.source.fig)
+      ) {
         // Edit markers/order are a small mutable shell around a large unchanged FIG payload.
         // Retain the owned history payload, never the mutable live import or its buffers.
         const { fig: _fig, ...sourceFields } = node.source

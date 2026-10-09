@@ -11,7 +11,11 @@ import {
 } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
-import { executeAtomicEditorTool, extractToolNodeIds } from '@/app/automation/execution/editor'
+import {
+  executeAtomicEditorTool,
+  extractToolNodeIds,
+  structuralFontRoots
+} from '@/app/automation/execution/editor'
 import { recordToolCompleted, type AIDiagnosticContext } from '@/app/diagnostics/events/ai'
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
@@ -60,10 +64,11 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
     return store.runMutationWithLayout(
       () => def.execute(figma, args),
       pageId,
-      async (result) => {
+      async (result, impact) => {
         const pageNode = store.graph.getNode(pageId)
         const nodeIds =
-          def.name === 'batch_update' ? extractToolNodeIds(result) : pageNode?.childIds
+          structuralFontRoots(store.graph, def.name, impact) ??
+          (def.name === 'batch_update' ? extractToolNodeIds(result) : pageNode?.childIds)
         if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
       }
     )

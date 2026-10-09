@@ -23,6 +23,7 @@ import {
 } from '@/app/automation/agents'
 import {
   queueRender,
+  assertAutomationRequestLive,
   awaitRenderPreparation,
   markRenderStep,
   readRenderStatus,
@@ -35,6 +36,7 @@ import {
   AUTOMATION_UNDO_LABEL,
   automationUndoLabel,
   executeAtomicEditorTool,
+  structuralFontRoots,
   extractToolNodeIds,
   executeWithPageUndo
 } from '@/app/automation/execution/editor'
@@ -139,6 +141,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const run = async () => {
+      if (toolChangesDocument(def)) assertAutomationRequestLive(context, toolName)
       let renderPageId = target.pageId
       if (toolName === 'render') {
         const admittedGraph = target.store.graph
@@ -209,12 +212,13 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           store.runMutationWithLayout(
             () => def.execute(figma, toolArgs),
             figma.currentPageId,
-            async (rendered) => {
+            async (rendered, impact) => {
               const pageNode = store.graph.getNode(figma.currentPageId)
               const nodeIds =
-                toolName === 'render' || toolName === 'batch_update'
+                structuralFontRoots(store.graph, toolName, impact) ??
+                (toolName === 'render' || toolName === 'batch_update'
                   ? extractToolNodeIds(rendered)
-                  : pageNode?.childIds
+                  : pageNode?.childIds)
               if (toolName === 'render') markRenderStep(store.graph, 'fonts')
               if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
               if (toolName === 'render') markRenderStep(store.graph, 'layout-sync')
@@ -246,6 +250,6 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     if (toolName === 'render') queueRender(target.store.graph)
     return def.execution.mutation === 'none' && def.name !== 'export_image'
       ? run()
-      : target.store.runDocumentOperation(run, toolName === 'render' ? context?.signal : undefined)
+      : target.store.runDocumentOperation(run, context?.signal)
   }
 }

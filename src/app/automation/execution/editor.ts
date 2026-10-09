@@ -3,10 +3,30 @@ import { isEqual } from 'es-toolkit'
 import { executeAtomicTool } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import type { ToolDef } from '@open-pencil/core/tools'
+import type { SceneGraph, SceneMutationImpact } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
+
+/** Dedicated structural owners report every created/updated node, including multi-root diffs. */
+export function structuralFontRoots(
+  graph: SceneGraph,
+  toolName: string,
+  impact: SceneMutationImpact
+): string[] | undefined {
+  if (!['diff_apply', 'reparent_node', 'combine_as_variants'].includes(toolName)) return undefined
+  const roots = new Set(
+    [...impact.changedNodeIds].filter((id) => {
+      const node = graph.getNode(id)
+      return node && node.type !== 'CANVAS'
+    })
+  )
+  return [...roots].filter((id) => {
+    const parentId = graph.getNode(id)?.parentId
+    return !parentId || !graph.closest(parentId, (parent) => roots.has(parent.id))
+  })
+}
 
 /** Existing result IDs, shared by bridge presentation and AI font preparation. */
 export function extractToolNodeIds(result: unknown): string[] {

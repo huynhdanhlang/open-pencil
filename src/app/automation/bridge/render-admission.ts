@@ -43,12 +43,19 @@ export function isRenderCommand(command: string, args: Record<string, unknown>):
   return command === 'tool' && args.name === 'render'
 }
 
-export function assertRenderRequestLive(context?: AutomationRequestContext): void {
+export function assertAutomationRequestLive(
+  context: AutomationRequestContext | undefined,
+  operation: string
+): void {
   if (
     context?.signal?.aborted ||
     (context?.deadlineAt !== undefined && Date.now() >= context.deadlineAt)
   )
-    throw new Error('Request expired before render started; no design mutation was started')
+    throw new Error(`Request expired before ${operation} started; no design mutation was started`)
+}
+
+export function assertRenderRequestLive(context?: AutomationRequestContext): void {
+  assertAutomationRequestLive(context, 'render')
 }
 
 /** One admitted render per document. Retries cannot retain another large tree behind it. */
