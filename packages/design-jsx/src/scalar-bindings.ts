@@ -1,5 +1,6 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { effectivePropSource } from './props-overrides'
 import { isVariable, resolveVariableId } from './vars'
 
 // Shorthands precede their longhands, matching propsToOverrides precedence.
@@ -29,7 +30,8 @@ export function prepareScalarBindings(
   props: Record<string, unknown>,
   bindings: Record<string, string>,
   isText: boolean,
-  parentId: string
+  parentId: string,
+  bindingSources?: Record<string, string>
 ): void {
   const entries = [...SCALAR_PROPS]
   const scalarBindings = new Map<string, string>()
@@ -54,9 +56,16 @@ export function prepareScalarBindings(
 
   for (const [key, fields] of entries) {
     const value = props[key]
-    if (value === undefined) continue
+    if (value === undefined) {
+      const source = effectivePropSource(props, key)
+      if (source && bindingSources) for (const field of fields) bindingSources[field] = source
+      continue
+    }
     // A literal longhand must also override a bound shorthand on that edge.
-    for (const field of fields) scalarBindings.delete(field)
+    for (const field of fields) {
+      scalarBindings.delete(field)
+      if (bindingSources) bindingSources[field] = key
+    }
     if (!isVariable(value)) continue
 
     const variableId = resolveVariableId(graph, value)

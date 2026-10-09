@@ -18,6 +18,7 @@ export interface JSXNodeFields {
   fields: Partial<SceneNode>
   /** Variable IDs by bound field, such as `fills/0/color`. */
   bindings: Record<string, string>
+  bindingSources: Record<string, string>
 }
 
 /**
@@ -34,10 +35,14 @@ export function jsxNodeFields(
   const source = `<Frame ${attributes.map((attribute) => attribute.source).join(' ')} />`
   const tree = resolveToTree(React.createElement(buildComponent(source), null))
   if (!tree) throw new Error(`Invalid JSX attributes: ${source}`)
-  const { overrides, bindings } = elementOverrides(graph, nodeType, tree, parentId)
+  const { overrides, bindings, bindingSources } = elementOverrides(graph, nodeType, tree, parentId)
   const defaults = omit(
     createDefaultNode(() => '', nodeType),
     ['id', 'parentId', 'childIds']
   )
-  return { fields: { ...defaults, ...overrides }, bindings }
+  return {
+    fields: { ...defaults, ...overrides },
+    bindings,
+    bindingSources
+  }
 }

@@ -13,6 +13,8 @@ import { setConstraints, setLayout, setLayoutChild } from '#core/tools/modify/la
 import { setFill } from '#core/tools/modify/paint'
 import { updateNode } from '#core/tools/modify/update'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
+import { bindVariable } from '#core/tools/variables/bindings'
+import { unbindVariable } from '#core/tools/variables/unbind'
 
 import { executeAtomicNodeTool } from './atomic-node'
 
@@ -23,7 +25,9 @@ const SCOPED_NODE_TOOLS = new Set<ToolDef>([
   setLayout,
   setLayoutChild,
   setConstraints,
-  setFill
+  setFill,
+  bindVariable,
+  unbindVariable
 ])
 
 export type MutationEditor = Pick<

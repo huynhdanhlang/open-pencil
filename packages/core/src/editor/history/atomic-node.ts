@@ -1,9 +1,12 @@
 import { isEqual } from 'es-toolkit'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
+import { variableBindingOwner } from '@open-pencil/scene-graph/variables'
 
 import type { FigmaAPI } from '#core/figma-api'
 import { parseToolArgs, type ToolDef } from '#core/tools/schema'
+import { bindVariable } from '#core/tools/variables/bindings'
+import { unbindVariable } from '#core/tools/variables/unbind'
 
 import type { MutationEditor } from './atomic-tool'
 
@@ -32,8 +35,9 @@ export function executeAtomicNodeTool(
   label = 'Agent'
 ): unknown {
   const parsed = parseToolArgs(def.name, def.input, args)
-  if (typeof parsed.id !== 'string') throw new Error('Missing node ID')
-  const id = parsed.id
+  const bindingTool = def === bindVariable || def === unbindVariable
+  const id = bindingTool ? parsed.node_id : parsed.id
+  if (typeof id !== 'string') throw new Error('Missing node ID')
   const graph = figma.graph
   const saved = new Map<string, SavedNode>()
   const created: string[] = []
@@ -96,8 +100,15 @@ export function executeAtomicNodeTool(
     return graph.withBufferedEvents(() => {
       try {
         // Proxy setters can change this override Map before graph.updateNode observes it.
-        const instance = graph.closest(id, (node) => node.type === 'INSTANCE')
-        if (instance) {
+        const node = graph.getNode(id)
+        if (bindingTool && node) remember(node, ['boundVariables', 'variableBindingScales'])
+        const nearest = graph.closest(id, (node) => node.type === 'INSTANCE')
+        const bindingOwner = bindingTool && node ? variableBindingOwner(graph, node) : undefined
+        const instances = new Set(
+          [nearest, bindingOwner].filter((owner) => owner?.type === 'INSTANCE')
+        )
+        for (const instance of instances) {
+          if (!instance) continue
           remember(instance, ['instanceOverrides'])
           const owner = saved.get(instance.id)
           if (owner) owner.values.instanceOverrides = structuredClone(instance.instanceOverrides)

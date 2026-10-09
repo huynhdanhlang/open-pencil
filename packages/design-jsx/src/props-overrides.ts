@@ -6,7 +6,7 @@ import type { Color, JSONObject } from '@open-pencil/scene-graph/primitives'
 import { applyEffectOverrides } from './overrides/effects'
 import { applyStateOverrides } from './overrides/state'
 import { applyStrokeOverrides } from './overrides/strokes'
-import { DESIGN_JSX_STYLE_KEYS, designJSXProp } from './schema'
+import { DESIGN_JSX_STYLE_KEYS, designJSXProp, designJSXPropertyNames } from './schema'
 
 const WEIGHT_MAP: Record<string, number> = {
   normal: 400,
@@ -69,6 +69,22 @@ function parseDirection(value: unknown): SceneNode['textDirection'] | undefined 
 function numberFromPx(value: unknown): number | undefined {
   if (typeof value === 'number') return value
   return typeof value === 'string' ? (parseCSSNumber(value) ?? undefined) : undefined
+}
+
+/** The written attribute that supplies a canonical value; explicit aliases precede style. */
+export function effectivePropSource(
+  props: Record<string, unknown>,
+  name: string
+): string | undefined {
+  const key = designJSXPropertyNames(name).find(
+    (key) => props[key] !== undefined && props[key] !== null
+  )
+  if (key) return key
+  const style = props.style
+  if (style === null || typeof style !== 'object' || Array.isArray(style)) return undefined
+  return DESIGN_JSX_STYLE_KEYS[name]?.some(({ key }) => (style as JSONObject)[key] !== undefined)
+    ? 'style'
+    : undefined
 }
 
 function normalizeStyleProps(props: Record<string, unknown>): Record<string, unknown> {

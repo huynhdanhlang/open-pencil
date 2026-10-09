@@ -105,14 +105,10 @@ function staleValues(
 
 /** The fields and bindings that change between two attribute sets of one node. */
 function nodeUpdate(
-  graph: SceneGraph,
   node: SceneNode,
-  before: JSXAttributeSource[],
-  after: JSXAttributeSource[]
+  from: ReturnType<typeof jsxNodeFields>,
+  to: ReturnType<typeof jsxNodeFields>
 ): NodeUpdate {
-  const parentId = node.parentId ?? ''
-  const from = jsxNodeFields(graph, node.type, before, parentId)
-  const to = jsxNodeFields(graph, node.type, after, parentId)
   return {
     id: node.id,
     fields: pickBy(to.fields, (value, key) => !isEqual(from.fields[key], value)),
@@ -135,6 +131,15 @@ function planUpdate(
   try {
     const removed = parseSources(operation.removed)
     const added = parseSources(operation.added)
+    if (
+      node.type === 'INSTANCE' &&
+      [...removed, ...added].some(({ name }) => name === 'properties')
+    ) {
+      return failed(
+        operation,
+        'Instance property assignments are not supported by diff_apply; use native instance authoring and inspect its assignments'
+      )
+    }
     const current = new Map(attributes.map(({ name, source }) => [name, source]))
     const stale = force ? [] : staleValues(current, removed, added)
     if (stale.length > 0) {
@@ -145,7 +150,28 @@ function planUpdate(
     for (const { name, source } of added) target.set(name, source)
     const toSources = (map: Map<string, string>) =>
       [...map].map(([name, source]) => ({ name, source }))
-    const update = nodeUpdate(graph, node, attributes, toSources(target))
+    const inheritedBind =
+      ![...removed, ...added].some(({ name }) => name === 'bind') && target.has('bind')
+    const from = jsxNodeFields(graph, node.type, attributes, node.parentId ?? '')
+    if (inheritedBind) target.delete('bind')
+    const to = jsxNodeFields(graph, node.type, toSources(target), node.parentId ?? '')
+    // An unchanged exported bind describes the old state, not an explicit new instruction.
+    // Drop only bindings for fields assigned by the patch. Explicit bind edits retain
+    // the renderer's precedence and unrelated bindings keep their original token IDs.
+    if (inheritedBind) {
+      const changed = new Set([...removed, ...added].map(({ name }) => name))
+      const sourceFor = (sources: Record<string, string>, field: string) =>
+        sources[field] ?? sources[field.split('/')[0]]
+      const retained = Object.fromEntries(
+        Object.entries(node.boundVariables).filter(([field]) => {
+          const source =
+            sourceFor(to.bindingSources, field) ?? sourceFor(from.bindingSources, field)
+          return !source || !changed.has(source)
+        })
+      )
+      to.bindings = { ...retained, ...to.bindings }
+    }
+    const update = nodeUpdate(node, from, to)
     const changes = uniq([...removed, ...added].map((attribute) => attribute.name))
     const empty =
       Object.keys(update.fields).length === 0 &&

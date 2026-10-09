@@ -15,7 +15,7 @@ import {
   assignNamedProperties,
   componentPropertyScope
 } from './component-properties'
-import { propsToOverrides } from './props-overrides'
+import { effectivePropSource, propsToOverrides } from './props-overrides'
 import { renderArtworkNode } from './render-artwork'
 import { RenderCreationJournal } from './render-creation'
 import { prepareScalarBindings } from './scalar-bindings'
@@ -146,6 +146,7 @@ export async function renderTree<Artwork>(
 interface PreparedProps {
   props: Record<string, unknown>
   bindings: Record<string, string>
+  bindingSources: Record<string, string>
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -190,6 +191,7 @@ function preparePropsForRender(
 ): PreparedProps {
   const props = { ...source }
   const bindings: Record<string, string> = {}
+  const bindingSources: Record<string, string> = {}
 
   if (Array.isArray(props.fills)) {
     props.fills = props.fills.map((value, index) => {
@@ -203,7 +205,9 @@ function preparePropsForRender(
   for (const key of ['bg', 'fill', 'background', 'backgroundColor']) {
     bindVariableProp(graph, props, bindings, key, 'fills/0/color')
   }
-  if (isText) bindVariableProp(graph, props, bindings, 'color', 'fills/0/color')
+  if (isText) {
+    bindVariableProp(graph, props, bindings, 'color', 'fills/0/color')
+  }
   for (const key of ['stroke', 'border', 'borderColor']) {
     bindVariableProp(graph, props, bindings, key, 'strokes/0/color')
   }
@@ -213,12 +217,33 @@ function preparePropsForRender(
     for (const key of ['background', 'backgroundColor']) {
       bindStyleVariableProp(graph, style, bindings, key, 'fills/0/color')
     }
-    if (isText) bindStyleVariableProp(graph, style, bindings, 'color', 'fills/0/color')
+    if (isText) {
+      bindStyleVariableProp(graph, style, bindings, 'color', 'fills/0/color')
+    }
     bindStyleVariableProp(graph, style, bindings, 'borderColor', 'strokes/0/color')
     props.style = style
   }
 
-  prepareScalarBindings(graph, props, bindings, isText, parentId)
+  prepareScalarBindings(graph, props, bindings, isText, parentId, bindingSources)
+
+  // Track the same paint precedence as propsToOverrides: arrays, first explicit alias,
+  // then style; text color overrides the resulting fill. This metadata does not alter
+  // explicit binding precedence or variable resolution during ordinary render.
+  const fillSource =
+    (isText ? effectivePropSource(props, 'color') : undefined) ??
+    (Array.isArray(props.fills) ? 'fills' : effectivePropSource(props, 'bg'))
+  const strokeSource = Array.isArray(props.strokes)
+    ? 'strokes'
+    : effectivePropSource(props, 'stroke')
+  if (fillSource) bindingSources.fills = fillSource
+  else delete bindingSources.fills
+  if (strokeSource) bindingSources.strokes = strokeSource
+  else delete bindingSources.strokes
+  const strokeWeightSource = Array.isArray(props.strokes)
+    ? 'strokes'
+    : (effectivePropSource(props, 'strokeWidth') ??
+      (props.borderWidth !== undefined ? 'borderWidth' : undefined))
+  if (strokeWeightSource) bindingSources.strokeWeight = strokeWeightSource
 
   if (isObjectRecord(props.bind)) {
     for (const [field, value] of Object.entries(props.bind)) {
@@ -231,7 +256,7 @@ function preparePropsForRender(
     }
   }
 
-  return { props, bindings }
+  return { props, bindings, bindingSources }
 }
 
 function applyBindings(graph: SceneGraph, nodeId: string, bindings: Record<string, string>): void {
@@ -407,6 +432,8 @@ export interface ElementOverrides {
   overrides: Partial<SceneNode>
   /** Variable IDs by bound field, such as `fills/0/color`. */
   bindings: Record<string, string>
+  /** Effective prop owner for each bindable field, before explicit bind precedence. */
+  bindingSources: Record<string, string>
 }
 
 /** The fields and variable bindings an element's props set on a `nodeType` node under `parentId`. */
@@ -418,7 +445,12 @@ export function elementOverrides(
 ): ElementOverrides {
   const parentLayout = graph.getNode(parentId)?.layoutMode ?? 'NONE'
   const isText = nodeType === 'TEXT'
-  const { props, bindings } = preparePropsForRender(graph, tree.props, isText, parentId)
+  const { props, bindings, bindingSources } = preparePropsForRender(
+    graph,
+    tree.props,
+    isText,
+    parentId
+  )
   const overrides = {
     ...propsToOverrides(props, isText, parentLayout),
     ...componentMetadata(props, nodeType, componentPropertyScope(graph, parentId))
@@ -431,7 +463,7 @@ export function elementOverrides(
     if (childText) overrides.text = childText
     else if (typeof propText === 'string') overrides.text = propText
   }
-  return { overrides, bindings }
+  return { overrides, bindings, bindingSources }
 }
 
 async function renderNode<Artwork>(

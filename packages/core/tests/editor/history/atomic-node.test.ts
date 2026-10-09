@@ -25,6 +25,82 @@ function setup() {
 }
 
 describe('scoped atomic node properties', () => {
+  test('bindings on a large graph restore nearest and outer instance overrides with scoped Undo', () => {
+    const { graph, figma, undo, editor } = setup()
+    const inner = figma.createComponent()
+    inner.appendChild(figma.createRectangle())
+    const outer = figma.createComponent()
+    outer.appendChild(inner.createInstance())
+    const occurrence = outer.createInstance()
+    const nested = occurrence.children[0]
+    const target = nested.children[0]
+    const targetNode = graph.getNode(target.id)!
+    const collection = figma.createVariableCollection('Colors')
+    const variable = figma.createVariable('Focus', 'COLOR', collection.id, {
+      r: 0,
+      g: 1,
+      b: 0,
+      a: 1
+    })
+    const size = figma.createVariable('Radius', 'FLOAT', collection.id, 8)
+    graph.getNode(occurrence.id)!.variableAssignmentScales.cornerRadius = 2
+    const foreign = figma.createPage()
+    while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', foreign.id)
+    const unrelated = graph.getChildren(foreign.id)[0]
+    unrelated.source.fig.rawNodeFields.notCloneable = () => undefined
+    const bind = ALL_TOOLS.find((tool) => tool.name === 'bind_variable')!
+    const unbind = ALL_TOOLS.find((tool) => tool.name === 'unbind_variable')!
+    const state = () =>
+      structuredClone([
+        targetNode.boundVariables,
+        targetNode.variableBindingScales,
+        graph.getNode(nested.id)?.instanceOverrides,
+        graph.getNode(occurrence.id)?.instanceOverrides
+      ])
+    const original = state()
+    const args = { node_id: target.id, field: 'fills/0/color', variable_id: variable.id }
+    executeAtomicTool(editor, figma, bind, args)
+    const bound = state()
+    expect(targetNode.boundVariables['fills/0/color']).toBe(variable.id)
+    expect(
+      graph.resolveColorVariableForNode(target.id, targetNode.boundVariables['fills/0/color'])
+    ).toEqual({ r: 0, g: 1, b: 0, a: 1 })
+    expect(bound).not.toEqual(original)
+    unrelated.name = 'Later edit'
+    undo.undo()
+    expect(state()).toEqual(original)
+    undo.redo()
+    expect(state()).toEqual(bound)
+    executeAtomicTool(editor, figma, unbind, { node_id: target.id, field: 'fills/0/color' })
+    expect(targetNode.boundVariables).toEqual({})
+    undo.undo()
+    expect(state()).toEqual(bound)
+    executeAtomicTool(editor, figma, bind, {
+      node_id: target.id,
+      field: 'cornerRadius',
+      variable_id: size.id
+    })
+    expect(targetNode.variableBindingScales.cornerRadius).toBe(2)
+    undo.undo()
+    expect(state()).toEqual(bound)
+    for (const invalid of [
+      { ...args, variable_id: 'missing' },
+      { ...args, variable_id: size.id },
+      { ...args, field: 'fills/99/color' }
+    ]) {
+      expect(() => executeAtomicTool(editor, figma, bind, invalid)).toThrow()
+      expect(state()).toEqual(bound)
+    }
+    editor.runLayoutForNode = () => {
+      throw new Error('Layout failed')
+    }
+    expect(() =>
+      executeAtomicTool(editor, figma, unbind, { node_id: target.id, field: 'fills/0/color' })
+    ).toThrow('Layout failed')
+    expect(state()).toEqual(bound)
+    expect(unrelated.name).toBe('Later edit')
+    expect(() => executeAtomicTool(editor, figma, { ...bind }, args)).toThrow('maximum 20000')
+  })
   test('solid and gradient fills on a large document retain scoped Undo without cloning foreign pages', () => {
     const { graph, figma, undo, editor } = setup()
     const target = figma.createFrame()

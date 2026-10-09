@@ -20,6 +20,8 @@ import {
 } from './variables/bindings'
 import { BOOLEAN_BINDING_FIELDS, STRING_BINDING_FIELDS } from './variables/fields'
 
+export { variableBindingOwner } from './variables/bindings'
+
 export function addVariable(graph: SceneGraph, variable: Variable): void {
   graph.variables.set(variable.id, variable)
   const collection = graph.variableCollections.get(variable.collectionId)
