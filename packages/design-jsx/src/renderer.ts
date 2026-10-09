@@ -5,6 +5,7 @@ import {
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
+import { tryParseColor } from '@open-pencil/scene-graph/color'
 import { refreshComponentSetVariants } from '@open-pencil/scene-graph/variant-properties'
 
 import type { RekaScope } from './behaviours'
@@ -15,14 +16,17 @@ import {
   assignNamedProperties,
   componentPropertyScope
 } from './component-properties'
+import { colorSchema, solid } from './paints'
 import { effectivePropSource, propsToOverrides } from './props-overrides'
 import { renderArtworkNode } from './render-artwork'
 import { RenderCreationJournal } from './render-creation'
 import { prepareScalarBindings } from './scalar-bindings'
+import { DESIGN_JSX_STYLE_KEYS } from './schema'
 import type { DesignJSXServices } from './services'
 import { FRAGMENT, isTreeNode } from './tree'
 import type { TreeNode } from './tree'
 import type { RenderOptions } from './types'
+import { parseScriptInput } from './validation'
 import { isVariable, resolveVariableId, variableFallback } from './vars'
 
 const TYPE_MAP: Partial<Record<string, NodeType>> = {
@@ -183,6 +187,65 @@ function bindStyleVariableProp(
   if (fallback !== undefined) style[key] = fallback
 }
 
+function preparePaintArray(
+  graph: SceneGraph,
+  props: Record<string, unknown>,
+  bindings: Record<string, string>,
+  key: 'fills' | 'strokes'
+): void {
+  const paints = props[key]
+  if (!Array.isArray(paints)) return
+  props[key] = paints.map((value, index) => {
+    const field = `${key}/${index}/color`
+    // Keep the shorthand array owner; structured paints require resolving their
+    // nested color before cloning, which would otherwise strip variable branding.
+    if (isVariable(value)) {
+      const id = resolveVariableId(graph, value)
+      if (id) bindings[field] = id
+      return variableFallback(graph, value) ?? value
+    }
+    if (!isObjectRecord(value) || !(key === 'strokes' ? 'color' in value : 'type' in value))
+      return value
+    const token = isVariable(value.color) ? value.color : undefined
+    let colorInput = value.color
+    if (token) {
+      const id = resolveVariableId(graph, token)
+      if (
+        !id ||
+        graph.variables.get(id)?.type !== 'COLOR' ||
+        (value.type !== 'SOLID' && !(key === 'strokes' && value.type === undefined))
+      )
+        throw new Error(`Expected a SOLID paint with a COLOR variable for ${field}: ${token.name}`)
+      bindings[field] = id
+      colorInput = variableFallback(graph, token)
+    }
+    if (typeof colorInput === 'string') {
+      const color = tryParseColor(colorInput)
+      if (!color) throw new Error(`Invalid ${field}: unrecognized color "${colorInput}"`)
+      colorInput = color
+    }
+    const paint = solid(parseScriptInput(`Invalid ${field}`, colorSchema, colorInput))
+    if (Object.values(paint.color).some((channel) => !Number.isFinite(channel)))
+      throw new Error(`Invalid ${field}: color channels must be finite`)
+    if (
+      token &&
+      value.opacity !== undefined &&
+      (typeof value.opacity !== 'number' ||
+        !Number.isFinite(value.opacity) ||
+        Math.abs(value.opacity - paint.opacity) > 0.000001)
+    )
+      throw new Error(
+        `${field}: variable alpha owns paint opacity. Use a separate background layer with node opacity for independent transparency.`
+      )
+    return {
+      ...value,
+      color: token ? { ...paint.color, a: 1 } : paint.color,
+      opacity: value.opacity ?? (value.type && value.type !== 'SOLID' ? 1 : paint.opacity),
+      visible: value.visible ?? true
+    }
+  })
+}
+
 function preparePropsForRender(
   graph: SceneGraph,
   source: Record<string, unknown>,
@@ -193,48 +256,37 @@ function preparePropsForRender(
   const bindings: Record<string, string> = {}
   const bindingSources: Record<string, string> = {}
 
-  if (Array.isArray(props.fills)) {
-    props.fills = props.fills.map((value, index) => {
-      if (!isVariable(value)) return value
-      const variableId = resolveVariableId(graph, value)
-      if (variableId) bindings[`fills/${index}/color`] = variableId
-      return variableFallback(graph, value) ?? value
-    })
-  }
-
-  for (const key of ['bg', 'fill', 'background', 'backgroundColor']) {
-    bindVariableProp(graph, props, bindings, key, 'fills/0/color')
-  }
-  if (isText) {
-    bindVariableProp(graph, props, bindings, 'color', 'fills/0/color')
-  }
-  for (const key of ['stroke', 'border', 'borderColor']) {
-    bindVariableProp(graph, props, bindings, key, 'strokes/0/color')
-  }
+  const textColorSource = isText ? effectivePropSource(props, 'color') : undefined
+  const fillSource =
+    textColorSource ?? (Array.isArray(props.fills) ? 'fills' : effectivePropSource(props, 'bg'))
+  const strokeSource = Array.isArray(props.strokes)
+    ? 'strokes'
+    : effectivePropSource(props, 'stroke')
+  if (fillSource === 'fills') preparePaintArray(graph, props, bindings, 'fills')
+  else if (fillSource && fillSource !== 'style')
+    bindVariableProp(graph, props, bindings, fillSource, 'fills/0/color')
+  if (strokeSource === 'strokes') preparePaintArray(graph, props, bindings, 'strokes')
+  else if (strokeSource && strokeSource !== 'style')
+    bindVariableProp(graph, props, bindings, strokeSource, 'strokes/0/color')
 
   if (isObjectRecord(props.style)) {
     const style = { ...props.style }
-    for (const key of ['background', 'backgroundColor']) {
-      bindStyleVariableProp(graph, style, bindings, key, 'fills/0/color')
+    if (fillSource === 'style') {
+      const name = textColorSource ? 'color' : 'bg'
+      const key = DESIGN_JSX_STYLE_KEYS[name]?.find(({ key }) => style[key] !== undefined)?.key
+      if (key) bindStyleVariableProp(graph, style, bindings, key, 'fills/0/color')
     }
-    if (isText) {
-      bindStyleVariableProp(graph, style, bindings, 'color', 'fills/0/color')
+    if (strokeSource === 'style') {
+      const key = DESIGN_JSX_STYLE_KEYS.stroke?.find(({ key }) => style[key] !== undefined)?.key
+      if (key) bindStyleVariableProp(graph, style, bindings, key, 'strokes/0/color')
     }
-    bindStyleVariableProp(graph, style, bindings, 'borderColor', 'strokes/0/color')
     props.style = style
   }
 
   prepareScalarBindings(graph, props, bindings, isText, parentId, bindingSources)
 
-  // Track the same paint precedence as propsToOverrides: arrays, first explicit alias,
-  // then style; text color overrides the resulting fill. This metadata does not alter
-  // explicit binding precedence or variable resolution during ordinary render.
-  const fillSource =
-    (isText ? effectivePropSource(props, 'color') : undefined) ??
-    (Array.isArray(props.fills) ? 'fills' : effectivePropSource(props, 'bg'))
-  const strokeSource = Array.isArray(props.strokes)
-    ? 'strokes'
-    : effectivePropSource(props, 'stroke')
+  // Bind only the same paint source that propsToOverrides consumes. Explicit bind
+  // remains the final override below; unused aliases must not rebind a literal.
   if (fillSource) bindingSources.fills = fillSource
   else delete bindingSources.fills
   if (strokeSource) bindingSources.strokes = strokeSource

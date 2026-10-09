@@ -20,10 +20,14 @@ export interface DesignVariable {
 export function resolveVariableId(graph: SceneGraph, variable: DesignVariable): string | undefined {
   if (variable.id && graph.variables.has(variable.id)) return variable.id
   if (variable.id && !variable.name) return variable.id
+  let matched: string | undefined
   for (const candidate of graph.variables.values()) {
-    if (candidate.name === variable.name || candidate.id === variable.name) return candidate.id
+    if (candidate.name !== variable.name && candidate.id !== variable.name) continue
+    if (matched !== undefined)
+      throw new Error(`Ambiguous design variable "${variable.name}"; use an exact variable ID`)
+    matched = candidate.id
   }
-  return variable.id
+  return matched ?? variable.id
 }
 
 export function isVariable(value: unknown): value is DesignVariable {
