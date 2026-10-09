@@ -15,7 +15,16 @@ export function structuralFontRoots(
   toolName: string,
   impact: SceneMutationImpact
 ): string[] | undefined {
-  if (!['diff_apply', 'reparent_node', 'combine_as_variants'].includes(toolName)) return undefined
+  if (
+    ![
+      'diff_apply',
+      'reparent_node',
+      'combine_as_variants',
+      'create_component',
+      'create_instance'
+    ].includes(toolName)
+  )
+    return undefined
   const roots = new Set(
     [...impact.changedNodeIds].filter((id) => {
       const node = graph.getNode(id)

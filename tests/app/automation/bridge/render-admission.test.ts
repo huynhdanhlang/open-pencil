@@ -15,6 +15,39 @@ import {
   readRenderStatus
 } from '@/app/automation/bridge/render-admission'
 import { structuralFontRoots } from '@/app/automation/execution/editor'
+
+test('component conversion and instance creation prepare only their actual font forests', async () => {
+  const store = createEditorStore()
+  const pageId = store.state.currentPageId
+  const frame = store.graph.createNode('FRAME', pageId, { name: 'Master' })
+  store.graph.createNode('TEXT', frame.id, { text: 'Master text' })
+  const unrelated = store.graph.createNode('TEXT', pageId, { text: 'Unrelated' })
+  const prepareFonts = spyOn(fonts, 'ensureGraphFonts').mockResolvedValue(false)
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  const target = { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' }
+  try {
+    const converted = (await handleTargetCommand(target, 'tool', {
+      name: 'create_component',
+      args: { id: frame.id }
+    })) as { result: { id: string } }
+    const componentId = converted.result.id
+    expect(prepareFonts.mock.calls.at(-1)?.[1]).toEqual([componentId])
+    const response = (await handleTargetCommand(target, 'tool', {
+      name: 'create_instance',
+      args: { component_id: componentId }
+    })) as { result: { id: string } }
+    expect(prepareFonts.mock.calls.at(-1)?.[1]).toEqual([response.result.id])
+    expect(prepareFonts.mock.calls.at(-1)?.[1]).not.toContain(unrelated.id)
+    expect(store.graph.getNode(response.result.id)?.componentId).toBe(componentId)
+    store.undo.undo()
+    expect(store.graph.getNode(response.result.id)).toBeUndefined()
+    store.undo.redo()
+    expect(store.graph.getNode(response.result.id)?.componentId).toBe(componentId)
+  } finally {
+    prepareFonts.mockRestore()
+    store.dispose()
+  }
+})
 import * as fonts from '@/app/editor/fonts'
 import { createEditorStore } from '@/app/editor/session/create'
 import { createDeferred } from '@/app/runtime/deferred'
