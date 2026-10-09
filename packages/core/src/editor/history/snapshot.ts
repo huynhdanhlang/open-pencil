@@ -8,7 +8,7 @@ import {
 import type { EditorContext } from '#core/editor/types'
 import { computeAllLayouts } from '#core/layout'
 
-import { equalSnapshotValues } from './snapshot-equality'
+import { createSnapshotEquality, type equalSnapshotValues } from './snapshot-equality'
 
 export type PageSnapshot = Map<string, SceneNode>
 type DependentRoot = { parentId: string; index: number }
@@ -31,18 +31,20 @@ export function snapshotPage(
     recentSnapshots.set(graph, pages)
   }
   const previous = pages.get(page)
+  const equal = createSnapshotEquality()
   const changed: SceneNode[] = []
   const sharedFields = new WeakMap<object, unknown>()
   const walk = (id: string) => {
     const node = graph.getNode(id)
     if (!node || snapshot.has(id)) return
     const saved = previous?.get(id)
-    snapshot.set(id, saved && equalSnapshotValues(saved, node) ? saved : node)
+    snapshot.set(id, saved && equal(saved, node) ? saved : node)
     if (snapshot.get(id) === node) changed.push(node)
     else if (saved) {
-      for (const [key, value] of Object.entries(node)) {
+      for (const key of Object.keys(node) as (keyof SceneNode)[]) {
+        const value = node[key]
         if (value && typeof value === 'object')
-          sharedFields.set(value, saved[key as keyof SceneNode])
+          sharedFields.set(value, saved[key])
       }
     }
     for (const childId of node.childIds) walk(childId)
@@ -61,7 +63,7 @@ export function snapshotPage(
     else roots.set(id, placement)
   }
   dependentRoots.set(snapshot, roots)
-  copyChangedSnapshotNodes(snapshot, changed, previous, sharedFields)
+  copyChangedSnapshotNodes(snapshot, changed, previous, sharedFields, equal)
   pages.set(page, snapshot)
   return snapshot
 }
@@ -121,7 +123,8 @@ function copyChangedSnapshotNodes(
   snapshot: PageSnapshot,
   changed: SceneNode[],
   previous: PageSnapshot | undefined,
-  sharedFields: WeakMap<object, unknown>
+  sharedFields: WeakMap<object, unknown>,
+  equal: typeof equalSnapshotValues
 ): void {
   // Layout changes must not re-copy immutable glyph/geometry/source payloads. Reuse
   // equal fields from owned history, never from mutable live nodes. Clone all new
@@ -136,14 +139,14 @@ function copyChangedSnapshotNodes(
       if (
         saved &&
         Object.hasOwn(saved, key) &&
-        equalSnapshotValues(saved[key as keyof SceneNode], value)
+        equal(saved[key as keyof SceneNode], value)
       ) {
         reused[key] = saved[key as keyof SceneNode]
         if (value && typeof value === 'object') sharedFields.set(value, reused[key])
       } else if (
         key === 'source' &&
         saved &&
-        equalSnapshotValues(saved.source.fig, node.source.fig)
+        equal(saved.source.fig, node.source.fig)
       ) {
         // Edit markers/order are a small mutable shell around a large unchanged FIG payload.
         // Retain the owned history payload, never the mutable live import or its buffers.
