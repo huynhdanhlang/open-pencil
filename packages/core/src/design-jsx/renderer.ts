@@ -1,4 +1,4 @@
-import { createDesignJSXRenderer, type SVGSource } from '@open-pencil/design-jsx'
+import { createDesignJSXRenderer, designJSXProp, type SVGSource } from '@open-pencil/design-jsx'
 
 import { iconify, placeIcon, type IconProvider } from '#core/icons'
 import { extractPaths, extractPathsFromElements, scalePathInfos } from '#core/icons/svg'
@@ -26,15 +26,19 @@ function svgIconData({ body, elements, props }: SVGSource, size: number): IconDa
   if (pathInfos.length === 0) pathInfos = extractPathsFromElements(elements, props)
   if (pathInfos.length === 0) return null
   const viewBox = parseViewBox(props.viewBox as string | undefined)
+  const w = designJSXProp(props, 'w')
+  const h = designJSXProp(props, 'h')
+  const width = typeof w === 'number' && w > 0 ? w : size
+  const height = typeof h === 'number' && h > 0 ? h : size
   return {
     prefix: INLINE_SVG,
     name: (props.name as string | undefined) ?? 'custom',
-    width: size,
-    height: size,
+    width,
+    height,
     paths: scalePathInfos(
       pathInfos,
-      viewBox.w > 0 ? size / viewBox.w : 1,
-      viewBox.h > 0 ? size / viewBox.h : 1
+      viewBox.w > 0 ? width / viewBox.w : 1,
+      viewBox.h > 0 ? height / viewBox.h : 1
     )
   }
 }

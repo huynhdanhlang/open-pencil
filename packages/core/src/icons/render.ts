@@ -51,7 +51,8 @@ function addPath(
   path: IconPath,
   size: number,
   color: Color,
-  colorVariableId?: string
+  colorVariableId?: string,
+  height = size
 ) {
   const tint: IconPaint[] = []
   const paint = (value: string, kind: IconPaint) => {
@@ -64,7 +65,7 @@ function addPath(
     x: 0,
     y: 0,
     width: size,
-    height: size,
+    height,
     vectorNetwork: path.vectorNetwork,
     // Resizing the icon resizes its glyph, as the frame is the icon.
     horizontalConstraint: 'SCALE',
@@ -109,7 +110,8 @@ export function placeIcon(
     fills: [],
     ...overrides
   })
-  for (const path of icon.paths) addPath(graph, frame.id, path, size, color, colorVariableId)
+  for (const path of icon.paths)
+    addPath(graph, frame.id, path, icon.width, color, colorVariableId, icon.height)
   if (identity) recordIcon(graph, frame.id, name)
   return graph.getNode(frame.id) ?? frame
 }

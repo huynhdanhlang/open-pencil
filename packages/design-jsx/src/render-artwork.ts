@@ -4,6 +4,7 @@ import { componentMetadata, componentPropertyScope } from './component-propertie
 import { colorSchema, solid } from './paints'
 import { applySizeOverrides } from './props-overrides'
 import type { RenderCreationJournal } from './render-creation'
+import { designJSXProp } from './schema'
 import type { DesignJSXServices } from './services'
 import { isTreeNode, type TreeNode } from './tree'
 import type { RenderOptions } from './types'
@@ -84,8 +85,10 @@ function renderSVGNode<Artwork>(
   position: Pick<RenderOptions, 'x' | 'y'>
 ): SceneNode {
   const props = tree.props
-  const explicitW = typeof props.w === 'number' ? props.w : 0
-  const explicitH = typeof props.h === 'number' ? props.h : 0
+  const w = designJSXProp(props, 'w')
+  const h = designJSXProp(props, 'h')
+  const explicitW = typeof w === 'number' ? w : 0
+  const explicitH = typeof h === 'number' ? h : 0
   const size =
     explicitW > 0 || explicitH > 0
       ? Math.max(explicitW, explicitH)

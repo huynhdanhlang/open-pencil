@@ -103,22 +103,24 @@ export function buildFigPopulationDelta(
     if (!current || journal.deleted.has(id)) continue
     const changes: Partial<SceneNode> = {}
     for (const key of Object.keys(previous) as (keyof SceneNode)[]) {
-      if (!isEqual(previous[key], current[key]))
-        Object.assign(changes, { [key]: structuredClone(current[key]) })
+      if (!isEqual(previous[key], current[key])) Object.assign(changes, { [key]: current[key] })
     }
     if (Object.keys(changes).length > 0) updated.push([id, changes])
   }
   const created = [...journal.created]
     .map((id) => graph.getNode(id))
     .filter((node) => node !== undefined)
-    .map((node) => [node.id, structuredClone(node)] as [string, SceneNode])
-  return {
+    .map((node) => [node.id, node] as [string, SceneNode])
+  // Freeze the complete response together. Imported views across nodes/fields can
+  // borrow one large FIG backing; cloning each item multiplies the whole buffer.
+  // The delta still owns its bytes and cannot borrow mutable worker graph state.
+  return structuredClone({
     created,
     updated,
     deleted: [...journal.deleted],
     instanceIndex: [...graph.instanceIndex].map(([id, ids]) => [id, [...ids]]),
     populatedRootIds: [...populatedRootIds]
-  }
+  })
 }
 
 export function applyFigPopulationDelta(graph: SceneGraph, delta: FigPopulationDelta): void {

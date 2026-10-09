@@ -12,6 +12,51 @@ import {
   applyFigPopulationDelta
 } from '#core/kiwi/fig/population/delta'
 
+test('population delta owns one shared backing across created nodes and changed fields', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const existing = graph.createNode('TEXT', page.id)
+  const receiver = deserializeSceneGraph(serializeSceneGraph(graph))
+  const backing = new ArrayBuffer(4 * 1024 * 1024)
+  new Uint8Array(backing).fill(7)
+  const journal = installFigMutationJournal(graph)
+  const source = structuredClone(existing.source)
+  source.fig.rawNodeFields.borrowedRecord = new Uint8Array(backing, 128, 16)
+  graph.updateNode(existing.id, { textPicture: new Uint8Array(backing, 64, 8), source })
+  for (let i = 0; i < 2; i++) {
+    const node = graph.createNode('TEXT', page.id, {
+      textPicture: new Uint8Array(backing, 256 + i * 16, 8)
+    })
+    node.source.fig.rawNodeFields.borrowedRecord = new Uint8Array(backing, 512 + i * 16, 16)
+  }
+  journal.stop()
+  const delta = buildFigPopulationDelta(graph, journal, [page.id])
+  const views = (payload: typeof delta) => [
+    ...payload.created.flatMap(([, node]) => [
+      node.textPicture!,
+      node.source.fig.rawNodeFields.borrowedRecord as Uint8Array
+    ]),
+    ...payload.updated.flatMap(([, changes]) =>
+      changes.textPicture
+        ? [changes.textPicture, changes.source!.fig.rawNodeFields.borrowedRecord as Uint8Array]
+        : []
+    )
+  ]
+  const owned = new Set(views(delta).map((view) => view.buffer))
+  expect([...owned].reduce((sum, buffer) => sum + buffer.byteLength, 0)).toBe(backing.byteLength)
+  expect(owned.has(backing)).toBe(false)
+  const transported = structuredClone(delta)
+  expect(new Set(views(transported).map((view) => view.buffer)).size).toBe(1)
+  new Uint8Array(backing).fill(9)
+  expect(views(delta).every((view) => view[0] === 7)).toBe(true)
+  applyFigPopulationDelta(receiver, transported)
+  const received = delta.created.map(([id]) => receiver.getNode(id)!.textPicture!)
+  received.push(receiver.getNode(existing.id)!.textPicture!)
+  expect(new Set(received.map((view) => view.buffer)).size).toBe(1)
+  received[0][0] = 11
+  expect(views(delta).every((view) => view[0] === 7)).toBe(true)
+})
+
 test('new-reader page loads transfer through the worker delta contract', async () => {
   await initCodec()
   const source = new SceneGraph()
