@@ -374,6 +374,12 @@ Discover available tools and their arguments from the connected server or browse
 - **`diff_visual`** — pixel diff between two rendered nodes; use it to confirm an edit changed only the intended region.
 - **`describe`** — semantic analysis of role, visual style, layout, and design issues.
 - **`batch_update`** — group supported property updates into one call. The matched fork prepares fonts only for returned changed roots and their descendants. Validation and one layout pass do not remove the before/after page Undo snapshots: large-page batches can still take seconds. Preserve Undo and recovery; do not describe this document mutation as a full-graph atomic transaction.
+
+For `diff_apply`, `reparent_node`, `combine_as_variants`, `create_component` and `create_instance`, the matched fork prepares fonts from actual graph mutation roots, compacted so overlapping descendants are traversed once. This includes all added diff roots and changed linked instances rather than relying on the first returned ID. Snapshot byte comparisons use exact visible Uint8Array bytes in chunks; floating-point and other value types retain existing equality semantics. These optimizations preserve Undo and do not establish a universal latency or memory bound.
+
+Queued MCP tools can now expire before starting and release their pending operation. Once a mutation starts, caller cancellation does not roll it back or skip Undo completion. A non-render RPC timeout still leaves its completion unknown to the caller: inspect the exact affected IDs before retrying; do not infer failure or duplicate the mutation. Render has its separate runtime status contract.
+
+During performance investigation, avoid loading a second large document into the live design editor's shared WebKit process. Use isolated headless measurements and small owned native fixtures, and keep the canonical writer working until a brief clean-only installation cutover. A WebKit policy exit proves the configured process-footprint threshold was exceeded, not which owner leaked; preserve saved content/recovery and distinguish process memory from WASM capacity, caches and retained-object counts.
 - **`export_image` / `export_svg` / `export_pdf`** — visual verification and deliverables.
 - **`viewport_zoom_to_fit` / `viewport_set` / `viewport_get`** — move the user's view only when they ask to be shown something.
 - **`get_codegen_prompt`** — retrieve OpenPencil's current JSX/codegen guidance.
