@@ -37,15 +37,15 @@ export class RenderCreationJournal {
   }
 
   layout(run: () => void): void {
-    this.recordUpdates(run, false)
+    this.recordUpdates(run)
   }
 
   /** Record bounded semantic completion, including its source-marker side effects. */
   semantic(run: () => void): void {
-    this.recordUpdates(run, true)
+    this.recordUpdates(run)
   }
 
-  private recordUpdates(run: () => void, semantic: boolean): void {
+  private recordUpdates(run: () => void): void {
     this.graph.observeNodeMutationsDuring(run, {
       updated: (node, changes, absent) => {
         if (this.created.has(node.id)) return
@@ -54,7 +54,7 @@ export class RenderCreationJournal {
           saved = { node, values: {}, absent: new Set() }
           this.layoutChanges.set(node.id, saved)
         }
-        if (semantic && !saved.editedFields) saved.editedFields = [...node.source.editedFields]
+        if (!saved.editedFields) saved.editedFields = [...node.source.editedFields]
         const keys = new Set([...(Object.keys(changes) as (keyof SceneNode)[]), ...absent])
         for (const key of keys) {
           if (Object.hasOwn(saved.values, key) || saved.absent.has(key)) continue

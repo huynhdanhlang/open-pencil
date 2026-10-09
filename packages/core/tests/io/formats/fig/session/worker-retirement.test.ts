@@ -9,11 +9,54 @@ import { parseFigFileViaWorker } from '#core/io/formats/fig/read'
 import {
   canUseFigPopulationWorker,
   createFigPopulationWorker,
+  registerFigPopulationWorker,
   registerOriginalArchiveRequest,
   releaseFigPopulationWorker,
   requestOriginalArchive
 } from '#core/kiwi/fig/population/client'
 import { recoverReaderPage } from '#core/kiwi/fig/session/document-state'
+
+test('an edited graph retires its obsolete reader immediately without stopping the archive worker', async () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const node = graph.createNode('RECTANGLE', page.id)
+  const other = graph.addPage('Unloaded')
+  const messages: Array<{ type: string }> = []
+  let stopped = 0
+  const worker = {
+    terminate: () => {
+      stopped++
+    },
+    postMessage: () => undefined,
+    onerror: null,
+    onmessage: null
+  }
+  const port = {
+    postMessage: (message: { type: string }) => {
+      messages.push(message)
+    },
+    start: () => undefined,
+    close: () => {
+      throw new Error('Archive port must stay open')
+    },
+    onmessage: null
+  }
+  registerFigPopulationWorker(graph, worker as Worker, port as MessagePort, () => {
+    stopped++
+  })
+  const client = expectDefined(createFigPopulationWorker(graph))
+  graph.withLayoutMutations(() => graph.updateNode(node.id, { x: 10 }))
+  expect(messages).toHaveLength(0)
+  const pending = client.populate(other.id)
+  expect(messages.map((m) => m.type)).toEqual(['populate'])
+  graph.updateNode(node.id, { name: 'Actual edit' })
+  expect(messages.map((m) => m.type)).toEqual(['populate', 'retire'])
+  expect(await pending).toBeNull()
+  expect(canUseFigPopulationWorker(graph)).toBe(false)
+  expect(stopped).toBe(0)
+  graph.updateNode(node.id, { name: 'Second edit' })
+  expect(messages.map((m) => m.type)).toEqual(['populate', 'retire'])
+})
 
 test('a fully opened single-page reader retires its mirror but keeps exact original Save', async () => {
   const source = new SceneGraph()

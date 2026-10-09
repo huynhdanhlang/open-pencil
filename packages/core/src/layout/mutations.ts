@@ -8,12 +8,15 @@ import {
 import { computeAllLayouts, computeLayout } from '#core/layout'
 
 export function createLayoutRunner(getGraph: () => SceneGraph) {
-  function runLayoutForNode(id: string) {
+  function runLayoutForNode(id: string, reflowImportedPositions = false) {
     const graph = getGraph()
     const node = graph.getNode(id)
     if (!node) return
 
     computeAllLayouts(graph, id)
+    if (reflowImportedPositions && node.layoutMode !== 'NONE' && node.type !== 'INSTANCE') {
+      computeLayout(graph, id, true)
+    }
     // Initial import keeps baked instance geometry. An explicit size edit must
     // reflow that instance's auto-layout instead of retaining the imported box.
     if (
@@ -26,8 +29,11 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
 
     let parent = node.parentId ? graph.getNode(node.parentId) : undefined
     while (parent) {
-      if (parent.layoutMode !== 'NONE') {
-        computeLayout(graph, parent.id)
+      if (
+        parent.layoutMode !== 'NONE' &&
+        !(reflowImportedPositions && parent.type === 'INSTANCE' && parent.source.format === 'fig')
+      ) {
+        computeLayout(graph, parent.id, reflowImportedPositions)
       }
       parent = parent.parentId ? graph.getNode(parent.parentId) : undefined
     }

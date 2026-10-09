@@ -204,6 +204,9 @@ export function createPopulationWorkerClient(
     revision++
     stale = true
     emitTelemetry({ event: 'stale', reason: 'graph-mutation' })
+    // The decoded mirror can no longer serve this graph. Release it now, not
+    // at a future page lookup; the shared worker still owns archive operations.
+    fail(false, false)
   }
   let unbind: (() => void) | undefined
   const releaseSubscription = () => {

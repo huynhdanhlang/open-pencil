@@ -58,11 +58,19 @@ import {
   mapJustify
 } from './layout/yoga-helpers'
 
-export function computeLayout(graph: SceneGraph, frameId: string): void {
-  graph.withLayoutMutations(() => computeLayoutInternal(graph, frameId))
+export function computeLayout(
+  graph: SceneGraph,
+  frameId: string,
+  reflowImportedPositions = false
+): void {
+  graph.withLayoutMutations(() => computeLayoutInternal(graph, frameId, reflowImportedPositions))
 }
 
-function computeLayoutInternal(graph: SceneGraph, frameId: string): void {
+function computeLayoutInternal(
+  graph: SceneGraph,
+  frameId: string,
+  reflowImportedPositions = false
+): void {
   const frame = graph.getNode(frameId)
   if (!frame || frame.layoutMode === 'NONE') return
 
@@ -74,7 +82,7 @@ function computeLayoutInternal(graph: SceneGraph, frameId: string): void {
       : buildYogaTree(graph, frame, rootDirection)
   try {
     yogaRoot.calculateLayout(undefined, undefined, yogaDirection)
-    applyYogaLayout(graph, frame, yogaRoot, computeLayoutInternal)
+    applyYogaLayout(graph, frame, yogaRoot, computeLayoutInternal, reflowImportedPositions)
   } finally {
     freeYogaTree(yogaRoot)
   }
@@ -113,7 +121,7 @@ export function layoutAuthoredNodes(graph: SceneGraph, rootIds: Iterable<string>
   const layout = () => {
     // A free canvas cannot resize its independent roots. Reflow authored roots
     // and their layout ancestors without traversing unrelated imported forests.
-    for (const id of roots) runner.runLayoutForNode(id)
+    for (const id of roots) runner.runLayoutForNode(id, true)
   }
   layout()
   // Layout gives wrapping text its width, which its height follows.

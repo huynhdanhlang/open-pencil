@@ -1,6 +1,7 @@
 import type { Node as YogaNode } from 'yoga-layout'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { markSourceFieldsEdited } from '@open-pencil/scene-graph/source-metadata'
 
 import { usesDetachedDerivedLayout } from './derived'
 
@@ -180,20 +181,39 @@ function computedChildSize(
   return child.derivedLayout?.[axis] ?? computed
 }
 
-function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: YogaNode): void {
+function updateChildFromYoga(
+  graph: SceneGraph,
+  child: SceneNode,
+  yogaChild: YogaNode,
+  reflowImportedPositions: boolean
+): void {
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
   const preservesImportedFrameGeometry =
     child.source.format === 'fig' &&
     frameSourceIsFig(graph, child.parentId) &&
     (child.type === 'FRAME' || child.type === 'LINE')
+  const reflowImportedPosition =
+    reflowImportedPositions && preservesImportedFrameGeometry && Math.abs(child.rotation) <= 0.001
   const preservesImportedPosition =
-    preservesImportedFrameGeometry ||
+    (preservesImportedFrameGeometry && !reflowImportedPosition) ||
     (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
   const parent = child.parentId ? graph.getNode(child.parentId) : undefined
+  // Insertion changes stored FIG positions, not just a transient layout projection.
+  // Record only moved axes so Save cannot restore the original source coordinates.
+  const authoredAxes = reflowImportedPosition
+    ? (['x', 'y'] as const).filter(
+        (axis) =>
+          child[axis] !== (axis === 'x' ? yogaChild.getComputedLeft() : yogaChild.getComputedTop())
+      )
+    : []
   updateComputedGeometry(graph, child, {
-    x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
-    y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
+    x: reflowImportedPosition
+      ? yogaChild.getComputedLeft()
+      : computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
+    y: reflowImportedPosition
+      ? yogaChild.getComputedTop()
+      : computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
     width: computedChildSize(
       graph,
       child,
@@ -211,6 +231,7 @@ function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: Yog
       parent
     )
   })
+  if (authoredAxes.length) markSourceFieldsEdited(child, authoredAxes)
 }
 
 function preservesImportedInstanceInternals(child: SceneNode): boolean {
@@ -245,7 +266,8 @@ export function applyYogaLayout(
   graph: SceneGraph,
   frame: SceneNode,
   yogaNode: YogaNode,
-  computeLayout: ComputeLayoutFn
+  computeLayout: ComputeLayoutFn,
+  reflowImportedPositions = false
 ): void {
   applyFrameSize(graph, frame, yogaNode)
 
@@ -256,7 +278,7 @@ export function applyYogaLayout(
     const yogaChild = yogaNode.getChild(yogaIndex)
     yogaIndex++
 
-    updateChildFromYoga(graph, child, yogaChild)
+    updateChildFromYoga(graph, child, yogaChild, reflowImportedPositions)
 
     if (!child.visible) continue
     if (preservesImportedInstanceInternals(child)) continue
