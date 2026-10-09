@@ -10,7 +10,7 @@ import {
 } from '@open-pencil/design-jsx'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { createIconFromPaths } from '#core/icons/render'
+import { placeIcon } from '#core/icons/render'
 import { buildIconData } from '#core/icons/svg'
 
 const body =
@@ -70,7 +70,7 @@ describe('artwork color variables', () => {
     expect(literal.fills[0].color).toEqual(orange)
     const bytes = await exportFigFile(graph)
     graph = await parseFigFile(bytes.slice().buffer, { populate: 'all' })
-    const restored = [...graph.nodes.values()].find((node) => node.name === 'Icon / Owned SVG')
+    const restored = [...graph.nodes.values()].find((node) => node.name === 'Owned SVG')
     if (!restored) throw new Error('Saved SVG missing')
     ;[bound, literal] = vectors(graph, restored.id)
     const variable = [...graph.variables.values()].find((value) => value.name === 'Accent')
@@ -89,16 +89,7 @@ describe('artwork color variables', () => {
       icon: async () => artwork,
       svg: () => artwork,
       createArtwork: (graph, icon, { parentId, size, color, overrides, colorVariableId }) =>
-        createIconFromPaths(
-          graph,
-          icon,
-          icon.name,
-          size,
-          color,
-          parentId,
-          overrides,
-          colorVariableId
-        ),
+        placeIcon(graph, parentId, icon, { size, color, overrides, colorVariableId }),
       layout: () => undefined
     })
     const encoded = encodeTreeForTransport({

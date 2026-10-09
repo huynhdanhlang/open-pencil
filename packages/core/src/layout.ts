@@ -29,6 +29,8 @@ import {
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
+import { createLayoutRunner } from './layout/mutations'
+import { sizeAutoResizingText } from './layout/text-auto-resize'
 export {
   estimateTextSize,
   getTextMeasurer,
@@ -95,6 +97,27 @@ export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
       computeLayoutsBottomUp(graph, rootId, new Set())
     }
   })
+}
+
+/**
+ * Gives content an author wrote, such as design JSX, HTML, or a `.pen` file, the sizes and
+ * positions its layout implies, which the source does not store, measuring its text first.
+ * Documents that store their geometry, such as `.fig` files, keep theirs and do not come here.
+ */
+export function layoutAuthoredNodes(graph: SceneGraph, rootIds: Iterable<string>): void {
+  const roots = [...rootIds]
+  for (const id of roots) {
+    sizeAutoResizingText(graph, id)
+  }
+  const runner = createLayoutRunner(() => graph)
+  const layout = () => {
+    // A free canvas cannot resize its independent roots. Reflow authored roots
+    // and their layout ancestors without traversing unrelated imported forests.
+    for (const id of roots) runner.runLayoutForNode(id)
+  }
+  layout()
+  // Layout gives wrapping text its width, which its height follows.
+  if (roots.map((id) => sizeAutoResizingText(graph, id, true)).some(Boolean)) layout()
 }
 
 function computeLayoutsBottomUp(graph: SceneGraph, nodeId: string, visited: Set<string>): void {

@@ -42,6 +42,16 @@ test.each(['HORIZONTAL', 'VERTICAL'] as const)(
 )
 
 describe('sceneNodeToJSX', () => {
+  test('a row aligned by baseline exports items="baseline"', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('FRAME', pageId(graph), {
+      name: 'Row',
+      layoutMode: 'HORIZONTAL',
+      counterAxisAlign: 'BASELINE'
+    })
+    expect(sceneNodeToJSX(node.id, graph)).toContain('items="baseline"')
+  })
+
   test('basic rectangle', () => {
     const graph = makeGraph()
     const node = graph.createNode('RECTANGLE', pageId(graph), {

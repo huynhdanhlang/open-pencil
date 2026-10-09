@@ -3,9 +3,7 @@ import { createDesignJSXRenderer, designJSXProp, type SVGSource } from '@open-pe
 import { iconify, placeIcon, type IconProvider } from '#core/icons'
 import { extractPaths, extractPathsFromElements, scalePathInfos } from '#core/icons/svg'
 import type { IconData } from '#core/icons/types'
-import { findPageId } from '#core/io/subgraph'
-
-import { layoutRenderedContent } from './placement'
+import { layoutAuthoredNodes } from '#core/layout'
 
 function parseViewBox(viewBox: string | undefined): { w: number; h: number } {
   if (!viewBox) return { w: 0, h: 0 }
@@ -59,12 +57,7 @@ function createRenderer(icons: IconProvider) {
         // Inline SVG is artwork, not an icon from a set.
         identity: icon.prefix !== INLINE_SVG
       }),
-    layout: (graph, parentId, rootIds) => {
-      const parent = graph.getNode(parentId)
-      const pageId = parent?.type === 'CANVAS' ? parentId : findPageId(graph, parentId)
-      if (!pageId) throw new Error('Render parent no longer belongs to a page')
-      layoutRenderedContent(graph, parentId, rootIds)
-    }
+    layout: layoutAuthoredNodes
   })
 }
 
