@@ -4,7 +4,7 @@ import { computeBounds } from '@open-pencil/scene-graph/geometry'
 
 import { diagnostics } from '@/app/diagnostics'
 import type { EditorStore } from '@/app/editor/active-store'
-import { listFamilies, listFonts } from '@/app/editor/fonts'
+import { listFamilies, listFonts, loadFont } from '@/app/editor/fonts'
 
 export function makeFigmaFromStore(
   store: EditorStore,
@@ -62,6 +62,9 @@ export function makeFigmaFromStore(
   api.exportImage = (nodeIds, opts) =>
     store.renderExportImage(nodeIds, opts.scale ?? 1, opts.format ?? 'PNG', opts.pageId ?? pageId)
   if (store.renderer) api.rasterCodec = createCanvasKitRasterCodec(store.renderer.ck)
+  api.loadFontAsync = async ({ family, style }) => {
+    await loadFont(family, style).catch(() => null)
+  }
   api.listAvailableFontsAsync = async () => {
     const [systemFonts, familyOptions] = await Promise.all([listFonts(), listFamilies()])
     const fonts = systemFonts.flatMap(({ family, styles }) =>

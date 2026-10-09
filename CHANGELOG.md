@@ -179,6 +179,8 @@
 
 - MCP design JSX respects replacement and insertion placement, keeps variable bindings through the desktop bridge, and restores dependent component instances on other pages with their original layer IDs and overrides when a structural edit is undone.
 - Store crash recovery snapshots of any size. Snapshots of documents over 127 MiB failed to save to IndexedDB and stayed in memory for the rest of the session.
+- Draw layer blur, drop and inner shadows, and background blur with Figma's falloff. They spread about 15% too far, with a long faint edge Figma does not draw; SVG export keeps Figma's own `stdDeviation` of half the radius.
+- Load the fonts of SVG text before placing it from `import_svg`, so centred and right-aligned text sits where Figma puts it; `figma.loadFontAsync` in scripts now loads the font instead of doing nothing.
 - Gradient stops in the fill picker show their full position and opacity, such as 100%, instead of cutting them off; each stop's colour, hex, and opacity share one field as in the properties panel.
 - Keep design variable bindings and honor `replace_id` and `insert_index` when `render` runs through the stdio MCP server (`openpencil-mcp`) against the desktop or web app, as it already did through the HTTP endpoint (#830).
 - Draw layers masked by a group, such as Figma's clip path groups, instead of hiding them; a group used as a mask masks with what its layers draw.
