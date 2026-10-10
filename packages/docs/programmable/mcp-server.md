@@ -370,6 +370,15 @@ For `set_behaviour` and `create_slot`, target the node's owning page. Cross-page
 | `diff_apply`  | Apply a patch after checking the nodes still match its old values     |
 | `diff_visual` | Pixel diff between two rendered nodes, returned as an image           |
 
+### Comments
+
+| Tool | Description |
+|------|-------------|
+| `get_comments` | Read the comments left on the canvas, open ones unless asked for resolved too, with their layer, page, and replies |
+| `add_comment` | Pin a comment on a layer or at a point of a page, in Markdown |
+| `reply_to_comment` | Answer a thread, which reopens it if it was resolved |
+| `resolve_comment` | Resolve a thread once its feedback is addressed, or reopen it |
+
 ### Navigation
 
 | Tool          | Description                    |

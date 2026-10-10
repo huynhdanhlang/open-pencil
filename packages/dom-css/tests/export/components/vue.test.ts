@@ -9,6 +9,7 @@ import {
   collapsibleSet,
   labelledButtonSet,
   numberFieldComponent,
+  plainBadgeSet,
   progressComponent,
   sliderComponent,
   textareaComponent,
@@ -223,6 +224,57 @@ const styleOf = (files: { path: string; content: string | Uint8Array }[], path: 
       String(files.find((file) => file.path === path)?.content)
     )?.[1] ?? ''
   )
+
+describe('generated Vue plain components', () => {
+  test('preserves descendant geometry overrides in a nested plain instance', async () => {
+    const { graph, set: badge } = plainBadgeSet()
+    const main = graph.getChildren(badge.id)[0]
+    const set = graph.createNode('COMPONENT_SET', graph.getPages()[0].id, {
+      name: 'GeometryCard',
+      componentPropertyDefinitions: [
+        { id: 'title', name: 'Title', type: 'TEXT', defaultValue: 'Card' }
+      ]
+    })
+    const variant = graph.createNode('COMPONENT', set.id, {
+      name: 'Default',
+      width: 160,
+      height: 80
+    })
+    graph.createNode('TEXT', variant.id, {
+      name: 'Title',
+      text: 'Card',
+      componentPropertyReferences: [{ propertyId: 'title', field: 'TEXT' }]
+    })
+    const instance = graph.createInstance(main.id, variant.id, { name: 'Badge' })
+    const extra = graph.getChildren(instance.id).find((node) => node.name === 'Extra')!
+    graph.updateNode(extra.id, { width: 37, x: 11 })
+    const { files, component } = await generate({ graph, set })
+    expect(await render(component)).toContain('Note')
+    const source = String(files.find((file) => file.path === 'GeometryCard.vue')?.content)
+    expect(source).toContain('37px')
+    expect(source).toContain('11px')
+  })
+
+  test('take variant, text, and boolean properties as props, and slots as slots', async () => {
+    const { component } = await generate(plainBadgeSet())
+    const rest = await render(component)
+    expect(rest).toContain('data-tone="Neutral"')
+    expect(rest).toContain('New')
+    // The icon the design hides at rest shows only while its boolean is on.
+    expect(rest).not.toContain('badge__dot')
+    expect(await render(component, { icon: true })).toContain('badge__dot')
+    expect(await render(component, { tone: 'Danger', label: 'Hot' })).toMatch(
+      /data-tone="Danger"[\s\S]*Hot/
+    )
+    // A slot shows the design's content unless the caller passes its own.
+    expect(rest).toContain('Note')
+    const filled = await renderToString(
+      createSSRApp({ render: () => h(component, {}, { extra: () => h('b', 'Custom') }) })
+    )
+    expect(filled).toContain('<b>Custom</b>')
+    expect(filled).not.toContain('Note')
+  })
+})
 
 describe('generated Vue form controls', () => {
   test('a slider binds one number within its range, the thumb and range placed by Reka', async () => {

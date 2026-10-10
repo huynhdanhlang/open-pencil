@@ -4,17 +4,13 @@ import { behaviourSpecSchema } from '@open-pencil/scene-graph'
 
 import type { FigmaAPI } from '#core/figma-api'
 import { OpenPencilAPI } from '#core/openpencil-api'
-import { defineTool } from '#core/tools/schema'
+import { defineTool, toolFailure } from '#core/tools/schema'
 
 function requireTargetPage(figma: FigmaAPI, id: string): void {
   const page = figma.graph.closest(id, (node) => node.type === 'CANVAS')
   if (page && page.id !== figma.currentPageId)
     throw new Error(`Node "${id}" belongs to page "${page.id}"; target that page before editing`)
 }
-
-const failure = (error: unknown) => ({
-  error: error instanceof Error ? error.message : String(error)
-})
 
 export const setBehaviour = defineTool({
   name: 'set_behaviour',
@@ -44,7 +40,7 @@ export const setBehaviour = defineTool({
       openpencil.getBehaviour(id)?.remove()
       return { ok: true }
     } catch (error) {
-      return failure(error)
+      return toolFailure(error)
     }
   }
 })
@@ -63,7 +59,7 @@ export const createSlot = defineTool({
       requireTargetPage(figma, id)
       return { slot: new OpenPencilAPI(figma).createSlot(id) }
     } catch (error) {
-      return failure(error)
+      return toolFailure(error)
     }
   }
 })
@@ -84,7 +80,7 @@ export const getBehaviour = defineTool({
     try {
       return openpencil.getBehaviour(id)?.toJSON() ?? { behaviour: null }
     } catch (error) {
-      return failure(error)
+      return toolFailure(error)
     }
   }
 })

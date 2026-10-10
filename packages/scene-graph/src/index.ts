@@ -14,6 +14,7 @@ export * from './transfer'
 export * from './instance-overrides'
 export * from './images'
 export * from './components/properties'
+export * from './components/variants'
 export * from './slots/frames'
 export { instanceMainComponent } from './instances/main-component'
 export { canCreateInstance } from './instances/cycles'
@@ -33,6 +34,10 @@ export * from './icons/glyph'
 export * from './behaviours/layers'
 export * from './behaviours/model'
 export * from './behaviours/spec'
+export * from './comments/document'
+export * from './comments/list'
+export * from './comments/merge'
+export * from './comments/threads'
 export * from './copy'
 export {
   createDefaultNode,
@@ -128,7 +133,8 @@ export {
   vectorNetworksEqual
 } from './vector-network'
 
-const MAX_ID_SESSION = 0xffffffff
+/** Figma reads both parts of a GUID as signed 32-bit integers and drops records beyond them. */
+const MAX_ID_SESSION = 0x7fffffff
 
 let idSession = 0
 let nextLocalID = 1
@@ -141,7 +147,7 @@ let nextLocalID = 1
  */
 export function setIdSession(sessionId: number): void {
   if (!Number.isInteger(sessionId) || sessionId < 0 || sessionId > MAX_ID_SESSION) {
-    throw new RangeError('sessionId must be an unsigned 32-bit integer')
+    throw new RangeError('sessionId must be a non-negative 31-bit integer')
   }
   idSession = sessionId
 }
