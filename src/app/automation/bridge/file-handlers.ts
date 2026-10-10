@@ -3,6 +3,10 @@ import * as v from 'valibot'
 import { parseToolArgs } from '@open-pencil/core/tools'
 
 import {
+  assertAutomationRequestLive,
+  type AutomationRequestContext
+} from '@/app/automation/bridge/render-admission'
+import {
   resolveAutomationTarget,
   responseWithTarget,
   type AutomationTarget
@@ -21,20 +25,34 @@ const closeArgsSchema = v.object({
 })
 
 // Automation never opens the Save dialog: nobody may be there to answer it.
-async function saveWithoutPrompt(store: AutomationTarget['store'], path?: string): Promise<void> {
+async function saveWithoutPrompt(
+  store: AutomationTarget['store'],
+  path?: string,
+  context?: AutomationRequestContext
+): Promise<void> {
+  assertAutomationRequestLive(context, 'Save')
+  const graph = store.graph
   const name = store.state.documentName
   if (!path && !store.hasWritableSource()) {
     throw new Error(`"${name}" has not been saved to a file yet; pass a path to save it`)
   }
   if (path) await ensureTauriParentDirectory(path)
+  if (store.graph !== graph) throw new Error('Document changed before Save started')
   // A failed save to a new path leaves the document with the source it had.
-  const saved = path ? await store.saveFigFileToPath(path) : await store.saveFigFile()
+  const admission = context ? { signal: context.signal, deadlineAt: context.deadlineAt } : undefined
+  const saved = path
+    ? await store.saveFigFileToPath(path, admission)
+    : await store.saveFigFile(admission)
   if (!saved) throw new Error(`Could not save "${name}"`)
 }
 
-export async function handleSaveFile(target: AutomationTarget, args: unknown): Promise<unknown> {
+export async function handleSaveFile(
+  target: AutomationTarget,
+  args: unknown,
+  context?: AutomationRequestContext
+): Promise<unknown> {
   const { path } = parseToolArgs('save_file', saveArgsSchema, args)
-  await saveWithoutPrompt(target.store, path)
+  await saveWithoutPrompt(target.store, path, context)
   return { ok: true, result: { saved: true } }
 }
 

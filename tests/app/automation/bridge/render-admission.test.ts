@@ -640,6 +640,40 @@ test('replacement during preparation cannot render into the replacement graph', 
   }
 })
 
+test('Save acknowledgement cannot retarget a replacement graph or import an offscreen page', async () => {
+  const store = createEditorStore()
+  const original = store.graph
+  const pageId = store.state.currentPageId
+  const replacement = new SceneGraph()
+  replacement.nodes.clear()
+  replacement.nodes.set(pageId, structuredClone(original.getNode(pageId)!))
+  const prepare = spyOn(store, 'preparePageNodes')
+  const save = spyOn(store, 'saveFigFileToPath')
+  const { handleTargetCommand } = createAutomationCommandHandlers(makeFigmaFromStore)
+  try {
+    await expect(
+      handleTargetCommand(
+        { store, documentId: 'owned', documentName: 'Owned', pageId, pageName: 'Page' },
+        'save_file',
+        { path: '/tmp/never-written.fig' },
+        {
+          id: crypto.randomUUID(),
+          onAccepted: () => {
+            store.replaceGraph(replacement)
+          }
+        }
+      )
+    ).rejects.toThrow('Document changed before Save started')
+    expect(prepare).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  } finally {
+    store.replaceGraph(original)
+    prepare.mockRestore()
+    save.mockRestore()
+    store.dispose()
+  }
+})
+
 test('a page closed while render is queued cannot acquire a snapshot or Undo', async () => {
   const store = createEditorStore()
   const page = store.graph.addPage('Owned target')

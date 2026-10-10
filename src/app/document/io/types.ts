@@ -1,5 +1,8 @@
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
 
+/** Cancellation applies to admission only; a started Save owns its write. */
+export type DocumentSaveAdmission = { signal?: AbortSignal; deadlineAt?: number }
+
 export type DocumentSourceIdentity = Readonly<{
   handle: FileSystemFileHandle | null
   path: string | null

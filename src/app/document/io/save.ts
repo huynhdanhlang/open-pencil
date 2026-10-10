@@ -15,6 +15,7 @@ type SaveActionsOptions = Omit<DocumentSourceAccess, 'getSavedVersion'> & {
   /** The document's content revision, recorded as the saved version. */
   version: () => number
   buildFigFile: (version: number) => Uint8Array | Promise<Uint8Array>
+  buildAdmittedFigFile: (version: number) => Uint8Array | Promise<Uint8Array>
   startWatchingFile: () => void
   onWriteSuccess?: (version: number) => void | Promise<void>
   onDownloadSuccess?: (version: number) => void | Promise<void>
@@ -24,6 +25,7 @@ export function createSaveActions({
   state,
   version: currentVersion,
   buildFigFile,
+  buildAdmittedFigFile,
   getFilePath,
   setFilePath,
   getFileHandle,
@@ -51,28 +53,31 @@ export function createSaveActions({
     onWriteSuccess
   })
 
-  async function buildVersionedFigFile() {
-    const version = currentVersion()
-    return { data: await buildFigFile(version), version }
+  async function buildVersionedFigFile(admittedVersion?: number) {
+    const version = admittedVersion ?? currentVersion()
+    const build = admittedVersion === undefined ? buildFigFile : buildAdmittedFigFile
+    return { data: await build(version), version }
   }
 
-  async function saveFigFile() {
+  async function saveFigFile(admittedVersion?: number) {
     const filePath = getFilePath()
     const fileHandle = getFileHandle()
     const storageBinding = getStorageBinding()
     const downloadName = getDownloadName()
     if (storageBinding || filePath || fileHandle) {
-      const { data, version } = await buildVersionedFigFile()
+      const { data, version } = await buildVersionedFigFile(admittedVersion)
       const wrote = await writeFile(data, version)
       if (wrote && !storageBinding) setSourceIdentity({ handle: fileHandle, path: filePath })
       return wrote
     }
     if (downloadName) {
-      const { data, version } = await buildVersionedFigFile()
+      const { data, version } = await buildVersionedFigFile(admittedVersion)
       downloadBlob(new Uint8Array(data), downloadName, 'application/octet-stream')
       await onDownloadSuccess?.(version)
       return true
     }
+    if (admittedVersion !== undefined)
+      throw new Error('Admitted Save has no writable target; no file write was started')
     return saveFigFileAs()
   }
 
@@ -115,5 +120,10 @@ export function createSaveActions({
     return true
   }
 
-  return { saveFigFile, saveFigFileAs, writeFile }
+  return {
+    saveFigFile: () => saveFigFile(),
+    saveFigFileAdmitted: (version: number) => saveFigFile(version),
+    saveFigFileAs,
+    writeFile
+  }
 }

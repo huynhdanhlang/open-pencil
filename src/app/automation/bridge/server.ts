@@ -114,7 +114,18 @@ export function connectAutomation(
         }
         try {
           const result = await handleRequest(
-            { id: msg.id, deadlineAt, signal: controller.signal },
+            {
+              id: msg.id,
+              deadlineAt,
+              signal: controller.signal,
+              cancel: () => controller.abort(new Error('Design operation cancelled before start')),
+              onAccepted: async (target) => {
+                if (target && socket.readyState === WebSocket.OPEN)
+                  socket.send(JSON.stringify({ type: 'accepted', id: msg.id, target }))
+                // Let the acknowledgement leave before synchronous canvas work.
+                await new Promise<void>((resolve) => setTimeout(resolve, 0))
+              }
+            },
             msg.command,
             msg.args
           )

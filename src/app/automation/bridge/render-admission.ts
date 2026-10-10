@@ -5,6 +5,9 @@ export interface AutomationRequestContext {
   id: string
   deadlineAt?: number
   signal?: AbortSignal
+  /** Bridge-owned acknowledgement/cancellation; neither is serialized as design context. */
+  onAccepted?: (target?: { document_id: string; page_id: string }) => void | Promise<void>
+  cancel?: () => void
 }
 
 type RenderPhase = 'preparing' | 'queued' | 'running' | 'completed' | 'expired' | 'failed'

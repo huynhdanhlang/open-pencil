@@ -132,6 +132,26 @@ function canvasParts(canvasData: Uint8Array) {
   }
 }
 
+/** Read records without allocating image, thumbnail or metadata payloads. */
+export function readFigArchiveCanvasParts(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  if (parseFigKiwiChunks(bytes)) return canvasParts(bytes)
+  const canonicalEntries = unzipSync(bytes, {
+    filter: ({ name }) => isCanonicalCanvasEntry(name)
+  })
+  const canonical = findCanvasData(canonicalEntries)
+  if (canonical) return canvasParts(canonical)
+  // Legacy archives select the largest non-asset entry. Keep that exact policy,
+  // including formats whose canvas has no conventional filename.
+  const archive = unzipSync(bytes)
+  const canvas = findCanvasData(archive)
+  if (!canvas)
+    throw new Error(
+      `No canvas data found in .fig file. Entries: ${Object.keys(archive).join(', ')}`
+    )
+  return canvasParts(canvas)
+}
+
 export function readFigArchiveParts(buffer: ArrayBuffer): FigArchiveParts {
   const bytes = new Uint8Array(buffer)
   const chunks = parseFigKiwiChunks(bytes)

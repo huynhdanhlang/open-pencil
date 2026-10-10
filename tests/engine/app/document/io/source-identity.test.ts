@@ -28,6 +28,7 @@ function createSaveHarness(handle: FileSystemFileHandle) {
     state,
     version: () => 1,
     buildFigFile: () => new Uint8Array([1, 2, 3]),
+    buildAdmittedFigFile: () => new Uint8Array([1, 2, 3]),
     getFilePath: () => null,
     setFilePath: vi.fn(),
     getFileHandle: () => handle,

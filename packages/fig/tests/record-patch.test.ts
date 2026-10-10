@@ -1,8 +1,14 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { guid } from '#fig-tests/helpers/guid'
-import { figComponentUsePages, patchFigMessage, patchFigRecords } from '#fig/record-patch'
-import { deflateSync } from 'fflate'
+import { readFigArchiveCanvasParts, readFigArchiveParts } from '#fig/archive'
+import {
+  figArchiveComponentUsePages,
+  figComponentUsePages,
+  patchFigMessage,
+  patchFigRecords
+} from '#fig/record-patch'
+import { deflateSync, zipSync } from 'fflate'
 
 import {
   getCompiledSchema,
@@ -10,6 +16,7 @@ import {
   initCodec,
   type NodeChange
 } from '@open-pencil/kiwi/fig/codec'
+import { buildFigKiwi } from '@open-pencil/kiwi/fig/container'
 
 const record = (localID: number, parent: number | null, extra: Partial<NodeChange> = {}) =>
   ({
@@ -86,6 +93,41 @@ describe('patching archive records', () => {
 })
 
 describe('pages using components', () => {
+  test('canvas-only lookup preserves raw, canonical and legacy archive dependency records', async () => {
+    await initCodec()
+    const records = [
+      record(0, null, { type: 'DOCUMENT' }),
+      record(1, 0, { type: 'CANVAS' }),
+      record(2, 0, { type: 'CANVAS' }),
+      record(10, 1, { type: 'SYMBOL' }),
+      record(11, 2, { type: 'INSTANCE', symbolData: { symbolID: guid(10) } })
+    ]
+    const canvas = buildFigKiwi(
+      deflateSync(getSchemaBytes()),
+      getCompiledSchema().encodeMessage({ nodeChanges: records, blobs: [] })
+    )
+    for (const bytes of [
+      canvas,
+      ...['canvas.fig', 'canvas', 'legacy-data'].map((name) =>
+        zipSync({
+          [name]: canvas,
+          'images/example.png': new Uint8Array(4096),
+          'thumbnail.png': new Uint8Array(1024),
+          'meta.json': new TextEncoder().encode('{"name":"fixture"}')
+        })
+      )
+    ]) {
+      const buffer = bytes.slice().buffer
+      const all = readFigArchiveParts(buffer)
+      expect(readFigArchiveCanvasParts(buffer)).toEqual({
+        schemaDeflated: all.schemaDeflated,
+        dataRaw: all.dataRaw,
+        figKiwiVersion: all.figKiwiVersion
+      })
+      expect(figArchiveComponentUsePages(buffer, ['1:10']).toSorted()).toEqual(['1:2'])
+    }
+  })
+
   test('follows instances through the components that nest them', () => {
     const records = [
       record(1, 0, { type: 'CANVAS' }),

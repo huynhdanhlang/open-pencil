@@ -189,6 +189,24 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
       return fail(error)
     }
   })
+  for (const command of ['get_operation_status', 'cancel_operation'] as const) {
+    register(
+      command,
+      {
+        inputSchema: v.strictObject({
+          document_id: v.pipe(v.string(), v.minLength(1)),
+          operation_id: v.pipe(v.string(), v.uuid())
+        })
+      },
+      async (args) => {
+        try {
+          return ok((await sendCommand(sendRPC, command, args)).result ?? {})
+        } catch (error) {
+          return fail(error)
+        }
+      }
+    )
+  }
   for (const command of ['agent_status', 'agent_cancel'] as const) {
     register(command, { inputSchema: agentTaskIdSchema }, async (args) => {
       try {
@@ -250,6 +268,12 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
         })
         const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }
         if (res.ok === false) return fail(new Error(res.error))
+        if (
+          res.result &&
+          typeof res.result === 'object' &&
+          Reflect.get(res.result, 'status') === 'pending'
+        )
+          return ok(withTarget(res.result as RPCJSONObject, res))
         const response: { saved: true; path?: string; target?: unknown } = { saved: true }
         if (safePath) response.path = safePath.resolved
         if (res.target) response.target = res.target

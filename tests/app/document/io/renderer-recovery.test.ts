@@ -11,6 +11,78 @@ import { fontManager } from '#core/text/fonts'
 
 import { asDouble } from '#tests/helpers/doubles'
 
+test('expired queued Save never builds, retargets or writes; a started Save finishes', async () => {
+  const editor = createEditor()
+  const state = Object.assign(editor.state, { documentName: 'Owned', autosaveEnabled: false })
+  const source = createDocumentSourceState()
+  let writes = 0
+  let releaseWrite!: () => void
+  source.setFileHandle(
+    asDouble<FileSystemFileHandle>({
+      name: 'Owned.fig',
+      createWritable: async () => ({
+        write: async () => {
+          writes++
+          await new Promise<void>((resolve) => {
+            releaseWrite = resolve
+          })
+        },
+        close: async () => undefined
+      })
+    })
+  )
+  const actions = createDocumentSourceActions({
+    ...source,
+    editor,
+    state,
+    stopWatchingFile: () => undefined,
+    startWatchingFile: async () => undefined,
+    getRenderer: () => null
+  })
+  let release!: () => void
+  const active = actions.runDocumentOperation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  await Promise.resolve()
+  const cancellation = new AbortController()
+  const pending = actions.saveFigFileToPath('/tmp/expired-owned-save.fig', {
+    signal: cancellation.signal
+  })
+  const outcome = pending.then(
+    () => 'saved',
+    (error) => error.message
+  )
+  cancellation.abort(new Error('Save expired'))
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(source.getFilePath()).toBeNull()
+    expect(state.documentName).toBe('Owned')
+    expect(writes).toBe(0)
+    expect(await Promise.race([outcome, Promise.resolve('pending')])).toBe('Save expired')
+    release()
+    await active
+    await actions.runDocumentOperation(async () => undefined)
+    expect(writes).toBe(0)
+    const running = new AbortController()
+    const save = actions.saveFigFile({ signal: running.signal })
+    while (!writes) await new Promise((resolve) => setTimeout(resolve, 1))
+    running.abort(new Error('Too late to cancel commit'))
+    releaseWrite()
+    expect(await save).toBe(true)
+    expect(actions.hasUnsavedChanges()).toBe(false)
+  } finally {
+    release()
+    releaseWrite?.()
+    await active
+    await outcome
+    actions.disposeDocumentIO()
+    editor.dispose()
+  }
+})
+
 test('Save preserves editable data after a renderer abort, warns despite cleanup failure and can save again', async () => {
   const editor = createEditor()
   const state = Object.assign(editor.state, { documentName: 'Recovery', autosaveEnabled: false })

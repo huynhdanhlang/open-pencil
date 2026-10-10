@@ -83,6 +83,24 @@ export function createToolDescriptors(filesystemEnabled: boolean): ToolDescripto
       capabilities: ['document:read', 'filesystem:write'],
       enabled: true
     },
+    {
+      name: 'get_operation_status',
+      description:
+        'Read the exact result of a pending render or Save using its operation_id and document_id. No page import or design mutation. Completed receipts are retained for 30 minutes, at most four per document.',
+      effect: 'read',
+      availability: 'default',
+      capabilities: ['document:read'],
+      enabled: true
+    },
+    {
+      name: 'cancel_operation',
+      description:
+        'Cancel an admitted render or Save before it starts. A started mutation or file write finishes safely; retrieve its eventual result with get_operation_status.',
+      effect: 'write',
+      availability: 'default',
+      capabilities: ['document:write'],
+      enabled: true
+    },
     ...(filesystemEnabled
       ? [
           {

@@ -136,6 +136,104 @@ describe('BrowserRpcBridge reconnection', () => {
     servers.push(srv)
   }
 
+  test('acknowledged long render returns a retrievable receipt instead of timeout or cancellation', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      rpcTimeoutMs: 30
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+    let id = ''
+    let cancelled = false
+    pair.clientWs.on('message', (data) => {
+      const request = JSON.parse(data.toString())
+      if (request.type === 'cancel') cancelled = true
+      if (request.type !== 'request') return
+      id = request.id
+      expect(request.deadlineAt - Date.now()).toBeGreaterThan(170_000)
+      pair.clientWs.send(
+        JSON.stringify({ type: 'accepted', id, target: { document_id: 'owned', page_id: 'page' } })
+      )
+    })
+    try {
+      expect(
+        await bridge.sendRPC({ command: 'tool', args: { name: 'render', document_id: 'owned' } })
+      ).toMatchObject({
+        ok: true,
+        result: {
+          status: 'pending',
+          operation_id: id,
+          document_id: 'owned',
+          poll_tool: 'get_operation_status'
+        }
+      })
+      expect(cancelled).toBe(false)
+    } finally {
+      bridge.close()
+    }
+  })
+
+  test('an acknowledgement cannot turn an ordinary read into a long operation', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      rpcTimeoutMs: 30
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+    pair.clientWs.on('message', (data) => {
+      const request = JSON.parse(data.toString())
+      if (request.type === 'request')
+        pair.clientWs.send(
+          JSON.stringify({
+            type: 'accepted',
+            id: request.id,
+            target: { document_id: 'owned', page_id: 'page' }
+          })
+        )
+    })
+    try {
+      await expect(bridge.sendRPC(RPC_BODY)).rejects.toThrow('RPC timeout')
+    } finally {
+      bridge.close()
+    }
+  })
+
+  test('disconnect after acknowledgement preserves operation identity before the wait expires', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      rpcTimeoutMs: 1000
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+    let id = ''
+    pair.clientWs.on('message', async (data) => {
+      const request = JSON.parse(data.toString())
+      if (request.type !== 'request') return
+      id = request.id
+      pair.clientWs.send(
+        JSON.stringify({ type: 'accepted', id, target: { document_id: 'owned', page_id: 'page' } })
+      )
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      pair.clientWs.close()
+    })
+    try {
+      expect(
+        await bridge.sendRPC({ command: 'save_file', args: { document_id: 'owned' } })
+      ).toMatchObject({
+        ok: true,
+        result: { status: 'pending', operation_id: id, connection_lost: true }
+      })
+    } finally {
+      bridge.close()
+    }
+  })
+
   test('rejects pending requests from a disconnected browser on reconnect', async () => {
     const pairA = await setupWsPair()
     track(pairA)

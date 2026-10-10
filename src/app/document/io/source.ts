@@ -11,7 +11,7 @@ import {
 } from '@/app/document/io/names'
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
-import type { DocumentSourceAccess } from '@/app/document/io/types'
+import type { DocumentSaveAdmission, DocumentSourceAccess } from '@/app/document/io/types'
 import { createDocumentRecovery } from '@/app/document/recovery'
 import { recoveryEnabled } from '@/app/document/recovery/preferences'
 import {
@@ -72,8 +72,7 @@ export function createDocumentSourceActions({
     }
   }
 
-  async function saveAndTrack(save: () => Promise<boolean>) {
-    const revision = changes.capture()
+  async function saveAndTrack(save: () => Promise<boolean>, revision = changes.capture()) {
     const saved = await save()
     if (saved) {
       changes.markSaved(revision)
@@ -132,10 +131,11 @@ export function createDocumentSourceActions({
     }
   }
 
-  const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({
+  const { saveFigFile, saveFigFileAdmitted, saveFigFileAs, writeFile } = createSaveActions({
     state,
     version: changes.capture,
     buildFigFile: (version) => figBuildQueue.run(() => buildFigFile(version)),
+    buildAdmittedFigFile: buildFigFile,
     getFilePath,
     setFilePath,
     getFileHandle,
@@ -221,11 +221,28 @@ export function createDocumentSourceActions({
 
   let retargeting = false
 
+  function admitSave(
+    run: (revision: number) => Promise<boolean>,
+    admission: DocumentSaveAdmission
+  ) {
+    const revision = changes.capture()
+    return figBuildQueue.run(() => {
+      // A blocked event loop can delay the transport's abort timer.
+      if (admission.deadlineAt !== undefined && Date.now() >= admission.deadlineAt)
+        throw new Error('Request expired before Save started; no file write was started')
+      return run(revision)
+    }, admission.signal)
+  }
+
   /**
    * Save to a new target; when the write fails, the document keeps the source it had. A second
    * retarget while one is in flight is refused, so a failure never restores another save's target.
    */
-  async function saveToNewTarget(planTarget: () => void): Promise<boolean> {
+  async function saveToNewTarget(
+    planTarget: () => void,
+    save = saveFigFile,
+    revision?: number
+  ): Promise<boolean> {
     if (retargeting) return false
     retargeting = true
     const previous = {
@@ -245,7 +262,7 @@ export function createDocumentSourceActions({
     }
     planTarget()
     try {
-      const saved = await saveAndTrack(saveFigFile)
+      const saved = await saveAndTrack(save, revision)
       if (!saved) restore()
       return saved
     } catch (error) {
@@ -256,8 +273,17 @@ export function createDocumentSourceActions({
     }
   }
 
-  async function saveFigFileToPath(path: string): Promise<boolean> {
-    const saved = await saveToNewTarget(() => setPlannedFilePath(path))
+  async function saveFigFileToPath(
+    path: string,
+    admission?: DocumentSaveAdmission
+  ): Promise<boolean> {
+    const plan = () => setPlannedFilePath(path)
+    const saved = admission
+      ? await admitSave(
+          (revision) => saveToNewTarget(plan, () => saveFigFileAdmitted(revision), revision),
+          admission
+        )
+      : await saveToNewTarget(plan)
     if (saved) void startWatchingFile()
     return saved
   }
@@ -300,7 +326,13 @@ export function createDocumentSourceActions({
     disposeDocumentIO,
     runDocumentOperation: <T>(run: () => Promise<T>, signal?: AbortSignal) =>
       figBuildQueue.run(run, signal),
-    saveFigFile: () => saveAndTrack(saveFigFile),
+    saveFigFile: (admission?: DocumentSaveAdmission) =>
+      admission
+        ? admitSave(
+            (revision) => saveAndTrack(() => saveFigFileAdmitted(revision), revision),
+            admission
+          )
+        : saveAndTrack(saveFigFile),
     saveFigFileAs: () => saveAndTrack(saveFigFileAs),
     hasUnsavedChanges: changes.hasUnsavedChanges,
     getPersistenceStatus: () => {

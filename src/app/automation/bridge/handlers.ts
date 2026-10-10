@@ -9,6 +9,11 @@ import {
   handleUndo,
   handleUpdateSettings
 } from '@/app/automation/bridge/app-handlers'
+import {
+  runDesignOperation,
+  getDesignOperation,
+  cancelDesignOperation
+} from '@/app/automation/bridge/design-operations'
 import { createAutomationEvalHandler } from '@/app/automation/bridge/eval-handler'
 import { handleExport, handleExportJSX } from '@/app/automation/bridge/export-handlers'
 import {
@@ -43,7 +48,11 @@ import type { EditorStore } from '@/app/editor/active-store'
 
 type FigmaFactory = (store: EditorStore, pageId?: string) => FigmaAPI
 
-type CommandHandler = (target: AutomationTarget, args: unknown) => Promise<unknown>
+type CommandHandler = (
+  target: AutomationTarget,
+  args: unknown,
+  context?: AutomationRequestContext
+) => Promise<unknown>
 
 export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
   const handleEval = createAutomationEvalHandler(makeFigma)
@@ -77,24 +86,28 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
       const viewTool = command === 'tool' && toolPreparesShownPage(args)
       // Runtime counters describe already-materialized content; inspection must not import a page.
       const runtimeRead = command === 'tool' && args.name === 'get_runtime_status'
+      // Save owns whole-file preparation and its shown-page preview. Importing an
+      // RPC-selected offscreen page first only duplicates work and delays admission.
+      const fileSave = command === 'save_file'
       if (
         target.store.graph.getNode(target.pageId)?.type !== 'CANVAS' ||
         (!viewTool &&
           !runtimeRead &&
+          !fileSave &&
           !(await (isRenderCommand(command, args)
             ? awaitRenderPreparation(target.store.preparePageNodes(target.pageId), context)
             : target.store.preparePageNodes(target.pageId))))
       ) {
         throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
       }
-      if (isRenderCommand(command, args) && target.store.graph !== admittedGraph)
-        throw new Error('Document changed before render started')
+      if ((isRenderCommand(command, args) || fileSave) && target.store.graph !== admittedGraph)
+        throw new Error(`Document changed before ${fileSave ? 'Save' : 'render'} started`)
       const handler = commandHandlers[command]
       const run = () =>
         command === 'tool'
           ? handleTool(target, args, context)
           : handler
-            ? handler(target, args)
+            ? handler(target, args, context)
             : handleRPCFallback(target, command, args)
       // File lifecycle handlers already own their FIG queue; do not nest that queue.
       const result = ['undo', 'redo', 'export'].includes(command)
@@ -102,9 +115,21 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
         : await run()
       return responseWithTarget(result, target)
     }
-    return isRenderCommand(command, args)
-      ? admitRender(admittedGraph, context, prepareAndRun)
-      : prepareAndRun()
+    const run = () =>
+      isRenderCommand(command, args)
+        ? admitRender(admittedGraph, context, prepareAndRun)
+        : prepareAndRun()
+    return context && (isRenderCommand(command, args) || command === 'save_file')
+      ? runDesignOperation(
+          admittedGraph,
+          {
+            ...context,
+            onAccepted: () =>
+              context.onAccepted?.({ document_id: target.documentId, page_id: target.pageId })
+          },
+          run
+        )
+      : run()
   }
 
   async function handleRequest(
@@ -133,6 +158,15 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
 
     const rawArgs = isUnknownRecord(args) ? args : {}
     const target = resolveAutomationTarget(store, rawArgs)
+    if (command === 'get_operation_status' || command === 'cancel_operation') {
+      if (typeof rawArgs.document_id !== 'string' || typeof rawArgs.operation_id !== 'string')
+        throw new Error('Operation queries require exact document_id and operation_id')
+      const result =
+        command === 'get_operation_status'
+          ? getDesignOperation(target.store.graph, rawArgs.operation_id)
+          : cancelDesignOperation(target.store.graph, rawArgs.operation_id)
+      return responseWithTarget({ ok: true, result }, target)
+    }
     return handleTargetCommand(target, command, stripAutomationTargetArgs(rawArgs), context)
   }
 

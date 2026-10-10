@@ -11,7 +11,12 @@ import {
 } from '@open-pencil/kiwi/schema-runtime'
 import { orderKeyBetween } from '@open-pencil/scene-graph/order-keys'
 
-import { readFigArchiveParts, writeFigArchive, type FigImageEntry } from './archive'
+import {
+  readFigArchiveCanvasParts,
+  readFigArchiveParts,
+  writeFigArchive,
+  type FigImageEntry
+} from './archive'
 import { symbolDataOf, symbolOverridesOf } from './instance-overrides/types'
 
 /**
@@ -509,7 +514,7 @@ export function figArchiveComponentUsePages(
   bytes: ArrayBuffer,
   componentIds: readonly string[]
 ): string[] {
-  const parts = readFigArchiveParts(bytes)
+  const parts = readFigArchiveCanvasParts(bytes)
   const { codec, skipper } = archiveCodec(parts.schemaDeflated)
   const scanned = scanMessage(codec, skipper, parts.dataRaw, true)
   const records = scanned.records.map(

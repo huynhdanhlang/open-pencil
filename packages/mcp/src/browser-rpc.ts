@@ -20,6 +20,7 @@ type BrowserRPCBridgeOptions = {
   onConnectionChange: () => void
   /** How long an RPC waits for the app to register before failing with APP_NOT_CONNECTED. Defaults to 10 s. */
   appWaitTimeoutMs?: number
+  rpcTimeoutMs?: number
 }
 
 type ConnectionListener = (connected: boolean) => void
@@ -47,6 +48,15 @@ const ResponseMessage = v.looseObject({
   error: v.optional(v.string())
 })
 
+const AcceptedMessage = v.object({
+  type: v.literal('accepted'),
+  id: v.pipe(v.string(), v.nonEmpty()),
+  target: v.object({
+    document_id: v.pipe(v.string(), v.nonEmpty()),
+    page_id: v.pipe(v.string(), v.nonEmpty())
+  })
+})
+
 type BrowserMessage = v.InferOutput<typeof RequestMessage> | v.InferOutput<typeof ResponseMessage>
 
 function stripEnvelope(msg: BrowserMessage): Record<string, unknown> {
@@ -59,6 +69,27 @@ function responsePayload(result: unknown): RPCJSONObject {
     return result as RPCJSONObject
   }
   return { result }
+}
+
+function pendingOperationResponse(
+  id: string,
+  target: v.InferOutput<typeof AcceptedMessage>['target'],
+  connectionLost = false
+) {
+  return {
+    ok: true,
+    result: {
+      operation_id: id,
+      status: 'pending',
+      poll_tool: 'get_operation_status',
+      document_id: target.document_id,
+      ...(connectionLost ? { connection_lost: true } : {}),
+      message: connectionLost
+        ? 'Connection lost after admission; outcome unknown. Reconnect and retrieve the result; do not repeat the operation.'
+        : 'Operation is still running. Retrieve its result; do not repeat render or Save.'
+    },
+    target
+  }
 }
 
 function sendJSON(ws: WebSocket, body: Record<string, unknown>) {
@@ -85,9 +116,12 @@ function createSettler<T>(resolve: (value: T) => void, reject: (error: Error) =>
 export function createBrowserRPCBridge({
   authToken,
   onConnectionChange,
-  appWaitTimeoutMs = APP_WAIT_TIMEOUT
+  appWaitTimeoutMs = APP_WAIT_TIMEOUT,
+  rpcTimeoutMs = RPC_TIMEOUT
 }: BrowserRPCBridgeOptions) {
   const pending = new Map<string, PendingRequest>()
+  const accepted = new Map<string, v.InferOutput<typeof AcceptedMessage>['target']>()
+  const acknowledgeable = new Set<string>()
   const clients = new Set<WebSocket>()
   const connectionWaiters = new Set<PendingRequest>()
   // Track which WebSocket clients have authenticated via a valid
@@ -165,11 +199,15 @@ export function createBrowserRPCBridge({
   }
 
   function rejectAllPending(reason: string) {
-    for (const [, req] of pending) {
+    for (const [id, req] of pending) {
       clearTimeout(req.timer)
-      req.reject(new Error(reason))
+      const target = accepted.get(id)
+      if (target) req.resolve(pendingOperationResponse(id, target, true))
+      else req.reject(new Error(reason))
     }
     pending.clear()
+    accepted.clear()
+    acknowledgeable.clear()
   }
 
   function sendRegisterPrompt(ws: WebSocket) {
@@ -199,9 +237,23 @@ export function createBrowserRPCBridge({
           return
         }
         const id = randomUUID()
+        const longOperation =
+          body.command === 'save_file' ||
+          (body.command === 'tool' &&
+            body.args &&
+            typeof body.args === 'object' &&
+            Reflect.get(body.args, 'name') === 'render')
+        if (longOperation) acknowledgeable.add(id)
         const settle = createSettler(resolve, reject)
         const timer = setTimeout(() => {
           pending.delete(id)
+          acknowledgeable.delete(id)
+          const target = accepted.get(id)
+          accepted.delete(id)
+          if (target) {
+            settle.resolve(pendingOperationResponse(id, target))
+            return
+          }
           try {
             sendJSON(ws, { type: 'cancel', id })
           } catch {
@@ -217,15 +269,22 @@ export function createBrowserRPCBridge({
               `RPC timeout (${Math.round(RPC_TIMEOUT / 1000)}s)${render ? '; queued render cancelled; an already-started render may finish. Inspect get_runtime_status before retrying.' : ''}`
             )
           )
-        }, RPC_TIMEOUT)
+        }, rpcTimeoutMs)
         pending.set(id, { resolve: settle.resolve, reject: settle.reject, timer })
         try {
           ws.send(
-            JSON.stringify({ ...body, type: 'request', id, deadlineAt: Date.now() + RPC_TIMEOUT })
+            JSON.stringify({
+              ...body,
+              type: 'request',
+              id,
+              deadlineAt: Date.now() + (longOperation ? 180_000 : rpcTimeoutMs)
+            })
           )
         } catch (e) {
           clearTimeout(timer)
           pending.delete(id)
+          accepted.delete(id)
+          acknowledgeable.delete(id)
           if (!settle.isSettled()) {
             settle.reject(e instanceof Error ? e : new Error(String(e)))
           }
@@ -285,6 +344,8 @@ export function createBrowserRPCBridge({
     const req = pending.get(msg.id)
     if (!req) return
     pending.delete(msg.id)
+    accepted.delete(msg.id)
+    acknowledgeable.delete(msg.id)
     clearTimeout(req.timer)
     if (msg.ok === false) {
       req.reject(new Error(msg.error ?? 'RPC failed'))
@@ -335,6 +396,16 @@ export function createBrowserRPCBridge({
     // sending request messages over the WebSocket directly.
     if (!authenticatedClients.has(ws)) {
       ws.close()
+      return
+    }
+    const acknowledgement = v.safeParse(AcceptedMessage, msg)
+    if (acknowledgement.success) {
+      if (
+        ws === browserWs &&
+        pending.has(acknowledgement.output.id) &&
+        acknowledgeable.has(acknowledgement.output.id)
+      )
+        accepted.set(acknowledgement.output.id, acknowledgement.output.target)
       return
     }
     const request = v.safeParse(RequestMessage, msg)
