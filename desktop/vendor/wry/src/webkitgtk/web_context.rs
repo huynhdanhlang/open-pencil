@@ -29,7 +29,7 @@ fn app_memory_pressure_settings() -> Option<MemoryPressureSettings> {
     Err(error) => panic!("invalid OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB: {error}"),
   };
   let limit: u32 = value.parse().expect("OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB must be an integer");
-  assert!((1024..=16384).contains(&limit), "OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB must be 1024..=16384 MiB");
+  assert!((1024..=20480).contains(&limit), "OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB must be 1024..=20480 MiB");
   let mut settings = MemoryPressureSettings::new();
   settings.set_memory_limit(limit);
   // A nonzero fraction overrides WebKit's separate inactive-process 4 GiB rule.
