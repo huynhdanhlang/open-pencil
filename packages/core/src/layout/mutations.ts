@@ -2,10 +2,19 @@ import {
   collectSceneMutation,
   mutationLayoutScopeIds,
   type SceneGraph,
+  type SceneNode,
   type SceneMutationImpact
 } from '@open-pencil/scene-graph'
 
 import { computeAllLayouts, computeLayout } from '#core/layout'
+
+function hasEditedImportedInstanceSize(node: SceneNode): boolean {
+  return (
+    node.type === 'INSTANCE' &&
+    node.source.format === 'fig' &&
+    node.source.editedFields.some((field) => field === 'width' || field === 'height')
+  )
+}
 
 export function createLayoutRunner(getGraph: () => SceneGraph) {
   function runLayoutForNode(id: string, reflowImportedPositions = false) {
@@ -19,21 +28,18 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
     }
     // Initial import keeps baked instance geometry. An explicit size edit must
     // reflow that instance's auto-layout instead of retaining the imported box.
-    if (
-      node.type === 'INSTANCE' &&
-      node.source.format === 'fig' &&
-      node.layoutMode !== 'NONE' &&
-      node.source.editedFields.some((field) => field === 'width' || field === 'height')
-    )
-      computeLayout(graph, id)
+    if (node.layoutMode !== 'NONE' && hasEditedImportedInstanceSize(node)) computeLayout(graph, id)
 
     let parent = node.parentId ? graph.getNode(node.parentId) : undefined
     while (parent) {
-      if (
-        parent.layoutMode !== 'NONE' &&
-        !(reflowImportedPositions && parent.type === 'INSTANCE' && parent.source.format === 'fig')
-      ) {
-        computeLayout(graph, parent.id, reflowImportedPositions)
+      if (parent.layoutMode !== 'NONE') {
+        if (
+          reflowImportedPositions &&
+          parent.type === 'INSTANCE' &&
+          parent.source.format === 'fig'
+        ) {
+          if (hasEditedImportedInstanceSize(parent)) computeLayout(graph, parent.id)
+        } else computeLayout(graph, parent.id, reflowImportedPositions)
       }
       parent = parent.parentId ? graph.getNode(parent.parentId) : undefined
     }

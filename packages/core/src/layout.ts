@@ -21,12 +21,15 @@ import {
   usesGeneratedParentSize
 } from './layout/apply'
 import {
+  asFlatLeaf,
+  asLaidOutIn,
   fillKeepsSizeInHuggingParent,
+  heldHugAxis,
   ownAxisSizing,
   setCrossAxisSizing,
   setMainAxisSizing
 } from './layout/axis-sizing'
-import { usesDetachedDerivedLayout } from './layout/derived'
+import { keepsSavedLayout, usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import { buildGridTree, createGridChildNode } from './layout/grid'
 import { createLayoutRunner } from './layout/mutations'
@@ -158,10 +161,13 @@ function buildYogaTree(
   const height = retainedFrameLayoutSize(graph, frame, 'height')
   if (width !== undefined) root.setWidth(width)
   if (height !== undefined) root.setHeight(height)
+  const heldAxis = heldHugAxis(graph, frame)
+  if (heldAxis === 'width') root.setWidth(frame.width)
+  if (heldAxis === 'height') root.setHeight(frame.height)
 
   configureFlexContainer(root, frame, direction)
 
-  const children = graph.getChildren(frame.id)
+  const children = graph.getChildren(frame.id).map((child) => asLaidOutIn(graph, child, frame))
   for (const child of children) {
     const yogaChild = createYogaNode()
 
@@ -312,6 +318,7 @@ function derivedMainAxisFitsParent(
   child: SceneNode,
   axis: 'width' | 'height'
 ): boolean {
+  if (!keepsSavedLayout(graph, parent)) return false
   const children = graph
     .getChildren(parent.id)
     .filter((candidate) => candidate.visible && candidate.layoutPositioning !== 'ABSOLUTE')
@@ -375,7 +382,7 @@ function configureChildAsAutoLayout(
   const selfAlign = mapAlignSelf(child.layoutAlignSelf)
   if (selfAlign != null) yogaChild.setAlignSelf(selfAlign)
 
-  if (usesDetachedDerivedLayout(child)) {
+  if (usesDetachedDerivedLayout(graph, child)) {
     // The imported size is what the child's own hug produced, whether or not it also fills.
     const derived = child.derivedLayout
     if (
@@ -393,8 +400,11 @@ function configureChildAsAutoLayout(
   }
 
   configureFlexContainer(yogaChild, child, direction)
+  const heldAxis = heldHugAxis(graph, child)
+  if (heldAxis === 'width' && widthSizing === 'HUG') yogaChild.setWidth(child.width)
+  if (heldAxis === 'height' && heightSizing === 'HUG') yogaChild.setHeight(child.height)
 
-  const grandchildren = graph.getChildren(child.id)
+  const grandchildren = graph.getChildren(child.id).map((gc) => asLaidOutIn(graph, gc, child))
   for (const gc of grandchildren) {
     const yogaGC = createYogaNode()
     if (gc.layoutPositioning === 'ABSOLUTE') {
@@ -484,10 +494,11 @@ function configureTextLeafWithoutMeasurer(
 
 function configureChildAsLeaf(
   yogaChild: YogaNode,
-  child: SceneNode,
+  node: SceneNode,
   parent: SceneNode,
   graph: SceneGraph
 ): void {
+  const child = asFlatLeaf(node, parent)
   const isRow = parent.layoutMode === 'HORIZONTAL'
   const selfOverride = child.layoutAlignSelf !== 'AUTO'
   const stretchCross = selfOverride

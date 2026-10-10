@@ -56,7 +56,9 @@ export function useDocumentFontStatus() {
         })
       )
       editor.renderer?.invalidateAllPictures()
-      computeAllLayouts(editor.graph, editor.state.currentPageId)
+      editor.graph.applyDerivedLayoutDuring(() =>
+        computeAllLayouts(editor.graph, editor.state.currentPageId)
+      )
       preparation.update({ phase: 'preparing-render' })
       editor.requestRender()
       if (editor.renderer) {

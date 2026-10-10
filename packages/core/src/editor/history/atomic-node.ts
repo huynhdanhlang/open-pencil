@@ -4,6 +4,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 import { variableBindingOwner } from '@open-pencil/scene-graph/variables'
 
 import type { FigmaAPI } from '#core/figma-api'
+import { resetHugLayoutSize } from '#core/layout/apply'
 import { parseToolArgs, type ToolDef } from '#core/tools/schema'
 import { bindVariable } from '#core/tools/variables/bindings'
 import { unbindVariable } from '#core/tools/variables/unbind'
@@ -101,6 +102,7 @@ export function executeAtomicNodeTool(
             ...entry.node.source.editedFields.filter((field) => !changedMarkers.has(field)),
             ...entry.editedFields[direction].filter((field) => changedMarkers.has(field))
           ]
+          resetHugLayoutSize(entry.node)
         }
       })
       editor.runLayoutForNode(id)
