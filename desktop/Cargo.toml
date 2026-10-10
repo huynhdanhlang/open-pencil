@@ -50,6 +50,9 @@ security-framework = "3"
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFBase", "CFDictionary", "CFSet", "CFString", "CFURL"] }
 objc2-core-text = { version = "0.3.2", default-features = false, features = ["std", "CTFontDescriptor"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 

@@ -367,6 +367,7 @@ pub fn run() {
             handle_menu_event(app, event.id().0.as_str());
         })
         .setup(|app| {
+            window::install_renderer_recovery(app.handle())?;
             queue_open_paths(app.handle(), startup_open_paths());
 
             use tauri_plugin_deep_link::DeepLinkExt;
@@ -412,6 +413,9 @@ pub fn run() {
                 api, code: None, ..
             } if !_app.webview_windows().is_empty() => {
                 api.prevent_exit();
+                if window::handle_stopped_renderer_exit(_app) {
+                    return;
+                }
                 // The frontend asks about unsaved documents and exits when they agree.
                 let _ = _app.emit("menu-event", "quit");
             }

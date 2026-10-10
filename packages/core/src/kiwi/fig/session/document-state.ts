@@ -63,13 +63,15 @@ export function readerDiagnostics(graph: SceneGraph): readonly FigReaderDiagnost
 export function isReaderPagePending(graph: SceneGraph, pageId: string): boolean {
   const state = states.get(graph)
   if (!state || state.complete) return false
-  const checkpoint = state.session?.checkpoint() ?? state.checkpoint
+  const session = state.session
+  if (session) {
+    // Query the live reader's mapping; checkpoint() clones all component paths.
+    return session.isGraphPagePending(pageId)
+  }
+  const checkpoint = state.checkpoint
   const sourceId = checkpoint?.sources.find(([, graphId]) => graphId === pageId)?.[0]
   if (!sourceId) return false
-  const session = state.session
-  return session
-    ? session.pages.some((page) => page.id === sourceId) && !session.loadedPageIds.has(sourceId)
-    : !checkpoint.loadedPageIds.includes(sourceId)
+  return !checkpoint.loadedPageIds.includes(sourceId)
 }
 
 /** Where the reader stands: which records became which layers, and which pages it loaded. */

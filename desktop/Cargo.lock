@@ -3279,6 +3279,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-wdio-webdriver",
  "url",
+ "webkit2gtk",
  "which",
  "zip 2.4.2",
  "zstd",

@@ -151,6 +151,14 @@ export function createFigDocumentSession(
       } satisfies FigSessionCheckpoint)
     },
     graph: state.graph,
+    isGraphPagePending(graphPageId: string): boolean {
+      // Match checkpoint.sources' first mapping, including resumed alias mappings.
+      for (const [sourceId, graphId] of state.sources) {
+        if (graphId === graphPageId)
+          return archive.reader.pages.some((page) => page.id === sourceId) && !loaded.has(sourceId)
+      }
+      return false
+    },
     graphPageId(sourcePageId: string): string | undefined {
       return archive.reader.pages.some((page) => page.id === sourcePageId)
         ? state.sources.get(sourcePageId)
