@@ -173,6 +173,8 @@ openpencil eval design.fig -o modified.fig -c '...'
 echo 'figma.currentPage.children.map(n => n.name)' | openpencil eval design.fig --stdin
 ```
 
+On matched builds, text `lineHeight` and `letterSpacing` read and write Figma's `{ unit, value }` objects. Percent values resolve against the font size when assigned; line height also accepts `{ unit: "AUTO" }`. Earlier bare pixel numbers remain accepted, and `null` retains automatic line height. This is an API contract, not a reason to enable disabled scripting.
+
 Next to `figma`, scripts get `openpencil`: what OpenPencil adds to the Figma API, in its style. A main component can behave as a Reka UI control, by its own property and slot names:
 
 ```bash
@@ -217,7 +219,10 @@ openpencil documents close --document-id tab-123 --save   # or --discard; fails 
 openpencil undo --document-id tab-123                  # also: redo
 openpencil settings get --json
 openpencil settings set editing.snapping.pixelGrid false
+openpencil settings set appearance.accent '{"kind":"preset","preset":"green"}'
 ```
+
+Matched builds support `appearance.accent` as a preset (`blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`) or `{ "kind": "custom", "color": "#FF6600" }`. This changes editor interface and selection colors; it does not recolor document artwork. Preserve the owner's preferences during verification.
 
 `tool` exposes every MCP tool, so the CLI is never limited to its dedicated commands:
 

@@ -18,11 +18,13 @@ interface UndoBatch {
 }
 
 const DEFAULT_HISTORY_LIMIT = 200
+type HistoryDirection = 'undo' | 'redo'
 
 export class UndoManager {
   private undoStack: UndoEntry[] = []
   private redoStack: UndoEntry[] = []
   private batches: UndoBatch[] = []
+  private readonly settlers = new Set<(direction: HistoryDirection) => void>()
   private readonly limit: number
   private readonly onChange: (() => void) | undefined
 
@@ -58,11 +60,26 @@ export class UndoManager {
     this.pushUndoEntry(entry)
   }
 
+  /**
+   * Registers a hook that commits an edit still being coalesced, such as a run of picker changes.
+   * Undo and redo run every hook first, so they act on the newest change.
+   */
+  onBeforeHistory(settle: (direction: HistoryDirection) => void): () => void {
+    this.settlers.add(settle)
+    return () => this.settlers.delete(settle)
+  }
+
+  private settle(direction: HistoryDirection) {
+    for (const settle of this.settlers) settle(direction)
+  }
+
   undo(): string | null {
+    this.settle('undo')
     return this.replay(this.undoStack, this.redoStack, 'inverse')
   }
 
   redo(): string | null {
+    this.settle('redo')
     return this.replay(this.redoStack, this.undoStack, 'forward')
   }
 
@@ -123,8 +140,10 @@ export class UndoManager {
     }
   }
 
+  /** Committed history, or changes in an open batch that a settling hook commits first. */
   get canUndo(): boolean {
-    return this.undoStack.length > 0
+    if (this.undoStack.length > 0) return true
+    return this.settlers.size > 0 && this.batches.some((batch) => batch.entries.length > 0)
   }
 
   get canRedo(): boolean {

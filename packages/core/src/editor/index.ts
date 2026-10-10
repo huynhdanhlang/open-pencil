@@ -8,6 +8,14 @@ export { DEFAULT_SNAPPING_PREFERENCES } from './preferences'
 export type { SnappingPreferences } from './preferences'
 export { createDefaultEditorSharedState } from './state/shared'
 export { editedGradient, editedGradientLayout } from './gradient-edit'
+export type { SelectionSpacing } from './alignment'
+export {
+  refreshSelectionColor,
+  replaceSelectionColor,
+  selectionColors,
+  selectionColorsShown,
+  type SelectionColor
+} from './selection/colors'
 export {
   copyEditorViewState,
   createDefaultEditorViewState,
@@ -50,6 +58,7 @@ export type {
   EditorSharedState,
   EditorViewState,
   FigmaClipboardImageResolver,
+  CornerRadiusHover,
   GradientEdit,
   Tool
 } from './types'
