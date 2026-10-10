@@ -159,7 +159,11 @@ describe('BrowserRpcBridge reconnection', () => {
     })
     try {
       expect(
-        await bridge.sendRPC({ command: 'tool', args: { name: 'render', document_id: 'owned' } })
+        await bridge.sendRPC({
+          command: 'tool',
+          operation_receipts: true,
+          args: { name: 'render', document_id: 'owned' }
+        })
       ).toMatchObject({
         ok: true,
         result: {
@@ -224,11 +228,44 @@ describe('BrowserRpcBridge reconnection', () => {
     })
     try {
       expect(
-        await bridge.sendRPC({ command: 'save_file', args: { document_id: 'owned' } })
+        await bridge.sendRPC({
+          command: 'save_file',
+          operation_receipts: true,
+          args: { document_id: 'owned' }
+        })
       ).toMatchObject({
         ok: true,
         result: { status: 'pending', operation_id: id, connection_lost: true }
       })
+    } finally {
+      bridge.close()
+    }
+  })
+
+  test('legacy Save clients cannot mistake a pending receipt for a successful Save', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      rpcTimeoutMs: 30
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+    pair.clientWs.on('message', (data) => {
+      const request = JSON.parse(data.toString())
+      if (request.type === 'request')
+        pair.clientWs.send(
+          JSON.stringify({
+            type: 'accepted',
+            id: request.id,
+            target: { document_id: 'owned', page_id: 'page' }
+          })
+        )
+    })
+    try {
+      await expect(
+        bridge.sendRPC({ command: 'save_file', args: { document_id: 'owned' } })
+      ).rejects.toThrow('RPC timeout')
     } finally {
       bridge.close()
     }

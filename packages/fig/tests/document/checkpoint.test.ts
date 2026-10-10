@@ -36,6 +36,27 @@ test('compact checkpoint reconnects source paths without overwriting live edits'
   expect(checkpoint.nodes[1].path).toEqual(['1:2'])
 })
 
+test('a resumed deleted descendant can be checkpointed and resumed again', () => {
+  const { graph, occurrence, materialized, checkpoint } = setup()
+  graph.deleteNode(graph.getChildren(materialized.root.id)[0]!.id)
+  const restored = restoreComponentCheckpoint(graph, occurrence, checkpoint)
+  const next = checkpointComponent(restored)
+  expect(next.nodes).toHaveLength(1)
+  const again = restoreComponentCheckpoint(graph, occurrence, next)
+  expect(again.materialized.nodes.size).toBe(1)
+  expect(graph.getChildren(again.materialized.root.id)).toEqual([])
+  again.materialized.nodes.delete(occurrence)
+  expect(() => checkpointComponent(again)).toThrow('Missing checkpoint occurrence')
+})
+
+test('omitted children cannot bypass source-path uniqueness validation', () => {
+  const { occurrence, materialized } = setup()
+  occurrence.children.push({ ...occurrence.children[0]! })
+  expect(() => checkpointComponent({ occurrence, materialized })).toThrow(
+    'Ambiguous checkpoint child'
+  )
+})
+
 for (const corruption of ['missing', 'duplicate', 'path', 'component', 'root'] as const) {
   test(`reports ${corruption} checkpoint handling before graph mutation`, () => {
     const { graph, occurrence, checkpoint } = setup()

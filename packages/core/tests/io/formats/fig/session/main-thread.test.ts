@@ -129,6 +129,51 @@ test('later saves keep internal content they never load', async () => {
   releaseFigPopulationWorker(reopened)
 })
 
+for (const removed of ['component', 'child'] as const) {
+  test(`retired host reader preserves ${removed} deletion when hidden resources resume for Save`, async () => {
+    await initCodec()
+    const source = new SceneGraph()
+    const component = source.createNode('COMPONENT', source.getPages()[0].id, {
+      name: 'Owned component'
+    })
+    source.createNode('RECTANGLE', component.id, { name: 'Removed child' })
+    const internal = source.addPage('Hidden')
+    source.updateNode(internal.id, { internalOnly: true })
+    source.createNode('RECTANGLE', internal.id, { name: 'Retained hidden resource' })
+    const graph = await parseFigFile((await exportFigFile(source)).slice().buffer as ArrayBuffer, {
+      populate: 'all'
+    })
+    const live = [...graph.nodes.values()].find((node) => node.name === 'Owned component')!
+    graph.deleteNode(removed === 'component' ? live.id : graph.getChildren(live.id)[0]!.id)
+    const before = snapshotNodes(graph)
+    const saved = await exportFigFile(graph)
+    expect(new Map(graph.nodes)).toEqual(before)
+    const hidden = graph.getPages(true).find((page) => page.internalOnly)!
+    expect(populateFigPage(graph, hidden.id)).toBe(true)
+    expect([...graph.nodes.values()].some((node) => node.name === 'Removed child')).toBe(false)
+    expect([...graph.nodes.values()].some((node) => node.name === 'Owned component')).toBe(
+      removed !== 'component'
+    )
+    expect(graph.getChildren(hidden.id).map((node) => node.name)).toContain(
+      'Retained hidden resource'
+    )
+    graph.updateNode(graph.getPages()[0]!.id, { name: 'Second owned Save' })
+    const second = await parseFigFile((await exportFigFile(graph)).slice().buffer as ArrayBuffer)
+    expect([...second.nodes.values()].some((node) => node.name === 'Removed child')).toBe(false)
+    expect([...second.nodes.values()].some((node) => node.name === 'Owned component')).toBe(
+      removed !== 'component'
+    )
+    releaseFigPopulationWorker(second)
+    const reopened = await parseFigFile(saved.slice().buffer as ArrayBuffer)
+    expect([...reopened.nodes.values()].some((node) => node.name === 'Removed child')).toBe(false)
+    expect([...reopened.nodes.values()].some((node) => node.name === 'Owned component')).toBe(
+      removed !== 'component'
+    )
+    releaseFigPopulationWorker(graph)
+    releaseFigPopulationWorker(reopened)
+  })
+}
+
 // Figma keeps property defaults that name a deleted component; so does an edited export.
 test('export tolerates a deleted internal default without changing what the document held', async () => {
   const graph = await parseFigFile(await fixture(true), { populate: 'first-page' })

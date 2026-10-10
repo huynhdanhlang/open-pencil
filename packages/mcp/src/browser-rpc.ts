@@ -237,12 +237,15 @@ export function createBrowserRPCBridge({
           return
         }
         const id = randomUUID()
+        // Old stdio registrations assume every ok Save reply means saved:true.
+        // Receipts therefore require an explicit capable-client opt-in.
         const longOperation =
-          body.command === 'save_file' ||
-          (body.command === 'tool' &&
-            body.args &&
-            typeof body.args === 'object' &&
-            Reflect.get(body.args, 'name') === 'render')
+          body.operation_receipts === true &&
+          (body.command === 'save_file' ||
+            (body.command === 'tool' &&
+              body.args &&
+              typeof body.args === 'object' &&
+              Reflect.get(body.args, 'name') === 'render'))
         if (longOperation) acknowledgeable.add(id)
         const settle = createSettler(resolve, reject)
         const timer = setTimeout(() => {

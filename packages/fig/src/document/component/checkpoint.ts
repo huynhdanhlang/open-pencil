@@ -19,8 +19,11 @@ export function checkpointComponent(
     nodes.push({ path, nodeId: node.id, mainComponentId: occurrence.mainComponentId })
     const ids = new Set<string>()
     for (const child of occurrence.children) {
+      // Resume deliberately omits deleted loaded descendants. Snapshot the same
+      // materialized forest, rather than requiring the obsolete source child.
       if (ids.has(child.sourceId)) throw new Error(`Ambiguous checkpoint child ${child.sourceId}`)
       ids.add(child.sourceId)
+      if (!component.materialized.nodes.has(child)) continue
       visit(child, [...path, child.sourceId])
     }
   }

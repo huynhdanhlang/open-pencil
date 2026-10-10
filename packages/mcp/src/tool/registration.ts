@@ -131,6 +131,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
           }
           const result = await sendRPC({
             command: 'tool',
+            ...(def.name === 'render' ? { operation_receipts: true } : {}),
             args: {
               ...target,
               name: def.name,
@@ -264,6 +265,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
         const { target } = splitAutomationTarget(args)
         const result = await sendRPC({
           command: 'save_file',
+          operation_receipts: true,
           args: { ...target, path: safePath?.realPath }
         })
         const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }

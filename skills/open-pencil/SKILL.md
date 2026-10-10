@@ -410,6 +410,8 @@ During performance investigation, avoid loading a second large document into the
 - **`list_documents` / `activate_document`** — discover open tabs and show the one you worked on.
 - **`agent_dispatch` / `agent_status` / `agent_cancel`** — optional bounded, read-only Codex design review with durable receipts and feedback through a linked new task.
 
+Receipt support requires the updated MCP client as well as the editor/bridge. Old long-lived stdio clients keep ordinary timeout behavior so they cannot misreport a pending Save as `saved: true`. Discover `get_operation_status`/`cancel_operation` before relying on receipts; use a fresh configured client when those tools are absent, without changing authentication or filesystem scope.
+
 ## JSX Rendering
 
 Read [Design authoring](references/design-authoring.md) before creating or modifying JSX designs. This bundled reference is generated from Core's authoring guidance, tested examples, and renderer metadata—the same reference used by chat and codegen prompts.
@@ -418,7 +420,7 @@ On matched builds, authored insertion/replacement into auto-layout reflows direc
 
 On matched native builds, the first semantic edit retires the obsolete FIG population reader immediately. Its shared worker keeps archive operations for Save; pending page loads fall back against the edited graph. `populationWorkerRetained: false` indicates the population lane retired, not that all worker, archive or decoded host memory was freed. Preserve Undo, recovery and original archive ownership; do not force worker termination to save memory.
 
-On matched builds, loading every visible archive page also retires the decoded population mirror, even if hidden resource pages remain. Hidden-page recovery keeps the original bytes and final checkpoint; only an all-archive-pages completion receipt releases that recovery state. Archive patching stays on the shared worker. This removes a retained reader owner, but does not guarantee immediate WebKit RSS reduction or eliminate allocation peaks during population, Save or render.
+On matched builds, loading every visible archive page retires both the worker population mirror and a direct/fallback host reader's decoded archive, even if hidden resource pages remain. Hidden recovery keeps original bytes and the final checkpoint; only all-archive-pages completion releases those bytes. Host-owned hidden resources resume through the same import boundary; worker-only recovery does not start a competing host reader. Deleted loaded component descendants remain omitted in both resumed and recaptured checkpoints. Archive patching keeps its archive owner. This removes retained reader owners, but does not guarantee immediate WebKit RSS reduction or eliminate allocation peaks during population, Save or render.
 
 Matched workers publish page-population deltas through the MessagePort snapshot directly, avoiding an extra full-response copy before transport. Direct reader/export callers still receive owned copies; imported source buffers are never transferred or detached. This reduces one allocation phase, not all document hydration, layout, rendering or timeout costs. A timed-out request may still complete: inspect the exact document status before retrying.
 

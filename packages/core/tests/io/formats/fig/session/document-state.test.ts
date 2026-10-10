@@ -5,8 +5,8 @@ import { inertPopulationWorker } from '#core-tests/helpers/fig/population-worker
 import { createEditor } from '@open-pencil/core/editor'
 import { exportFigFile } from '@open-pencil/core/io'
 import { initCodec } from '@open-pencil/core/kiwi'
-import { SceneGraph } from '@open-pencil/scene-graph'
 import { createFigDocumentSession } from '@open-pencil/fig'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { serializeSceneGraph, deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import {
@@ -20,10 +20,46 @@ import {
   registerReaderSession,
   isReaderPagePending,
   updateReaderRecovery,
-  recoverReaderPage
+  recoverReaderPage,
+  readerCheckpoint,
+  readerExportState,
+  hasPendingReaderPages
 } from '#core/kiwi/fig/session/document-state'
 import type { FigSessionPopulateRequest, FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 import { openReaderSession } from '#core/kiwi/fig/session/reader'
+
+test('visible-complete host reader releases decoded records but preserves hidden recovery', async () => {
+  await initCodec()
+  const source = new SceneGraph()
+  source.createNode('RECTANGLE', source.getPages()[0].id, { name: 'Visible' })
+  const hidden = source.addPage('Hidden resources')
+  source.updateNode(hidden.id, { internalOnly: true })
+  source.createNode('RECTANGLE', hidden.id, { name: 'Hidden survives', width: 37 })
+  const buffer = (await exportFigFile(source)).slice().buffer as ArrayBuffer
+  const reader = openReaderSession(buffer, 'all')
+  const checkpoint = spyOn(reader.session, 'checkpoint')
+  try {
+    registerReaderSession(buffer, reader.session)
+    checkpoint.mockClear()
+    const graph = reader.graph
+    const hiddenPage = graph.getPages(true).find((page) => page.internalOnly)!
+    const finalVisible = readerCheckpoint(graph)
+    expect(readerCheckpoint(graph)).toBe(finalVisible)
+    expect(checkpoint).not.toHaveBeenCalled()
+    expect(hasPendingReaderPages(graph)).toBe(true)
+    expect(readerExportState(graph)?.bytes).toBeDefined()
+    expect(isReaderPagePending(graph, hiddenPage.id)).toBe(true)
+    expect(recoverReaderPage(graph, hiddenPage.id)).toBe(true)
+    expect(graph.getChildren(hiddenPage.id).some((node) => node.name === 'Hidden survives')).toBe(
+      true
+    )
+    expect(hasPendingReaderPages(graph)).toBe(false)
+    expect(readerExportState(graph)).toBeUndefined()
+  } finally {
+    checkpoint.mockRestore()
+    releaseFigPopulationWorker(reader.graph)
+  }
+})
 
 test('pending page checks do not copy live reader checkpoints', async () => {
   await initCodec()
@@ -56,10 +92,14 @@ test('pending page checks do not copy live reader checkpoints', async () => {
     expect(isReaderPagePending(graph, pages[2].graph)).toBe(true)
     expect(checkpoint).not.toHaveBeenCalled()
     const saved = capture()
-    const resumed = createFigDocumentSession(buffer, {}, {
-      graph,
-      checkpoint: { ...saved, sources: [['non-page-alias', pages[2].graph], ...saved.sources] }
-    })
+    const resumed = createFigDocumentSession(
+      buffer,
+      {},
+      {
+        graph,
+        checkpoint: { ...saved, sources: [['non-page-alias', pages[2].graph], ...saved.sources] }
+      }
+    )
     registerReaderSession(buffer, resumed)
     // The old predicate picks the first source alias, even when it is not a page.
     expect(isReaderPagePending(graph, pages[2].graph)).toBe(false)
