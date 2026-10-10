@@ -121,7 +121,7 @@ export function createDocumentSourceActions({
     state,
     version: changes.capture,
     isEnabled: () => recoveryEnabled.value,
-    buildFigFile: () => figBuildQueue.run(buildRecoveryFigFile)
+    buildFigFile: (signal) => figBuildQueue.run(buildRecoveryFigFile, signal)
   })
 
   async function markProtectedVersion(version: number) {
@@ -226,12 +226,16 @@ export function createDocumentSourceActions({
     admission: DocumentSaveAdmission
   ) {
     const revision = changes.capture()
-    return figBuildQueue.run(() => {
-      // A blocked event loop can delay the transport's abort timer.
-      if (admission.deadlineAt !== undefined && Date.now() >= admission.deadlineAt)
-        throw new Error('Request expired before Save started; no file write was started')
-      return run(revision)
-    }, admission.signal)
+    return saveAndTrack(
+      () =>
+        figBuildQueue.run(() => {
+          // A blocked event loop can delay the transport's abort timer.
+          if (admission.deadlineAt !== undefined && Date.now() >= admission.deadlineAt)
+            throw new Error('Request expired before Save started; no file write was started')
+          return run(revision)
+        }, admission.signal),
+      revision
+    )
   }
 
   /**
@@ -240,8 +244,7 @@ export function createDocumentSourceActions({
    */
   async function saveToNewTarget(
     planTarget: () => void,
-    save = saveFigFile,
-    revision?: number
+    save = () => saveAndTrack(saveFigFile)
   ): Promise<boolean> {
     if (retargeting) return false
     retargeting = true
@@ -262,7 +265,7 @@ export function createDocumentSourceActions({
     }
     planTarget()
     try {
-      const saved = await saveAndTrack(save, revision)
+      const saved = await save()
       if (!saved) restore()
       return saved
     } catch (error) {
@@ -280,7 +283,7 @@ export function createDocumentSourceActions({
     const plan = () => setPlannedFilePath(path)
     const saved = admission
       ? await admitSave(
-          (revision) => saveToNewTarget(plan, () => saveFigFileAdmitted(revision), revision),
+          (revision) => saveToNewTarget(plan, () => saveFigFileAdmitted(revision)),
           admission
         )
       : await saveToNewTarget(plan)
@@ -328,10 +331,7 @@ export function createDocumentSourceActions({
       figBuildQueue.run(run, signal),
     saveFigFile: (admission?: DocumentSaveAdmission) =>
       admission
-        ? admitSave(
-            (revision) => saveAndTrack(() => saveFigFileAdmitted(revision), revision),
-            admission
-          )
+        ? admitSave((revision) => saveFigFileAdmitted(revision), admission)
         : saveAndTrack(saveFigFile),
     saveFigFileAs: () => saveAndTrack(saveFigFileAs),
     hasUnsavedChanges: changes.hasUnsavedChanges,

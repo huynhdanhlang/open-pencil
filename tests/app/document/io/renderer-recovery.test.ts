@@ -5,11 +5,75 @@ import { parseFigFile } from '@open-pencil/core/io/formats/fig'
 
 import { createDocumentSourceActions, createDocumentSourceState } from '@/app/document/io/source'
 import { getRecoveryStore } from '@/app/document/recovery'
+import { setRecoveryRuntimeOverride } from '@/app/document/recovery/preferences'
 import { toast } from '@/app/shell/ui'
 
 import { fontManager } from '#core/text/fonts'
 
 import { asDouble } from '#tests/helpers/doubles'
+
+test('admitted Save releases the FIG lane before recovery cleanup and preserves newer edits', async () => {
+  setRecoveryRuntimeOverride(true)
+  const editor = createEditor()
+  const state = Object.assign(editor.state, {
+    documentName: 'Owned recovery race',
+    autosaveEnabled: false
+  })
+  const source = createDocumentSourceState()
+  let recoveryPending: Promise<void> | undefined
+  let written = new Uint8Array()
+  let actions!: ReturnType<typeof createDocumentSourceActions>
+  source.setFileHandle(
+    asDouble<FileSystemFileHandle>({
+      name: 'Owned.fig',
+      createWritable: async () => ({
+        write: async (data: Uint8Array) => {
+          written = data.slice()
+          editor.graph.createNode('RECTANGLE', state.currentPageId, { name: 'Newer draft' })
+          recoveryPending = actions.persistRecoveryNow()
+          await Promise.resolve()
+          await Promise.resolve()
+        },
+        close: async () => undefined
+      })
+    })
+  )
+  actions = createDocumentSourceActions({
+    ...source,
+    editor,
+    state,
+    stopWatchingFile: () => undefined,
+    startWatchingFile: async () => undefined,
+    getRenderer: () => null
+  })
+  editor.graph.createNode('RECTANGLE', state.currentPageId, { name: 'Saved revision' })
+  const revision = actions.getPersistenceStatus().contentRevision
+  const pending = actions.saveFigFile({ signal: new AbortController().signal })
+  try {
+    expect(
+      await Promise.race([
+        pending,
+        new Promise((resolve) => setTimeout(() => resolve('blocked'), 100))
+      ])
+    ).toBe(true)
+    await recoveryPending
+    expect(source.getSavedVersion()).toBe(revision)
+    expect(actions.hasUnsavedChanges()).toBe(true)
+    const saved = await parseFigFile(written.slice().buffer)
+    expect([...saved.nodes.values()].some((node) => node.name === 'Saved revision')).toBe(true)
+    expect([...saved.nodes.values()].some((node) => node.name === 'Newer draft')).toBe(false)
+    expect(actions.getPersistenceStatus().recovery.building).toBe(false)
+    const draft = await getRecoveryStore().read(actions.getRecoveryId())
+    expect(draft).not.toBeNull()
+    const recovered = await parseFigFile(draft!.figBytes.slice().buffer)
+    expect([...recovered.nodes.values()].some((node) => node.name === 'Newer draft')).toBe(true)
+  } finally {
+    actions.disposeDocumentIO()
+    await Promise.allSettled([pending, recoveryPending])
+    editor.dispose()
+    setRecoveryRuntimeOverride(null)
+  }
+})
 
 test('expired queued Save never builds, retargets or writes; a started Save finishes', async () => {
   const editor = createEditor()

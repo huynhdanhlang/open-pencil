@@ -412,6 +412,8 @@ During performance investigation, avoid loading a second large document into the
 
 Receipt support requires the updated MCP client as well as the editor/bridge. Old long-lived stdio clients keep ordinary timeout behavior so they cannot misreport a pending Save as `saved: true`. Discover `get_operation_status`/`cancel_operation` before relying on receipts; use a fresh configured client when those tools are absent, without changing authentication or filesystem scope.
 
+After a durable write, Save releases the FIG lane before awaiting recovery cleanup. Superseded queued recovery builds are cancelled before allocating another full FIG; started work settles, and newer unsaved drafts remain protected. A pending Save can already have written the file—retrieve its result rather than repeating or closing it to guess completion.
+
 ## JSX Rendering
 
 Read [Design authoring](references/design-authoring.md) before creating or modifying JSX designs. This bundled reference is generated from Core's authoring guidance, tested examples, and renderer metadata—the same reference used by chat and codegen prompts.

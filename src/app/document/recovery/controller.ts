@@ -11,7 +11,7 @@ interface DocumentRecoveryOptions {
   state: { documentName: string }
   /** The document's content revision; rendering and layout do not advance it. */
   version: () => number
-  buildFigFile: () => Promise<Uint8Array> | Uint8Array
+  buildFigFile: (signal?: AbortSignal) => Promise<Uint8Array> | Uint8Array
   isEnabled?: () => boolean
   store?: RecoveryStore
   recoveryId?: string
@@ -43,6 +43,7 @@ export function createDocumentRecovery({
   let writing: Promise<void> | null = null
   let cleanup: Promise<void> = Promise.resolve()
   let disposed = false
+  let activeBuild: AbortController | null = null
   const metrics = {
     builds: 0,
     writes: 0,
@@ -58,15 +59,21 @@ export function createDocumentRecovery({
     const version = requestedVersion
     let bytes: Uint8Array
     metrics.building = true
+    const build = new AbortController()
+    activeBuild = build
     try {
-      bytes = await buildFigFile()
+      bytes = await buildFigFile(build.signal)
       metrics.builds++
       metrics.lastBuiltBytes = bytes.byteLength
     } catch (error) {
+      // Superseded queued work never needs to allocate a whole replacement FIG.
+      // Started builds/writes still settle before cleanup changes protection.
+      if (generation !== lifecycleGeneration || disposed) return
       metrics.failures++
       throw error
     } finally {
       metrics.building = false
+      if (activeBuild === build) activeBuild = null
     }
     if (generation !== lifecycleGeneration || !isEnabled()) return
     metrics.writingBytes = bytes.byteLength
@@ -116,6 +123,7 @@ export function createDocumentRecovery({
         return
       }
       lifecycleGeneration++
+      activeBuild?.abort(new Error('Recovery disabled before build started'))
       const cleanupGeneration = lifecycleGeneration
       const snapshotId = id
       requestedVersion = currentVersion()
@@ -135,6 +143,7 @@ export function createDocumentRecovery({
 
   async function invalidateActiveWrite(): Promise<void> {
     lifecycleGeneration++
+    activeBuild?.abort(new Error('Recovery build superseded before start'))
     await Promise.all([writing, cleanup])
   }
 
@@ -181,6 +190,7 @@ export function createDocumentRecovery({
     disposeRecovery() {
       disposed = true
       lifecycleGeneration++
+      activeBuild?.abort(new Error('Document closed before recovery build started'))
       stopVersionWatch()
       stopEnabledWatch()
     }
