@@ -17,12 +17,13 @@ function respond(message: FigSessionResponse): void {
 
 function populate(request: Extract<FigSessionRequest, { type: 'populate' }>): void {
   if (!session) throw new Error('FIG session has no retained reader')
-  const result = session.populate(request.pageId)
-  respond({
-    type: 'population-result',
-    requestId: request.requestId,
-    baseRevision: request.baseRevision,
-    ...result
+  const result = session.publishPopulation(request.pageId, (population) => {
+    respond({
+      type: 'population-result',
+      requestId: request.requestId,
+      baseRevision: request.baseRevision,
+      ...population
+    })
   })
   if (result.populationComplete) session = undefined
 }

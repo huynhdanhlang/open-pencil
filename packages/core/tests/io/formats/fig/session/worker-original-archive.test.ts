@@ -122,13 +122,12 @@ function edit(graph: SceneGraph) {
 const names = (bytes: Uint8Array) =>
   parseFigBuffer(bytes.slice().buffer).nodeChanges.flatMap((record) => record.name ?? [])
 
-test('a page load that finds the graph diverged leaves the worker writing the archive', async () => {
+test('a semantic edit retires page population while leaving archive writing available', async () => {
   const opened = await openViaWorker()
   edit(opened)
   try {
     const worker = createFigPopulationWorker(opened)
-    expect(await worker?.populate(opened.getPages()[1].id)).toBeNull()
-    worker?.terminate()
+    expect(worker).toBeNull()
     expect(names(await exportFigFile(opened))).toContain('Edited again')
   } finally {
     releaseFigPopulationWorker(opened)

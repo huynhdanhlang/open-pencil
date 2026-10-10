@@ -6,11 +6,93 @@ import { createFigDocumentSession } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { serializeSceneGraph, deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
+import * as population from '#core/kiwi/fig/population/delta'
+import { openReaderSession } from '#core/kiwi/fig/session/reader'
 import {
   installFigMutationJournal,
   buildFigPopulationDelta,
   applyFigPopulationDelta
 } from '#core/kiwi/fig/population/delta'
+
+test('synchronous population transport needs only the receiver copy and preserves shared buffers', async () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const backing = new ArrayBuffer(8 * 1024 * 1024)
+  new Uint8Array(backing).fill(7)
+  const journal = installFigMutationJournal(graph)
+  for (let i = 0; i < 2; i++) {
+    const node = graph.createNode('TEXT', page.id, { textPicture: new Uint8Array(backing, 64+i*16, 8) })
+    node.source.fig.rawNodeFields.borrowedRecord = new Uint8Array(backing, 128+i*16, 16)
+  }
+  const expected = buildFigPopulationDelta(graph, journal, [page.id])
+  const channel = new MessageChannel()
+  const received = new Promise<population.FigPopulationDelta>(resolve => {
+    channel.port2.onmessage = event => resolve(event.data)
+    channel.port2.start()
+  })
+  const clone = globalThis.structuredClone
+  let copies = 0
+  try {
+    globalThis.structuredClone = ((...args: Parameters<typeof structuredClone>) => {
+      copies++
+      return clone(...args)
+    }) as typeof structuredClone
+    expect(population.withFigPopulationDelta(graph, journal, [page.id], delta => {
+      channel.port1.postMessage(delta)
+    })).toBeUndefined()
+    globalThis.structuredClone = clone
+    new Uint8Array(backing).fill(9)
+    graph.createNode('TEXT', page.id, { text: 'After publication' })
+    const delta = await received
+    expect(delta).toEqual(expected)
+    expect(copies).toBe(0)
+    expect(delta.created).toHaveLength(2)
+    const views = delta.created.flatMap(([,node]) => [node.textPicture!, node.source.fig.rawNodeFields.borrowedRecord as Uint8Array])
+    expect(new Set(views.map(view => view.buffer)).size).toBe(1)
+    expect(views[0].buffer).not.toBe(backing)
+    expect(views.every(view => view[0]===7)).toBe(true)
+    expect(delta.updated.find(([id])=>id===page.id)?.[1].childIds).toHaveLength(2)
+  } finally {
+    globalThis.structuredClone = clone
+    journal.stop()
+    channel.port1.close(); channel.port2.close()
+  }
+})
+
+test('failed population publication restores the journal and leaves the reader usable', async () => {
+  await initCodec()
+  const graph = new SceneGraph()
+  graph.createNode('TEXT', graph.addPage('Second').id, { text: 'Second' })
+  graph.createNode('TEXT', graph.addPage('Third').id, { text: 'Third' })
+  const reader = openReaderSession((await exportFigFile(graph)).slice().buffer, 'first-page')
+  const second = reader.graph.getPages().find(page=>page.name==='Second')!
+  expect(()=>reader.publishPopulation(second.id,()=>{throw new Error('Transport failed')})).toThrow('Transport failed')
+  const clone = globalThis.structuredClone
+  let copies = 0
+  try {
+    globalThis.structuredClone = ((...args: Parameters<typeof structuredClone>) => { copies++; return clone(...args) }) as typeof structuredClone
+    reader.graph.updateNode(reader.graph.getChildren(second.id)[0].id, { name: 'After failure' })
+    expect(copies).toBe(0)
+  } finally { globalThis.structuredClone = clone }
+  const third = reader.graph.getPages().find(page=>page.name==='Third')!
+  expect(reader.populate(third.id).delta.created.some(([,node])=>node.text==='Third')).toBe(true)
+})
+
+test('population publication rejects recursive loads before they can mutate the borrowed response', async () => {
+  await initCodec()
+  const graph = new SceneGraph()
+  graph.createNode('TEXT', graph.addPage('Second').id, { text: 'Second' })
+  graph.createNode('TEXT', graph.addPage('Third').id, { text: 'Third' })
+  const reader = openReaderSession((await exportFigFile(graph)).slice().buffer, 'first-page')
+  const second = reader.graph.getPages().find(page=>page.name==='Second')!
+  const third = reader.graph.getPages().find(page=>page.name==='Third')!
+  const flags = reader.publishPopulation(second.id, ()=> {
+    expect(()=>reader.populate(third.id)).toThrow('FIG page population already active')
+    expect(reader.graph.getChildren(third.id)).toHaveLength(0)
+  })
+  expect(flags).toEqual({readerComplete:false,populationComplete:false})
+  expect(reader.populate(third.id).populated).toBe(true)
+})
 
 test('population delta owns one shared backing across created nodes and changed fields', () => {
   const graph = new SceneGraph()

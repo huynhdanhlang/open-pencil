@@ -92,7 +92,7 @@ export function installFigMutationJournal(graph: SceneGraph): FigMutationJournal
   }
 }
 
-export function buildFigPopulationDelta(
+function collectFigPopulationDelta(
   graph: SceneGraph,
   journal: FigMutationJournal,
   populatedRootIds: Iterable<string>
@@ -111,16 +111,36 @@ export function buildFigPopulationDelta(
     .map((id) => graph.getNode(id))
     .filter((node) => node !== undefined)
     .map((node) => [node.id, node] as [string, SceneNode])
-  // Freeze the complete response together. Imported views across nodes/fields can
-  // borrow one large FIG backing; cloning each item multiplies the whole buffer.
-  // The delta still owns its bytes and cannot borrow mutable worker graph state.
-  return structuredClone({
+  return {
     created,
     updated,
     deleted: [...journal.deleted],
     instanceIndex: [...graph.instanceIndex].map(([id, ids]) => [id, [...ids]]),
     populatedRootIds: [...populatedRootIds]
-  })
+  }
+}
+
+export function buildFigPopulationDelta(
+  graph: SceneGraph,
+  journal: FigMutationJournal,
+  populatedRootIds: Iterable<string>
+): FigPopulationDelta {
+  // One owned copy preserves shared backing stores across the entire response.
+  return structuredClone(collectFigPopulationDelta(graph, journal, populatedRootIds))
+}
+
+/**
+ * Internal transport boundary: consume synchronously with MessagePort.postMessage.
+ * The port snapshots the complete message before returning. Do not retain this
+ * borrowed projection, defer publication, or transfer its source buffers.
+ */
+export function withFigPopulationDelta(
+  graph: SceneGraph,
+  journal: FigMutationJournal,
+  populatedRootIds: Iterable<string>,
+  publish: (delta: FigPopulationDelta) => void
+): void {
+  publish(collectFigPopulationDelta(graph, journal, populatedRootIds))
 }
 
 export function applyFigPopulationDelta(graph: SceneGraph, delta: FigPopulationDelta): void {
