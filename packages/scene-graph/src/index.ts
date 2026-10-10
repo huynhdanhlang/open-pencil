@@ -33,6 +33,10 @@ export * from './icons/glyph'
 export * from './behaviours/layers'
 export * from './behaviours/model'
 export * from './behaviours/spec'
+export * from './comments/document'
+export * from './comments/list'
+export * from './comments/merge'
+export * from './comments/threads'
 export * from './copy'
 export {
   createDefaultNode,
