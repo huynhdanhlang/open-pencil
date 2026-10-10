@@ -43,8 +43,7 @@ export function snapshotPage(
     else if (saved) {
       for (const key of Object.keys(node) as (keyof SceneNode)[]) {
         const value = node[key]
-        if (value && typeof value === 'object')
-          sharedFields.set(value, saved[key])
+        if (value && typeof value === 'object') sharedFields.set(value, saved[key])
       }
     }
     for (const childId of node.childIds) walk(childId)
@@ -126,6 +125,13 @@ function copyChangedSnapshotNodes(
   sharedFields: WeakMap<object, unknown>,
   equal: typeof equalSnapshotValues
 ): void {
+  // A cold capture has no owned values to reuse. Clone the complete forest once,
+  // preserving cross-node aliases without building and copying temporary field shells.
+  if (!previous) {
+    const copies = structuredClone(changed)
+    changed.forEach((node, index) => snapshot.set(node.id, { ...node, ...copies[index] }))
+    return
+  }
   // Layout changes must not re-copy immutable glyph/geometry/source payloads. Reuse
   // equal fields from owned history, never from mutable live nodes. Clone all new
   // fields together so shared imported payloads remain shared within this snapshot.
@@ -136,18 +142,10 @@ function copyChangedSnapshotNodes(
     const reused: Record<string, unknown> = {}
     const fresh: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(node)) {
-      if (
-        saved &&
-        Object.hasOwn(saved, key) &&
-        equal(saved[key as keyof SceneNode], value)
-      ) {
+      if (saved && Object.hasOwn(saved, key) && equal(saved[key as keyof SceneNode], value)) {
         reused[key] = saved[key as keyof SceneNode]
         if (value && typeof value === 'object') sharedFields.set(value, reused[key])
-      } else if (
-        key === 'source' &&
-        saved &&
-        equal(saved.source.fig, node.source.fig)
-      ) {
+      } else if (key === 'source' && saved && equal(saved.source.fig, node.source.fig)) {
         // Edit markers/order are a small mutable shell around a large unchanged FIG payload.
         // Retain the owned history payload, never the mutable live import or its buffers.
         const { fig: _fig, ...sourceFields } = node.source

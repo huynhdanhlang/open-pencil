@@ -6,6 +6,34 @@ import { CommittedGraphEventError, restorePageCheckpoint } from '@open-pencil/sc
 
 import { createEditor } from '#core/editor'
 
+test('cold history owns shared backing views across page and dependent instance payloads', () => {
+  const editor = createEditor()
+  const page = editor.state.currentPageId
+  const component = editor.graph.createNode('COMPONENT', page)
+  const buffer = new ArrayBuffer(32)
+  const left = new Uint8Array(buffer, 3, 9)
+  left.set([1, 2, 3, 4, 5, 6, 7, 8, 9])
+  const child = editor.graph.createNode('TEXT', component.id, { textPicture: left })
+  const foreign = editor.graph.addPage('Foreign')
+  const instance = expectDefined(editor.graph.createInstance(component.id, foreign.id), 'instance')
+  const derived = expectDefined(editor.graph.getChildren(instance.id)[0], 'derived')
+  const right = new Uint8Array(buffer, 7, 5)
+  editor.graph.updateNode(derived.id, { textPicture: right })
+  const snapshot = editor.snapshotPage(page)
+  const ownedLeft = expectDefined(snapshot.get(child.id)?.textPicture, 'owned left')
+  const ownedRight = expectDefined(snapshot.get(derived.id)?.textPicture, 'owned right')
+  expect(ownedLeft.buffer).toBe(ownedRight.buffer)
+  expect(ownedLeft.buffer).not.toBe(buffer)
+  expect([ownedLeft.byteOffset, ownedLeft.byteLength]).toEqual([3, 9])
+  expect([ownedRight.byteOffset, ownedRight.byteLength]).toEqual([7, 5])
+  left[4] = 99
+  expect(ownedRight[0]).toBe(5)
+  editor.restorePageFromSnapshot(snapshot)
+  expect(editor.graph.getNode(derived.id)?.textPicture?.[0]).toBe(5)
+  expect(editor.graph.getNode(derived.id)?.componentId).toBe(snapshot.get(derived.id)?.componentId)
+  editor.dispose()
+})
+
 test('consecutive page snapshots share unchanged copies, never mutable live nodes', () => {
   const editor = createEditor()
   const page = editor.state.currentPageId
