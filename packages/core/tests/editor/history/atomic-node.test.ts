@@ -7,7 +7,7 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import { computeLayout } from '#core/layout'
-import { setFill } from '#core/tools/modify/paint'
+import { setFill, setStroke } from '#core/tools/modify/paint'
 
 function setup() {
   const graph = new SceneGraph()
@@ -25,6 +25,73 @@ function setup() {
 }
 
 describe('scoped atomic node properties', () => {
+  test.each([
+    [setFill, 'fills'],
+    [setStroke, 'strokes']
+  ] as const)('%s preserves paint-binding cleanup through Undo and rollback', (def, field) => {
+    const { graph, figma, undo, editor } = setup()
+    const target = figma.createRectangle()
+    const node = graph.getNode(target.id)!
+    node.boundVariables = {
+      [field]: 'whole-paint-binding',
+      [`${field}/5/color`]: 'removed-paint-binding',
+      [`${field}/0/color`]: 'retained-paint-binding',
+      cornerRadius: 'unrelated-binding'
+    }
+    const before = structuredClone(node)
+    const args = { id: target.id, color: '#22d3ee' }
+    executeAtomicTool(editor, figma, def, args)
+    const after = structuredClone(node)
+    expect(node.boundVariables).toEqual({
+      [`${field}/0/color`]: 'retained-paint-binding',
+      cornerRadius: 'unrelated-binding'
+    })
+    undo.undo()
+    expect(node).toEqual(before)
+    undo.redo()
+    expect(node).toEqual(after)
+    undo.undo()
+    editor.runLayoutForNode = () => {
+      throw new Error('Layout failed')
+    }
+    expect(() => executeAtomicTool(editor, figma, def, args)).toThrow('Layout failed')
+    expect(node).toEqual(before)
+    expect(undo.diagnostics).toEqual({ undo: 0, redo: 1, batches: 0 })
+  })
+  test('canonical strokes on a large graph preserve overrides, geometry fields and rollback', () => {
+    const { graph, figma, undo, editor } = setup()
+    const component = figma.createComponent()
+    component.appendChild(figma.createRectangle())
+    const instance = component.createInstance()
+    const target = instance.children[0]
+    const foreign = figma.createPage()
+    while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', foreign.id)
+    const unrelated = graph.getChildren(foreign.id)[0]
+    unrelated.source.fig.rawNodeFields.notCloneable = () => undefined
+    const state = () => structuredClone([graph.getNode(target.id), graph.getNode(instance.id)])
+    const before = state()
+    const args = { id: target.id, color: '#22d3ee', weight: 1.6, align: 'CENTER' }
+    executeAtomicTool(editor, figma, setStroke, args)
+    const after = state()
+    expect(target.strokes[0].weight).toBe(1.6)
+    expect(graph.getNode(target.id)!.strokeWeight).toBe(1.6)
+    expect(graph.getNode(target.id)!.strokeAlign).toBe('CENTER')
+    unrelated.name = 'Later unrelated edit'
+    undo.undo()
+    expect(state()).toEqual(before)
+    undo.redo()
+    expect(state()).toEqual(after)
+    expect(unrelated.name).toBe('Later unrelated edit')
+    editor.runLayoutForNode = () => {
+      throw new Error('Layout failed')
+    }
+    expect(() => executeAtomicTool(editor, figma, setStroke, { ...args, weight: 3 })).toThrow(
+      'Layout failed'
+    )
+    expect(state()).toEqual(after)
+    expect(undo.diagnostics).toEqual({ undo: 1, redo: 0, batches: 0 })
+    expect(() => executeAtomicTool(editor, figma, { ...setStroke }, args)).toThrow('maximum 20000')
+  })
   test('bindings on a large graph restore nearest and outer instance overrides with scoped Undo', () => {
     const { graph, figma, undo, editor } = setup()
     const inner = figma.createComponent()

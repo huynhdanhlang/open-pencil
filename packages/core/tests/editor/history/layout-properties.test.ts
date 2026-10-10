@@ -95,7 +95,10 @@ test('a canonical layout-child transaction is scoped above 20k nodes and preserv
 test('layout-child failure rolls back sizing, geometry and source markers', () => {
   const graph = new SceneGraph()
   const api = new FigmaAPI(graph)
+  const parent = api.createFrame()
+  parent.layoutMode = 'VERTICAL'
   const child = api.createRectangle()
+  parent.appendChild(child)
   const before = structuredClone(graph.getNode(child.id))
   const undo = new UndoManager()
   const editor = {

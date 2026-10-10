@@ -156,6 +156,8 @@
 
 ### Fixed
 
+- Apply canonical stroke edits through the existing affected-node transaction, avoiding whole-document clones on large files; preserve paint bindings through scoped Undo and rollback.
+
 - Reject canceled or expired Undo/Redo and raster exports before their queued work starts, so an unstarted timed-out request cannot replay later.
 
 - Limit component synchronization layout to the edited definitions, their instances, and affected auto-layout ancestors. Building new controls no longer repeatedly lays out unrelated trees on the same page; parent resizing, sibling placement, and cross-page instances remain synchronized.

@@ -57,13 +57,25 @@ export function executeAtomicNodeTool(
       else entry.absent.add(key)
     }
   }
+  const restoreValues = (
+    id: string,
+    values: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[]
+  ) => {
+    // Paint cleanup mutates values.boundVariables. Retain the exact history map
+    // before restoring paints, then restore it within the same buffered transaction.
+    const bindings = values.boundVariables
+    const restoresPaint = values.fills || values.strokes
+    graph.restoreNodeProperties(id, values, absent)
+    if (restoresPaint && bindings) graph.restoreNodeProperties(id, { boundVariables: bindings })
+  }
   const restore = () =>
     graph.preserveSourceMetadataDuring(() => {
       for (const createdId of created.reverse()) graph.deleteNode(createdId)
       const entries = [...saved.values()]
       const values = structuredClone(entries.map((entry) => entry.values))
       for (const [index, entry] of entries.entries()) {
-        graph.restoreNodeProperties(entry.node.id, values[index], [...entry.absent])
+        restoreValues(entry.node.id, values[index], [...entry.absent])
         entry.node.source.editedFields = [...entry.editedFields]
       }
     })
@@ -77,7 +89,7 @@ export function executeAtomicNodeTool(
       const values = structuredClone(entries.map((entry) => entry[direction]))
       graph.preserveSourceMetadataDuring(() => {
         for (const [index, entry] of entries.entries()) {
-          graph.restoreNodeProperties(entry.node.id, values[index], entry.absent[direction])
+          restoreValues(entry.node.id, values[index], entry.absent[direction])
           const changedMarkers = new Set(
             [...entry.editedFields.before, ...entry.editedFields.after].filter(
               (field) =>
@@ -126,6 +138,8 @@ export function executeAtomicNodeTool(
           {
             updated: (node, values, absent) => {
               const keys = new Set([...(Object.keys(values) as (keyof SceneNode)[]), ...absent])
+              // Paint replacement removes stale bindings after this observer runs.
+              if (values.fills || values.strokes) keys.add('boundVariables')
               if ([...keys].some((key) => IDENTITY_FIELDS.has(key)))
                 throw new Error('Scoped property edits must preserve hierarchy and source identity')
               remember(node, keys)

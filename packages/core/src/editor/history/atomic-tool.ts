@@ -10,7 +10,7 @@ import {
 import type { Editor } from '#core/editor/create'
 import type { FigmaAPI } from '#core/figma-api'
 import { setConstraints, setLayout, setLayoutChild } from '#core/tools/modify/layout'
-import { setFill } from '#core/tools/modify/paint'
+import { setFill, setStroke } from '#core/tools/modify/paint'
 import { updateNode } from '#core/tools/modify/update'
 import { isAtomicTool, type ToolDef } from '#core/tools/schema'
 import { bindVariable } from '#core/tools/variables/bindings'
@@ -26,6 +26,7 @@ const SCOPED_NODE_TOOLS = new Set<ToolDef>([
   setLayoutChild,
   setConstraints,
   setFill,
+  setStroke,
   bindVariable,
   unbindVariable
 ])
