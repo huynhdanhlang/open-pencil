@@ -120,12 +120,16 @@ openpencil export design.fig -f jsx -o component.jsx
 openpencil export design.fig -f jsx --style tailwind -o component.tsx
 openpencil export design.pen -f storybook -o src/stories --watch  # stories + design images per component, re-exported on save
 openpencil export 'src/**/*.pen' -f storybook --beside  # stories next to each design file
+openpencil export design.fig -f storybook --rules stories.json -o src/stories
+openpencil export design.fig -f storybook --fonts none -o src/stories  # omit font files
 openpencil export design.fig --thumbnail --width 1920 --height 1080
 openpencil export --page "Components" -o components.png
 
 openpencil convert design.fig -o design.pen
 openpencil formats
 ```
+
+Storybook exports start each component file with `Default`; other variant/state stories carry the `variant` tag, and files carry `openpencil` and `page:<page>` tags. Use Storybook's tag filters to control its sidebar. On matched builds, `--rules` selects a rules file; otherwise `openpencil.stories.json` in the working directory is read when present, including on each watched export. Rules match the original `<page>/<component>` names in order and independently set `stories` (`variants`, `single`, `gallery`, `none`) and a `title` template using `{document}`, `{page}`, `{name}` and `{path}`. `gallery` combines static variants; generated controls keep their state stories. Exports fetch available font files from the editor's existing web-font providers by default, with explicit warnings for unavailable families; `--fonts none` omits them. Font download is an external request, and font availability is not visual-fidelity proof. HTML exports still omit fonts by default.
 
 ### Analyze and lint
 
