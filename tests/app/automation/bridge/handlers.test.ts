@@ -97,6 +97,66 @@ describe('activate_document', () => {
 })
 
 describe('undo and redo', () => {
+  test('expired Undo waiting for FIG work never changes the document afterward', async () => {
+    const tab = createTab()
+    const store = tab.store
+    const node = store.createShape('RECTANGLE', 0, 0, 100, 100)
+    await request('tool', {
+      document_id: tab.id,
+      name: 'set_opacity',
+      args: { id: node, value: 0.5 }
+    })
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const blocked = store.runDocumentOperation(() => gate)
+    const context = { id: '00000000-0000-4000-8000-000000000071', deadlineAt: Date.now() + 60000 }
+    const pending = handleRequest(store, 'undo', { document_id: tab.id }, context)
+    for (let n = 0; n < 6; n++) await Promise.resolve()
+    context.deadlineAt = Date.now() - 1
+    release?.()
+    await blocked
+    await expect(pending).rejects.toThrow('expired')
+    expect(store.graph.getNode(node)?.opacity).toBe(0.5)
+    expect(store.undo.redoLabel).toBeNull()
+  })
+
+  test('canceled queued Redo leaves the undone version intact', async () => {
+    const tab = createTab()
+    const store = tab.store
+    const node = store.createShape('RECTANGLE', 0, 0, 100, 100)
+    await request('tool', {
+      document_id: tab.id,
+      name: 'set_opacity',
+      args: { id: node, value: 0.5 }
+    })
+    await request('undo', { document_id: tab.id })
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const blocked = store.runDocumentOperation(() => gate)
+    const cancel = new AbortController()
+    const pending = handleRequest(
+      store,
+      'redo',
+      { document_id: tab.id },
+      {
+        id: '00000000-0000-4000-8000-000000000072',
+        signal: cancel.signal
+      }
+    )
+    for (let n = 0; n < 6; n++) await Promise.resolve()
+    void pending.catch(() => {})
+    cancel.abort()
+    release?.()
+    await blocked
+    await expect(pending).rejects.toThrow()
+    expect(store.graph.getNode(node)?.opacity).toBe(1)
+    expect(store.undo.redoLabel).toBe('Agent: set_opacity')
+  })
+
   test('step through automation changes and report their labels', async () => {
     const tab = createTab()
     const store = tab.store

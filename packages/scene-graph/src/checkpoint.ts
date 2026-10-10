@@ -3,11 +3,12 @@ import { isEqual } from 'es-toolkit'
 import type { SceneGraph } from './index'
 import type { SceneNode } from './types'
 
-/** Replay page history without replacing unchanged nodes or cloning the entire page. */
+/** Replay page history; caller equality is read-only and only used before graph mutation. */
 export function restorePageCheckpoint(
   graph: SceneGraph,
   snapshot: ReadonlyMap<string, SceneNode>,
-  dependentRoots: ReadonlyMap<string, { parentId: string; index: number }> = new Map()
+  dependentRoots: ReadonlyMap<string, { parentId: string; index: number }> = new Map(),
+  areNodesEqual: (live: SceneNode | undefined, saved: SceneNode) => boolean = isEqual
 ) {
   const page = snapshot.values().next().value
   const livePage = page && graph.nodes.get(page.id)
@@ -54,7 +55,9 @@ export function restorePageCheckpoint(
   walk(page.id)
   for (const id of dependentRoots.keys()) walk(id)
   const removed = [...current.values()].filter((node) => !snapshot.has(node.id))
-  const changed = [...snapshot.values()].filter((node) => !isEqual(graph.nodes.get(node.id), node))
+  const changed = [...snapshot.values()].filter(
+    (node) => !areNodesEqual(graph.nodes.get(node.id), node)
+  )
   // Clone before changing the graph; one batch preserves shared imported payloads.
   const copies = structuredClone(changed)
   const updates: Array<{ node: SceneNode; changes: Partial<SceneNode>; created: boolean }> = []

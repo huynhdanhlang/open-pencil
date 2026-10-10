@@ -156,6 +156,8 @@
 
 ### Fixed
 
+- Reject canceled or expired Undo/Redo and raster exports before their queued work starts, so an unstarted timed-out request cannot replay later.
+
 - Limit component synchronization layout to the edited definitions, their instances, and affected auto-layout ancestors. Building new controls no longer repeatedly lays out unrelated trees on the same page; parent resizing, sibling placement, and cross-page instances remain synchronized.
 - Save imported documents after deleting nested children from a loaded component: resumed instances now reconcile every source level against the live component, including child order and nested component swaps, while preserving instance-owned slot content.
 - Write complete JSX when `get_jsx` receives a filesystem `path`, keeping the 12,000-character limit only for inline previews. MCP refuses truncated responses from older editors before writing a file, preserving existing exports; main component metadata and general instance/vector fidelity limits are documented separately.
@@ -311,7 +313,7 @@
 
 ### Performance
 
-- Reduce the pause before the first structural edit on a large page while preserving complete Undo history for dependent components and instances.
+- Reduce pauses before the first structural edit and during Undo/Redo on large pages while preserving complete history for dependent components and instances.
 
 - Defer partial scene/overlay paints and structural layer projection during admitted JSX construction on the resolved placement page, including direct font/resize paints; selection still flushes immediately. Report bounded paint timings and deferrals in runtime status.
 

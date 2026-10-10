@@ -188,7 +188,12 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
   let layoutPages = new Set([page.id])
   const errors: unknown[] = []
   try {
-    layoutPages = restorePageCheckpoint(ctx.graph, snapshot, dependentRoots.get(snapshot))
+    layoutPages = restorePageCheckpoint(
+      ctx.graph,
+      snapshot,
+      dependentRoots.get(snapshot),
+      createSnapshotEquality()
+    )
   } catch (error) {
     if (!(error instanceof CommittedGraphEventError)) throw error
     errors.push(error)

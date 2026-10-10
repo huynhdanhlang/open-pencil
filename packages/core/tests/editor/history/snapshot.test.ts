@@ -1,10 +1,57 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 
 import { expectDefined } from '#core-tests/helpers/assert'
+import { isEqual } from 'es-toolkit'
 
 import { CommittedGraphEventError, restorePageCheckpoint } from '@open-pencil/scene-graph'
 
 import { createEditor } from '#core/editor'
+
+test('checkpoint replay evaluates caller equality before any graph mutation', () => {
+  const editor = createEditor()
+  const node = editor.graph.createNode('RECTANGLE', editor.state.currentPageId)
+  const snapshot = editor.snapshotPage()
+  editor.graph.updateNode(node.id, { x: 10 })
+  const compared: string[] = []
+  restorePageCheckpoint(editor.graph, snapshot, undefined, (live, saved) => {
+    expect(editor.graph.getNode(node.id)?.x).toBe(10)
+    compared.push(saved.id)
+    return isEqual(live, saved)
+  })
+  expect(compared).toEqual([...snapshot.keys()])
+  expect(editor.graph.getNode(node.id)?.x).toBe(0)
+  editor.dispose()
+})
+
+test('history replay compares aliased FIG bytes once and detects edits on the next replay', () => {
+  const editor = createEditor()
+  const bytes = new Uint8Array(1024)
+  bytes[0] = 1
+  const nodes = Array.from({ length: 20 }, () => {
+    const node = editor.graph.createNode('RECTANGLE', editor.state.currentPageId)
+    node.source.fig.rawNodeFields = { payload: bytes }
+    return node
+  })
+  const snapshot = editor.snapshotPage()
+  const first = expectDefined(nodes[0], 'first')
+  editor.graph.updateNode(first.id, { x: 10 })
+  const reads = spyOn(DataView.prototype, 'getUint32')
+  try {
+    editor.restorePageFromSnapshot(snapshot)
+    expect(reads.mock.calls.length).toBeGreaterThan(0)
+    expect(reads.mock.calls.length).toBeLessThanOrEqual((bytes.byteLength / 4) * 2)
+    bytes[0] = 9
+    editor.restorePageFromSnapshot(snapshot)
+    for (const node of nodes) {
+      const payload = editor.graph.getNode(node.id)?.source.fig.rawNodeFields.payload
+      if (!(payload instanceof Uint8Array)) throw new Error('Owned source payload missing')
+      expect(payload[0]).toBe(1)
+    }
+  } finally {
+    reads.mockRestore()
+    editor.dispose()
+  }
+})
 
 test('cold history owns shared backing views across page and dependent instance payloads', () => {
   const editor = createEditor()

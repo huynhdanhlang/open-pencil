@@ -47,6 +47,7 @@ Renderer, layout, editor, Figma API, tools, clipboard, vector conversion, and do
 - Rotation previews change through `setRotationPreview()` and `rotation:preview-changed`; cancellation must close the owning gesture without deselecting or committing it.
 - Renderer interaction policy uses explicit `beginInteractiveEdit()` leases and `isInteractiveEditing()`, not undo batching. Release leases on every terminal path. Keep live queries callable across app facades that spread editor actions.
 - `packages/core/src/editor/history/atomic-tool.ts` owns synchronous property/variable transactions for AI, MCP, and WebMCP tools; see Tools above.
+- History replay supplies a fresh byte-aware equality cache to checkpoint preflight; never reuse it across graph edits (`packages/core/tests/editor/history/snapshot.test.ts`).
 
 ## OpenPencil API
 

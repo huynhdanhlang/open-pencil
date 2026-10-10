@@ -24,6 +24,7 @@ import {
 } from '@/app/automation/bridge/file-handlers'
 import {
   admitRender,
+  assertAutomationRequestLive,
   assertRenderRequestLive,
   awaitRenderPreparation,
   isRenderCommand,
@@ -81,8 +82,10 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     context?: AutomationRequestContext
   ): Promise<unknown> {
     const admittedGraph = target.store.graph
+    const queuedDocumentOperation = ['undo', 'redo', 'export'].includes(command)
     const prepareAndRun = async () => {
       if (isRenderCommand(command, args)) assertRenderRequestLive(context)
+      if (queuedDocumentOperation) assertAutomationRequestLive(context, command)
       const viewTool = command === 'tool' && toolPreparesShownPage(args)
       // Runtime counters describe already-materialized content; inspection must not import a page.
       const runtimeRead = command === 'tool' && args.name === 'get_runtime_status'
@@ -100,8 +103,13 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
       ) {
         throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
       }
-      if ((isRenderCommand(command, args) || fileSave) && target.store.graph !== admittedGraph)
-        throw new Error(`Document changed before ${fileSave ? 'Save' : 'render'} started`)
+      if (
+        (isRenderCommand(command, args) || fileSave || queuedDocumentOperation) &&
+        target.store.graph !== admittedGraph
+      )
+        throw new Error(
+          `Document changed before ${fileSave ? 'Save' : queuedDocumentOperation ? command : 'render'} started`
+        )
       const handler = commandHandlers[command]
       const run = () =>
         command === 'tool'
@@ -110,8 +118,13 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
             ? handler(target, args, context)
             : handleRPCFallback(target, command, args)
       // File lifecycle handlers already own their FIG queue; do not nest that queue.
-      const result = ['undo', 'redo', 'export'].includes(command)
-        ? await target.store.runDocumentOperation(run)
+      const result = queuedDocumentOperation
+        ? await target.store.runDocumentOperation(() => {
+            assertAutomationRequestLive(context, command)
+            if (target.store.graph !== admittedGraph)
+              throw new Error(`Document changed before ${command} started`)
+            return run()
+          }, context?.signal)
         : await run()
       return responseWithTarget(result, target)
     }
