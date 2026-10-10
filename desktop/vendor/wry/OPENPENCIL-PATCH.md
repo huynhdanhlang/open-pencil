@@ -5,7 +5,7 @@ Owner: desktop runtime. Upstream Wry 0.57.0 crate SHA256:
 Original Apache/MIT licenses and source remain included.
 
 Only `src/webkitgtk/web_context.rs` changes. Opt-in
-`OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB` configures a finite 1024–16384 MiB web-process
+`OPENPENCIL_WEBKIT_MEMORY_LIMIT_MB` configures a finite 1024–20480 MiB web-process
 budget before creating either persistent or ephemeral WebContext. The embedding
 app chooses its budget. Absence preserves upstream defaults; invalid input fails
 startup. The explicit nonzero kill fraction is required because WebKitGTK 2.52.6
