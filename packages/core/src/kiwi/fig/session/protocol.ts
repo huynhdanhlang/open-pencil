@@ -79,6 +79,10 @@ export type FigSessionResponse =
       type: 'graph'
       graph?: SerializedSceneGraph
       checkpoint?: FigSessionCheckpoint
+      /** All archive pages, including internal pages, are materialized. */
+      readerComplete?: boolean
+      /** No visible page needs this decoded mirror; hidden-page recovery may remain. */
+      populationComplete?: boolean
       /** Taken while the records are decoded, for writing the archive back later. */
       archiveInfo?: FigArchiveRecordInfo
       error?: string
@@ -88,6 +92,9 @@ export type FigSessionResponse =
       requestId: string
       baseRevision: number
       populated: boolean
+      /** Only a complete archive manifest allows reader-state release. */
+      readerComplete?: boolean
+      populationComplete?: boolean
       checkpoint?: FigSessionCheckpoint
       delta: FigPopulationDelta
     }

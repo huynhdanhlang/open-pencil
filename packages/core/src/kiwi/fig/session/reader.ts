@@ -40,6 +40,9 @@ export function openReaderSession(
     checkpoint: () => session.checkpoint(),
     graph: session.graph,
     pages,
+    isComplete: () => session.pages.every((page) => session.loadedPageIds.has(page.id)),
+    isPopulationComplete: () =>
+      session.pages.every((page) => page.internalOnly || session.loadedPageIds.has(page.id)),
     populate(pageId: string) {
       const sourceId = sourceByGraph.get(pageId)
       if (!sourceId) throw new Error(`Unknown graph page ${pageId}`)
@@ -50,6 +53,10 @@ export function openReaderSession(
         return {
           checkpoint: session.checkpoint(),
           populated,
+          readerComplete: session.pages.every((page) => session.loadedPageIds.has(page.id)),
+          populationComplete: session.pages.every(
+            (page) => page.internalOnly || session.loadedPageIds.has(page.id)
+          ),
           delta: buildFigPopulationDelta(session.graph, journal, loadedGraphIds())
         }
       } finally {

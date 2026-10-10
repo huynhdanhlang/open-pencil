@@ -25,7 +25,7 @@ const originalArchiveRequests = new WeakMap<SceneGraph, OriginalArchiveRequest>(
 
 export interface FigPopulationWorkerTelemetry {
   event: 'registered' | 'populate' | 'fallback' | 'stale' | 'terminated'
-  reason?: 'oversized' | 'graph-mutation' | 'worker-error'
+  reason?: 'oversized' | 'graph-mutation' | 'worker-error' | 'complete'
   durationMs?: number
   applyMs?: number
   created?: number
@@ -253,7 +253,8 @@ export function createPopulationWorkerClient(
     const applyStartedAt = performance.now()
     try {
       applyFigPopulationDelta(graph, result.delta)
-      if (result.checkpoint) updateReaderRecovery(graph, result.checkpoint)
+      if (result.checkpoint)
+        updateReaderRecovery(graph, result.checkpoint, result.readerComplete === true)
     } catch {
       applyingDelta = false
       fail()
@@ -262,6 +263,11 @@ export function createPopulationWorkerClient(
       applyingDelta = false
     }
     request.resolve(result.populated)
+    if (result.populationComplete && result.checkpoint) {
+      // Retire only the decoded mirror; the shared worker still patches archives.
+      fail(false, false)
+      emitTelemetry({ event: 'terminated', reason: 'complete' })
+    }
     emitTelemetry({
       event: 'populate',
       durationMs: performance.now() - request.startedAt,

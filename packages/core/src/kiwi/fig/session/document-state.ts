@@ -168,9 +168,20 @@ export function populateReaderExport(source: SceneGraph, target: SceneGraph): bo
   return true
 }
 
-export function updateReaderRecovery(graph: SceneGraph, checkpoint: FigSessionCheckpoint): void {
+export function updateReaderRecovery(
+  graph: SceneGraph,
+  checkpoint: FigSessionCheckpoint,
+  readerComplete = false
+): void {
   const state = states.get(graph)
-  if (state && !state.session) state.checkpoint = checkpoint
+  if (!state || state.session) return
+  state.checkpoint = checkpoint
+  // The worker verified every archive source page, including hidden resources.
+  // Keep its final mappings for patched Save, but no decoded reader is needed.
+  if (readerComplete) {
+    state.bytes = undefined
+    state.complete = true
+  }
 }
 
 export function releaseReaderRecovery(graph: SceneGraph): void {

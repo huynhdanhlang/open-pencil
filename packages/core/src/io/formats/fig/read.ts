@@ -15,7 +15,8 @@ import {
 import { createFigSessionWorker } from '#core/kiwi/fig/session/client'
 import {
   registerReaderRecovery,
-  registerReaderSession
+  registerReaderSession,
+  updateReaderRecovery
 } from '#core/kiwi/fig/session/document-state'
 import type { FigSessionOpenRequest, FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 import { openReaderSession } from '#core/kiwi/fig/session/reader'
@@ -85,11 +86,13 @@ export function parseFigFileViaWorker(
           if (!checkpoint || !archiveInfo) throw new Error('Missing reader checkpoint')
           const bytes = ownedArchive
           registerReaderRecovery(graph, bytes, checkpoint)
+          updateReaderRecovery(graph, checkpoint, e.data.readerComplete === true)
           // The worker writes the archive back; without it the main thread does, from its copy.
           const archive = workerFigArchive(channel.port1, worker, () =>
             localFigArchive(bytes, () => archiveInfo)
           )
-          registerFigPopulationWorker(graph, worker, channel.port1, () => archive.dropWorker())
+          if (!e.data.populationComplete)
+            registerFigPopulationWorker(graph, worker, channel.port1, () => archive.dropWorker())
           registerFigArchive(graph, archive)
           registerOriginalArchiveRequest(graph, () => archive.original())
         } else {

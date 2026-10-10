@@ -24,6 +24,7 @@ function populate(request: Extract<FigSessionRequest, { type: 'populate' }>): vo
     baseRevision: request.baseRevision,
     ...result
   })
+  if (result.populationComplete) session = undefined
 }
 
 type ArchiveRequest = Extract<
@@ -103,14 +104,19 @@ self.onmessage = (event: MessageEvent<FigSessionOpenRequest>) => {
     const archiveInfo = opened.session.archiveRecordInfo()
     archive = createFigArchiveOperations(archiveBytes, () => archiveInfo)
     respond({ type: 'page-manifest', pages: opened.pages })
+    const readerComplete = opened.isComplete()
+    const populationComplete = opened.isPopulationComplete()
     session =
-      request.options?.populate === 'first-page' || request.options?.populate === 'none'
+      !populationComplete &&
+      (request.options?.populate === 'first-page' || request.options?.populate === 'none')
         ? opened
         : undefined
     respond({
       type: 'graph',
       graph: serializeSceneGraph(opened.graph),
       checkpoint: opened.checkpoint(),
+      readerComplete,
+      populationComplete,
       archiveInfo
     })
   } catch (error) {

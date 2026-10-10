@@ -14,7 +14,11 @@ import {
   releaseFigPopulationWorker,
   requestOriginalArchive
 } from '#core/kiwi/fig/population/client'
-import { recoverReaderPage } from '#core/kiwi/fig/session/document-state'
+import {
+  recoverReaderPage,
+  hasPendingReaderPages,
+  readerExportState
+} from '#core/kiwi/fig/session/document-state'
 
 test('an edited graph retires its obsolete reader immediately without stopping the archive worker', async () => {
   const graph = new SceneGraph()
@@ -65,6 +69,8 @@ test('a fully opened single-page reader retires its mirror but keeps exact origi
   const graph = await parseFigFileViaWorker(bytes.slice().buffer, { populate: 'first-page' })
   try {
     expect(canUseFigPopulationWorker(graph)).toBe(false)
+    expect(hasPendingReaderPages(graph)).toBe(false)
+    expect(readerExportState(graph)).toBeUndefined()
     expect(Buffer.from(await exportFigFile(graph)).equals(bytes)).toBe(true)
     const text = graph.getChildren(graph.getPages()[0].id)[0]
     graph.updateNode(text.id, { text: 'Edited after retirement' })
@@ -91,13 +97,15 @@ test('a multi-page mirror retires only when its manifest pages have loaded', asy
     expect(canUseFigPopulationWorker(graph)).toBe(true)
     expect(await client.populate(graph.getPages()[2].id)).toBe(true)
     expect(canUseFigPopulationWorker(graph)).toBe(false)
+    expect(hasPendingReaderPages(graph)).toBe(false)
+    expect(readerExportState(graph)).toBeUndefined()
     expect(Buffer.from(await exportFigFile(graph)).equals(bytes)).toBe(true)
   } finally {
     releaseFigPopulationWorker(graph)
   }
 }, 20000)
 
-test('completion retirement preserves unloaded internal content during an edited Save', async () => {
+test('visible completion retires the mirror but preserves pending internal-page recovery', async () => {
   const source = new SceneGraph()
   source.createNode('TEXT', source.getPages()[0].id, { text: 'Visible' })
   const internal = source.addPage('Internal resources')
@@ -107,12 +115,17 @@ test('completion retirement preserves unloaded internal content during an edited
   const graph = await parseFigFileViaWorker(bytes.slice().buffer, { populate: 'first-page' })
   try {
     expect(canUseFigPopulationWorker(graph)).toBe(false)
+    expect(hasPendingReaderPages(graph)).toBe(true)
     const unloaded = expectDefined(graph.getPages(true).find((p) => p.internalOnly))
     expect(graph.getChildren(unloaded.id)).toHaveLength(0)
+    expect(recoverReaderPage(graph, unloaded.id)).toBe(true)
+    expect(canUseFigPopulationWorker(graph)).toBe(false)
+    expect(hasPendingReaderPages(graph)).toBe(false)
+    expect(readerExportState(graph)).toBeUndefined()
     graph.updateNode(graph.getChildren(graph.getPages()[0].id)[0].id, { text: 'Edited visible' })
     const reopened = await parseFigFile((await exportFigFile(graph)).slice().buffer)
     const hidden = expectDefined(reopened.getPages(true).find((p) => p.internalOnly))
-    expect(populateFigPage(reopened, hidden.id)).toBe(true)
+    populateFigPage(reopened, hidden.id)
     expect(reopened.getChildren(hidden.id).map((n) => [n.name, n.width])).toEqual([
       ['Retained internal', 37]
     ])
@@ -121,23 +134,59 @@ test('completion retirement preserves unloaded internal content during an edited
   }
 }, 20000)
 
-test('completion cancels an in-flight archive transport before replacing it with host bytes', async () => {
+test('hidden-page recovery after mirror retirement filters a deleted component checkpoint', async () => {
+  const source = new SceneGraph()
+  const component = source.createNode('COMPONENT', source.getPages()[0].id, { name: 'Deleted master' })
+  source.createNode('TEXT', component.id, { text: 'Removed component content' })
+  const internal = source.addPage('Hidden resources')
+  source.updateNode(internal.id, { internalOnly: true })
+  source.createNode('RECTANGLE', internal.id, { name: 'Retained hidden content', width: 37 })
+  const graph = await parseFigFileViaWorker((await exportFigFile(source)).slice().buffer, {
+    populate: 'first-page'
+  })
+  try {
+    expect(canUseFigPopulationWorker(graph)).toBe(false)
+    expect(hasPendingReaderPages(graph)).toBe(true)
+    const loaded = expectDefined([...graph.nodes.values()].find(node => node.name === 'Deleted master'))
+    graph.deleteNode(loaded.id)
+    const hidden = expectDefined(graph.getPages(true).find(page => page.internalOnly))
+    expect(recoverReaderPage(graph, hidden.id)).toBe(true)
+    expect(hasPendingReaderPages(graph)).toBe(false)
+    const bytes = await exportFigFile(graph, undefined, undefined, undefined, false, { rendering: 'none' })
+    const reopened = await parseFigFile(bytes.slice().buffer)
+    const reopenedHidden = expectDefined(reopened.getPages(true).find(page => page.internalOnly))
+    populateFigPage(reopened, reopenedHidden.id)
+    expect([...reopened.nodes.values()].some(node => node.name === 'Deleted master')).toBe(false)
+    expect(reopened.getChildren(reopenedHidden.id).map(node => [node.name, node.width])).toEqual([
+      ['Retained hidden content', 37]
+    ])
+  } finally {
+    releaseFigPopulationWorker(graph)
+  }
+}, 20000)
+
+test('completion keeps an in-flight archive request and the shared archive transport valid', async () => {
   const source = new SceneGraph()
   source.addPage('Second')
   const bytes = await exportFigFile(source)
   const graph = await parseFigFileViaWorker(bytes.slice().buffer, { populate: 'first-page' })
   try {
+    let finish: () => void = () => undefined
+    let held = true
     registerOriginalArchiveRequest(
       graph,
       () =>
-        new Promise<Uint8Array>(() => {
-          // Deliberately keep the old transport pending across its retirement.
-        })
+        held
+          ? new Promise<Uint8Array>((resolve) => {
+              finish = () => { held = false; resolve(bytes) }
+            })
+          : Promise.resolve(bytes)
     )
     const pending = requestOriginalArchive(graph)
     const client = expectDefined(createFigPopulationWorker(graph))
     expect(await client.populate(graph.getPages()[1].id)).toBe(true)
-    expect(await pending).toBeNull()
+    finish()
+    expect(Buffer.from(expectDefined(await pending)).equals(bytes)).toBe(true)
     expect(canUseFigPopulationWorker(graph)).toBe(false)
     expect(Buffer.from(expectDefined(await requestOriginalArchive(graph))).equals(bytes)).toBe(true)
   } finally {
@@ -171,7 +220,7 @@ for (const event of ['populate', 'terminated']) {
   }, 20000)
 }
 
-test('an edit by a cancelled archive waiter invalidates the new host provider', async () => {
+test('an edit by an archive waiter after completion invalidates original archive access', async () => {
   const source = new SceneGraph()
   source.createNode('TEXT', source.getPages()[0].id, { text: 'Original' })
   source.addPage('Second')
@@ -179,11 +228,12 @@ test('an edit by a cancelled archive waiter invalidates the new host provider', 
     populate: 'first-page'
   })
   try {
+    let finish: () => void = () => undefined
     registerOriginalArchiveRequest(
       graph,
       () =>
-        new Promise<Uint8Array>(() => {
-          // Hold this waiter until completion replaces its transport.
+        new Promise<Uint8Array>((resolve) => {
+          finish = () => resolve(new Uint8Array())
         })
     )
     const pending = requestOriginalArchive(graph).then(() => {
@@ -191,6 +241,7 @@ test('an edit by a cancelled archive waiter invalidates the new host provider', 
       return undefined
     })
     await expectDefined(createFigPopulationWorker(graph)).populate(graph.getPages()[1].id)
+    finish()
     await pending
     expect(await requestOriginalArchive(graph)).toBeNull()
     const reopened = await parseFigFile((await exportFigFile(graph)).slice().buffer)
@@ -227,7 +278,7 @@ test('a live edit retires the imported worker while preserving unloaded content 
   }
 }, 20000)
 
-test('reader failure retires both population and original-archive capabilities', async () => {
+test('a failed page lookup retires population while preserving the immutable original archive', async () => {
   const source = new SceneGraph()
   source.addPage('Unloaded')
   const bytes = await exportFigFile(source)
@@ -236,7 +287,8 @@ test('reader failure retires both population and original-archive capabilities',
     const client = expectDefined(createFigPopulationWorker(graph))
     expect(await client.populate('missing-page')).toBeNull()
     expect(canUseFigPopulationWorker(graph)).toBe(false)
-    expect(await requestOriginalArchive(graph)).toBeNull()
+    expect(hasPendingReaderPages(graph)).toBe(true)
+    expect(Buffer.from(expectDefined(await requestOriginalArchive(graph))).equals(bytes)).toBe(true)
   } finally {
     releaseFigPopulationWorker(graph)
   }
