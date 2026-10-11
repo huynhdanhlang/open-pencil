@@ -136,7 +136,8 @@ function serializeTextProps(
       digestMap: fontDigestMap,
       blobs,
       glyphBlobMap: glyphBlobMap ?? new Map(),
-      shapeText: (textNode) => runtime.shapeText(textNode)
+      shapeText: (textNode) => runtime.shapeText(textNode),
+      textDecorations: (textNode, glyphs) => runtime.textDecorations(textNode, glyphs)
     })
   }
   if (node.leadingTrim !== 'NONE') nc.leadingTrim = node.leadingTrim

@@ -91,6 +91,11 @@ function collectTextStyleOverrides(node: SceneNode): {
   return { charIds, styleMap }
 }
 
+/** The style each character is written with, as an index into its override table. */
+export function characterStyleIDs(node: SceneNode): number[] {
+  return collectTextStyleOverrides(node).charIds
+}
+
 export function exportTextData(
   node: SceneNode,
   fillToKiwiPaint: (fill: SceneNode['fills'][number]) => Paint

@@ -171,9 +171,19 @@ openpencil eval design.fig -o modified.fig -c '...'
 
 # Read code from stdin
 echo 'figma.currentPage.children.map(n => n.name)' | openpencil eval design.fig --stdin
+
+# Style part of a text, and read how it is styled
+openpencil eval design.fig -w -c '
+  const title = figma.currentPage.findOne(n => n.type === "TEXT" && n.name === "Title");
+  title.setRangeFontName(0, 5, { family: "Inter", style: "Bold" });
+  title.setRangeFills(0, 5, [{ type: "SOLID", color: { r: 0.9, g: 0.1, b: 0.1 } }]);
+  title.getStyledTextSegments(["fontName", "fills"]).map(s => [s.characters, s.fontName.style])
+'
 ```
 
 On matched builds, text `lineHeight` and `letterSpacing` read and write Figma's `{ unit, value }` objects. Percent values resolve against the font size when assigned; line height also accepts `{ unit: "AUTO" }`. Earlier bare pixel numbers remain accepted, and `null` retains automatic line height. This is an API contract, not a reason to enable disabled scripting.
+
+Text styles follow Figma's per-character model: `getStyledTextSegments(fields)` reads runs, `getRange…`/`setRange…` read and set font, size, fills, letter spacing, line height, and decorations for `[start, end)`, and a text's `fontSize`, `fontName`, `fills`, and similar read `figma.mixed` while characters differ. Check for it before using the value.
 
 Next to `figma`, scripts get `openpencil`: what OpenPencil adds to the Figma API, in its style. A main component can behave as a Reka UI control, by its own property and slot names:
 

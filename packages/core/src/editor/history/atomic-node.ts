@@ -68,7 +68,7 @@ export function executeAtomicNodeTool(
     const bindings = values.boundVariables
     const restoresPaint = values.fills || values.strokes
     graph.restoreNodeProperties(id, values, absent)
-    if (restoresPaint && bindings) graph.restoreNodeProperties(id, { boundVariables: bindings })
+    if (restoresPaint && bindings) graph.restoreNodeProperties(id, { boundVariables: bindings }, [])
   }
   const restore = () =>
     graph.preserveSourceMetadataDuring(() => {
@@ -188,7 +188,7 @@ export function executeAtomicNodeTool(
             entry.before = owned[index].before
             entry.after = owned[index].after
           }
-          editor.pushUndoEntry({
+          editor.pushUndoStep({
             label: `${label}: ${def.name}`,
             inverse: () => replay(entries, 'before'),
             forward: () => replay(entries, 'after')

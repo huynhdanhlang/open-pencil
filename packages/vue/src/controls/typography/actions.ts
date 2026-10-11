@@ -18,6 +18,7 @@ import {
 } from '#vue/canvas/text-edit/paragraphs'
 import { MIXED, type MixedValue } from '#vue/controls/node-props/use'
 import type { UseTypographyOptions } from '#vue/controls/typography/use'
+import { selectedNodesAsShown } from '#vue/editor/selection-state/nodes'
 import { useSceneComputed } from '#vue/internal/scene-computed/use'
 import { useNodeFontStatus } from '#vue/shared/font-status/use'
 
@@ -54,7 +55,7 @@ function sharedFormatting(nodes: readonly SceneNode[]) {
  */
 export function createTypographyState(editor: Editor) {
   const nodes = useSceneComputed<SceneNode[]>(() =>
-    editor.getSelectedNodes().filter((n) => n.type === 'TEXT')
+    selectedNodesAsShown(editor).filter((n) => n.type === 'TEXT')
   )
   const node = computed<SceneNode | null>(() => nodes.value.at(0) ?? null)
   const { missingFonts, hasMissingFonts } = useNodeFontStatus(() => node.value)

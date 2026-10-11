@@ -25,9 +25,12 @@ function jsxAttributeName(name: string): string {
   return name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
 }
 
-/** Scene text layers become paragraphs; Tailwind's preflight removes their margins. */
+/**
+ * Scene text layers become paragraphs, whose margins Tailwind's preflight removes; text laid
+ * out in blocks keeps the `<div>` that holds them.
+ */
 function tagName(node: DesignElement): string {
-  return node.sourceSceneNode?.type === 'TEXT' ? 'p' : node.tagName
+  return node.sourceSceneNode?.type === 'TEXT' && node.tagName === 'span' ? 'p' : node.tagName
 }
 
 function attributes(node: DesignElement, themeVariables: readonly string[]): SyntaxNode[] {

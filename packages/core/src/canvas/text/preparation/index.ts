@@ -51,14 +51,14 @@ export function withTextParagraph<T>(
   node: SceneNode,
   color: Float32Array,
   options: ParagraphBuildOptions,
-  draw: (paragraph: TextLayout) => T
+  draw: (paragraph: TextLayout, prepared: PreparedText) => T
 ): T {
   return withPreparedText(
     r,
     node,
     `draw:${Boolean(options.halfLeading)}:${color.join(',')}`,
     () => r.buildParagraph(node, color, options),
-    (prepared) => draw(prepared.paragraph),
+    (prepared) => draw(prepared.paragraph, prepared),
     !options.foregroundPaint
   )
 }

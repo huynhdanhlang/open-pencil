@@ -1,4 +1,4 @@
-import type { ShapedText } from '@open-pencil/fig/node-change'
+import type { ShapedText, TextDecorationRecord } from '@open-pencil/fig/node-change'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
@@ -15,6 +15,7 @@ export interface IsolatedFigExportRequest {
 
 export interface PreparedFigResources {
   shapedText: Map<string, ShapedText | null>
+  textDecorations: Map<string, TextDecorationRecord[]>
   fontDigests: Map<string, Uint8Array>
 }
 

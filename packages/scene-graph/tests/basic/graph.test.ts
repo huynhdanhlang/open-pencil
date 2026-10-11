@@ -276,6 +276,17 @@ describe('SceneGraph', () => {
     expect(graph.closest(second.id, (node) => node.id === first.id)).toBe(first)
   })
 
+  test('pageOf finds the page a node is on', () => {
+    const graph = new SceneGraph()
+    const page = pageId(graph)
+    const frame = graph.createNode('FRAME', page, { name: 'Frame' })
+    const nested = graph.createNode('RECTANGLE', frame.id, { name: 'Nested' })
+    expect(graph.pageOf(nested.id)).toBe(page)
+    expect(graph.pageOf(page)).toBe(page)
+    expect(graph.pageOf(graph.rootId)).toBeNull()
+    expect(graph.pageOf('missing')).toBeNull()
+  })
+
   test('children order', () => {
     const graph = new SceneGraph()
     rect(graph, 'A')

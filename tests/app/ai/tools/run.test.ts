@@ -9,7 +9,7 @@ import { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import { createToolLoopTransport } from '@/app/ai/chat/transports'
 import {
-  createAITools,
+  currentRun,
   endRun,
   markRunPreview,
   runPageId,
@@ -25,7 +25,6 @@ import { appPreferences } from '@/app/settings/preferences/store'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { MOCK_USAGE } from '#tests/helpers/chat/usage'
-import { asDouble } from '#tests/helpers/doubles'
 
 type EditorStore = ReturnType<typeof createEditorStore>
 type StreamChunk =
@@ -98,36 +97,28 @@ async function runMessage(store: EditorStore, steps: Step[]) {
 }
 
 async function withStore(
-  check: (store: EditorStore, pages: { a: string; b: string }) => Promise<void>,
-  nativeView = false
+  check: (store: EditorStore, pages: { a: string; b: string }) => Promise<void>
 ) {
   const previousPreferences = structuredClone(toRaw(appPreferences.value))
   const previousTools = aiToolOverrides.value
   const store = createEditorStore()
   // Viewport DOM plumbing is outside this contract; keep the page the tools are given.
-  const factory = nativeView
-    ? null
-    : spyOn(figmaFactory, 'makeFigmaFromStore').mockImplementation((editor, pageId) => {
-        const api = new FigmaAPI(editor.graph)
-        api.currentPage = api.wrapNode(pageId ?? editor.state.currentPageId)
-        return api
-      })
+  const factory = spyOn(figmaFactory, 'makeFigmaFromStore').mockImplementation((editor, pageId) => {
+    const api = new FigmaAPI(editor.graph)
+    api.currentPage = api.wrapNode(pageId ?? editor.state.currentPageId)
+    return api
+  })
   // No canvas presents frames here; treat every page switch as presented.
   store.preparationController.acknowledgePresentation(Number.MAX_SAFE_INTEGER)
   try {
-    aiToolOverrides.value = {
-      create_shape: true,
-      switch_page: true,
-      select_nodes: true,
-      viewport_set: true
-    }
+    aiToolOverrides.value = { create_shape: true, switch_page: true }
     const a = store.state.currentPageId
     const b = store.graph.addPage('B').id
     await check(store, { a, b })
   } finally {
     appPreferences.value = previousPreferences
     aiToolOverrides.value = previousTools
-    factory?.mockRestore()
+    factory.mockRestore()
     store.dispose()
   }
 }
@@ -137,31 +128,18 @@ const rectangle = {
   input: { type: 'RECTANGLE', x: 0, y: 0, width: 10, height: 10 }
 }
 
-test('a queued view command cannot switch back to the previous agent page', async () => {
-  await withStore(async (store, { b }) => {
-    startRun(store, 10)
-    const tools = createAITools(store)
-    type Execute = (
-      input: Record<string, unknown>,
-      options: { toolCallId: string; messages: [] }
-    ) => Promise<unknown>
-    const rawSwitch = tools.switch_page?.execute
-    const rawViewport = tools.viewport_set?.execute
-    if (typeof rawSwitch !== 'function' || typeof rawViewport !== 'function')
-      throw new Error('View tools missing')
-    const switchPage = asDouble<Execute>(rawSwitch)
-    const viewport = asDouble<Execute>(rawViewport)
-    const first = switchPage({ page: b }, { toolCallId: 'switch', messages: [] })
-    const second = viewport({ x: 30, y: 40, zoom: 0.5 }, { toolCallId: 'zoom', messages: [] })
-    const results = await Promise.allSettled([first, second])
-    expect(results[0]?.status).toBe('fulfilled')
-    expect(results[1]).toMatchObject({
-      status: 'fulfilled',
-      value: { error: expect.stringContaining('agent page changed') }
-    })
-    expect(store.state.currentPageId).toBe(b)
-    expect(runPageId(store)).toBe(b)
-  }, true)
+test("an edit that changes nothing adds no undo step and does not claim an earlier reply's", async () => {
+  await withStore(async (store, { a }) => {
+    aiToolOverrides.value = { ...aiToolOverrides.value, delete_node: true }
+    const node = store.graph.createNode('RECTANGLE', a, { name: 'Card' })
+    await runMessage(store, [{ toolName: 'delete_node', input: { id: node.id } }])
+    const deleted = expectDefined(store.undo.peekUndo(), 'delete entry')
+    expect(runUndoEntries(store)).toEqual([deleted])
+
+    await runMessage(store, [{ toolName: 'delete_node', input: { id: 'missing' } }])
+    expect(store.undo.peekUndo()).toBe(deleted)
+    expect(runUndoEntries(store)).toEqual([])
+  })
 })
 
 test('a run keeps working on its page while the user views another', async () => {
@@ -180,32 +158,6 @@ test('a run keeps working on its page while the user views another', async () =>
   })
 })
 
-test('native agent view operations select and zoom without page snapshots or layout', async () => {
-  await withStore(async (store, { a, b }) => {
-    const shape = store.graph.createNode('RECTANGLE', a)
-    const snapshot = spyOn(store, 'snapshotPage')
-    const layout = spyOn(store, 'runMutationWithLayout')
-    const undo = spyOn(store, 'pushUndoEntry')
-    try {
-      await runMessage(store, [
-        (editor) => editor.switchPage(b),
-        { toolName: 'select_nodes', input: { ids: [shape.id] } },
-        { toolName: 'viewport_set', input: { x: 30, y: 40, zoom: 0.5 } }
-      ])
-      expect(store.state.currentPageId).toBe(a)
-      expect([...store.state.selectedIds]).toEqual([shape.id])
-      expect(store.getViewport()).toMatchObject({ center: { x: 30, y: 40 }, zoom: 0.5 })
-      expect(snapshot).not.toHaveBeenCalled()
-      expect(layout).not.toHaveBeenCalled()
-      expect(undo).not.toHaveBeenCalled()
-    } finally {
-      snapshot.mockRestore()
-      layout.mockRestore()
-      undo.mockRestore()
-    }
-  }, true)
-})
-
 test("the agent's switch_page moves the run and the user's view", async () => {
   await withStore(async (store, { b }) => {
     await runMessage(store, [{ toolName: 'switch_page', input: { page: b } }, rectangle])
@@ -216,6 +168,40 @@ test("the agent's switch_page moves the run and the user's view", async () => {
     expect(store.state.currentPageId).toBe(b)
   })
 })
+
+test.each([{ followAgents: false }, { followAgents: true }])(
+  'the agent shows on the page a script edited, and only following takes the view there (%p)',
+  async ({ followAgents }) => {
+    await withStore(async (store, { a, b }) => {
+      appPreferences.value.chat.followAgents = followAgents
+      aiToolOverrides.value = { ...aiToolOverrides.value, eval: true }
+      const card = store.graph.createNode('FRAME', b, { name: 'Card', x: 40, y: 20, width: 80 })
+      const title = store.graph.createNode('TEXT', card.id, { name: 'Title', text: 'Hi' })
+      let during: ReturnType<typeof presenceOf>['agents']['value'] = []
+      let followPage = presenceOf(store).followPage
+      await runMessage(store, [
+        {
+          toolName: 'eval',
+          input: {
+            code: `const card = figma.getNodeById('${card.id}'); card.opacity = 0.5; figma.getNodeById('${title.id}').visible = false`
+          }
+        },
+        async (editor) => {
+          during = presenceOf(editor).agents.value
+          followPage = presenceOf(editor).followPage
+        }
+      ])
+
+      expect(during).toMatchObject([
+        { status: 'editing', pageId: b, cursor: { x: 40, y: 20, pageId: b }, selection: [card.id] }
+      ])
+      expect(runPageId(store)).toBe(a)
+      // Following switches pages as it does for any followed agent; without it the view stays.
+      expect(followPage).toBe(followAgents ? b : null)
+      if (!followAgents) expect(store.state.currentPageId).toBe(a)
+    })
+  }
+)
 
 test('a run falls back to the page on screen when its page is deleted', async () => {
   await withStore(async (store, { a, b }) => {
@@ -274,6 +260,145 @@ test('the agent moves through streamed JSX, then onto the layers the tool made',
   } finally {
     store.preparationController.dispose()
   }
+})
+
+const rectangleCall = (toolCallId: string, x: number): StreamChunk => ({
+  type: 'tool-call',
+  toolCallId,
+  toolName: 'create_shape',
+  input: JSON.stringify({ type: 'RECTANGLE', x, y: 0, width: 10, height: 10 })
+})
+
+/** Start one message whose model calls `calls` in one step, and read it in the background. */
+async function startMessage(store: EditorStore, calls: StreamChunk[], signal: AbortSignal) {
+  const model = new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: simulateReadableStream<StreamChunk>({
+        initialDelayInMs: null,
+        chunkDelayInMs: null,
+        chunks: [
+          ...calls,
+          {
+            type: 'finish',
+            finishReason: { unified: 'tool-calls', raw: undefined },
+            usage: MOCK_USAGE
+          }
+        ]
+      })
+    })
+  })
+  const transport = createToolLoopTransport({
+    store,
+    providerID: 'openai',
+    model,
+    effectiveModelID: 'test',
+    maxOutputTokens: 100,
+    thinkingLevel: () => 'default'
+  })
+  const stream = await transport.sendMessages({
+    trigger: 'submit-message',
+    chatId: 'stop',
+    messageId: undefined,
+    abortSignal: signal,
+    messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text: 'Draw' }] }]
+  })
+  const reader = stream.getReader()
+  async function drain() {
+    while (!(await reader.read()).done);
+  }
+  // Cancelling the reader on Stop rejects the read in progress; the read just ends.
+  const reading = drain().catch(() => undefined)
+  return { reader, reading }
+}
+
+/** Hold every layout mutation until `release`, reporting when the first one starts. */
+function holdMutations(store: EditorStore) {
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let markStarted: () => void = () => undefined
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
+  const run = store.runMutationWithLayout.bind(store)
+  spyOn(store, 'runMutationWithLayout').mockImplementation(async (...args) => {
+    markStarted()
+    await gate
+    return run(...args)
+  })
+  return { started, release }
+}
+
+test('a tool still running at Stop finishes into its reply without bringing the agent back', async () => {
+  await withStore(async (store, { a }) => {
+    const held = holdMutations(store)
+    const controller = new AbortController()
+    const { reader, reading } = await startMessage(
+      store,
+      [rectangleCall('first', 0), rectangleCall('second', 40)],
+      controller.signal
+    )
+    await held.started
+    const run = currentRun(store)
+
+    controller.abort()
+    void reader.cancel()
+    await reading
+    const agent = () => expectDefined(presenceOf(store).agents.value[0], 'agent')
+    expect(agent()).toMatchObject({ status: 'idle', cursor: undefined })
+    expect(presenceOf(store).following.value).toBeNull()
+
+    held.release()
+    await run.settled()
+    // The running call's edit lands and stays this reply's; the one waiting its turn never runs.
+    expect(store.graph.getChildren(a)).toHaveLength(1)
+    expect(run.undoCalls).toHaveLength(1)
+    expect([...run.changedCalls]).toEqual(['first'])
+    expect(agent()).toMatchObject({ status: 'idle', cursor: undefined, selection: undefined })
+  })
+})
+
+test('a reply stopped before it reaches the model leaves the agent at rest', async () => {
+  await withStore(async (store) => {
+    const controller = new AbortController()
+    controller.abort()
+    const { reading } = await startMessage(store, [rectangleCall('late', 0)], controller.signal)
+    await reading
+    expect(presenceOf(store).agents.value[0]?.status).toBe('idle')
+    expect(currentRun(store).active).toBe(false)
+  })
+})
+
+test('a stopped tool settling after a new reply starts does not move the new agent', async () => {
+  await withStore(async (store, { a, b }) => {
+    const held = holdMutations(store)
+    const controller = new AbortController()
+    const { reader, reading } = await startMessage(
+      store,
+      [rectangleCall('old', 0)],
+      controller.signal
+    )
+    await held.started
+    const old = currentRun(store)
+    controller.abort()
+    void reader.cancel()
+    await reading
+    await store.switchPage(b)
+    const next = startRun(store, 10, 'new-reply')
+    held.release()
+    await old.settled()
+    expect(store.graph.getChildren(a)).toHaveLength(1)
+    expect(currentRun(store)).toBe(next)
+    expect(next.undoCalls).toHaveLength(0)
+    expect(presenceOf(store).agents.value[0]).toMatchObject({
+      status: 'thinking',
+      pageId: b,
+      cursor: undefined,
+      selection: undefined
+    })
+    endRun(store, next)
+  })
 })
 
 test("an edit that changes nothing adds no undo step and does not claim an earlier reply's", async () => {

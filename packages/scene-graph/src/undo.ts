@@ -19,7 +19,7 @@ interface UndoBatch {
 
 /** How many edits undo keeps by default. */
 export const DEFAULT_HISTORY_LIMIT = 200
-type HistoryDirection = 'undo' | 'redo'
+type HistoryDirection = 'undo' | 'redo' | 'step'
 
 export class UndoManager {
   private undoStack: UndoEntry[] = []
@@ -58,6 +58,16 @@ export class UndoManager {
       batch.entries.push(entry)
       return
     }
+    this.pushUndoEntry(entry)
+  }
+
+  /**
+   * Records an entry as a step of its own, outside the batches being built, such as an agent's
+   * edit made while a colour picker is open. Batches settle first, so the step follows the
+   * changes they hold so far.
+   */
+  pushStep(entry: UndoEntry): void {
+    this.settle('step')
     this.pushUndoEntry(entry)
   }
 
@@ -162,6 +172,16 @@ export class UndoManager {
   /** The entry `depth` steps below the top of the redo stack, the next one Redo applies at 0. */
   peekRedo(depth = 0): UndoEntry | undefined {
     return this.redoStack.at(-1 - depth)
+  }
+
+  /**
+   * Whether `entry` is applied (on the undo stack) or undone (on the redo stack); null once it
+   * left the history, trimmed or dropped when an edit cleared Redo.
+   */
+  stateOf(entry: UndoEntry): 'applied' | 'undone' | null {
+    if (this.undoStack.includes(entry)) return 'applied'
+    if (this.redoStack.includes(entry)) return 'undone'
+    return null
   }
 
   get undoLabel(): string | null {

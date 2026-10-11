@@ -106,13 +106,6 @@ export function touchedNodeIds(store: EditorStore, args: unknown, result: unknow
   })
 }
 
-function pageOf(store: EditorStore, nodeId: string): string | undefined {
-  let node = store.graph.getNode(nodeId)
-  while (node && node.type !== 'CANVAS')
-    node = node.parentId ? store.graph.getNode(node.parentId) : undefined
-  return node?.id
-}
-
 /** A session started a tool call on `pageId`: its agent shows it is at work there. */
 export function agentStarted(store: EditorStore, session: AgentSession, pageId: string): void {
   if (disposedStores.has(store)) return
@@ -132,12 +125,10 @@ export function agentFinished(
 ): void {
   if (disposedStores.has(store)) return
   const agent = sessionAgent(store, session)
-  const first = work.nodeIds[0]
-  const pageId = (first && pageOf(store, first)) || work.pageId
-  const placement = agentPlacement(store, work.nodeIds, pageId)
+  const placement = agentPlacement(store, work.nodeIds, work.pageId)
   agent.handle.update({
     status: work.edited ? 'editing' : 'thinking',
-    pageId,
+    pageId: work.pageId,
     ...placement
   })
   restartTimers(store, session.session, agent)

@@ -206,3 +206,47 @@ describe('shader paints', () => {
     )
   })
 })
+
+describe('rich text round trip', () => {
+  const RICH_FIELDS = ['text', 'styleRuns', 'textParagraphs'] as const
+
+  async function expectRoundTrip(graph: SceneGraph, id: string) {
+    const jsx = sceneNodeToJSX(id, graph)
+    const [result] = await renderJSX(graph, jsx)
+    const copy = getNodeOrThrow(graph, expectDefined(result, 'render result').id)
+    expect(pick(copy, RICH_FIELDS)).toEqual(pick(getNodeOrThrow(graph, id), RICH_FIELDS))
+    expect(sceneNodeToJSX(copy.id, graph)).toBe(jsx)
+  }
+
+  test('spans and paragraphs written as JSX come back the same', async () => {
+    const graph = new SceneGraph()
+    const [source] = await renderJSX(
+      graph,
+      `<Text size={24} color="#111111">
+  <Paragraph spacing={12}>Hello <Span weight={700} color="#EE2222">bold <Span italic>world</Span></Span>!</Paragraph>
+  <Paragraph list="ordered">First <Span textDecoration="underline" letterSpacing={1}>item</Span></Paragraph>
+  <Paragraph list="ordered" level={2} listSpacing={4} indent={8}>Nested</Paragraph>
+  <Paragraph list="unordered"><Span size={18} font="Roboto" lineHeight={28}>Dot</Span></Paragraph>
+  <Paragraph />
+</Text>`
+    )
+    const node = getNodeOrThrow(graph, expectDefined(source, 'render result').id)
+    expect(node.styleRuns.length).toBeGreaterThan(0)
+    expect(node.textParagraphs).toHaveLength(4)
+    await expectRoundTrip(graph, node.id)
+  })
+
+  test('styled text from the scene exports and renders back the same', async () => {
+    const graph = new SceneGraph()
+    const [source] = await renderJSX(graph, '<Text color="#000">Placeholder</Text>')
+    const id = expectDefined(source, 'render result').id
+    graph.updateNode(id, {
+      text: 'Plain {braces} bold\nnext line',
+      styleRuns: [
+        { start: 15, length: 5, style: { fontWeight: 700 } },
+        { start: 20, length: 4, style: { fontSize: 20 } }
+      ]
+    })
+    await expectRoundTrip(graph, id)
+  })
+})

@@ -35,6 +35,16 @@ export type DesignJSXHelperDefinition = DesignJSXNamedDefinition
 export const DESIGN_JSX_ELEMENTS: DesignJSXElementDefinition[] = [
   { name: 'Frame', runtimeType: 'frame', description: 'A frame or auto-layout container.' },
   { name: 'Text', runtimeType: 'text', description: 'A text layer.' },
+  {
+    name: 'Span',
+    runtimeType: 'text-span',
+    description: 'Characters inside a Text, styled apart from the rest.'
+  },
+  {
+    name: 'Paragraph',
+    runtimeType: 'text-paragraph',
+    description: 'One paragraph of a Text, plain or a list item.'
+  },
   { name: 'Rectangle', runtimeType: 'rectangle', description: 'A rectangle layer.' },
   { name: 'Ellipse', runtimeType: 'ellipse', description: 'An ellipse layer.' },
   { name: 'Line', runtimeType: 'line', description: 'A line layer.' },
@@ -51,6 +61,33 @@ export const DESIGN_JSX_ELEMENTS: DesignJSXElementDefinition[] = [
   { name: 'Icon', runtimeType: 'icon', description: 'An Iconify icon.' },
   ...rekaElementDefinitions()
 ]
+
+/** Props only `<Paragraph>` takes; like every element, it also takes `key`. */
+export const DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES = [
+  'list',
+  'level',
+  'spacing',
+  'listSpacing',
+  'indent'
+] as const
+
+/** Props `<Span>` takes: `<Text>`'s character styles, under the same names. */
+export const DESIGN_JSX_SPAN_PROPERTY_NAMES = [
+  'style',
+  'size',
+  'fontSize',
+  'font',
+  'fontFamily',
+  'weight',
+  'fontWeight',
+  'italic',
+  'color',
+  'fill',
+  'fills',
+  'lineHeight',
+  'letterSpacing',
+  'textDecoration'
+] as const
 
 export const DESIGN_JSX_SUPPORTED_PROPERTY_NAMES = [
   'name',
@@ -149,6 +186,11 @@ export const DESIGN_JSX_SUPPORTED_PROPERTY_NAMES = [
   'letterSpacing',
   'textDecoration',
   'textCase',
+  'list',
+  'level',
+  'spacing',
+  'listSpacing',
+  'indent',
   'maxLines',
   'truncate',
   'grid',

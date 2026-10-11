@@ -209,16 +209,19 @@ function collectTextSizingProps(node: SceneNode, graph: SceneGraph, props: JSXPr
   if (emitH && node.height > 0) props.push(['h', node.height])
 }
 
+/** A font weight as `weight` writes it, by name for the weights that have one. */
+export function fontWeightValue(weight: number): string | number {
+  if (weight === 700) return 'bold'
+  if (weight === 500) return 'medium'
+  return weight
+}
+
 function collectTextNodeProps(node: SceneNode, props: JSXProp[]): void {
   const direction = resolveNodeTextDirection(node)
   if (node.fontSize !== 14) props.push(['size', node.fontSize])
   if (node.fontFamily && node.fontFamily !== DEFAULT_FONT_FAMILY)
     props.push(['font', node.fontFamily])
-  if (node.fontWeight !== 400) {
-    if (node.fontWeight === 700) props.push(['weight', 'bold'])
-    else if (node.fontWeight === 500) props.push(['weight', 'medium'])
-    else props.push(['weight', node.fontWeight])
-  }
+  if (node.fontWeight !== 400) props.push(['weight', fontWeightValue(node.fontWeight)])
   if (direction === 'RTL') props.push(['dir', 'rtl'])
   if (node.italic) props.push(['italic', true])
   if (node.textAlignHorizontal !== 'LEFT') {

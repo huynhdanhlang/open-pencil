@@ -71,7 +71,7 @@ test('a canonical layout-child transaction is scoped above 20k nodes and preserv
     graph,
     runLayoutForNode: () => computeLayout(graph, parent.id),
     requestRender: () => undefined,
-    pushUndoEntry: undo.push.bind(undo)
+    pushUndoStep: undo.push.bind(undo)
   }
   executeAtomicTool(editor, api, setLayoutChild, {
     id: child.id,
@@ -107,7 +107,7 @@ test('layout-child failure rolls back sizing, geometry and source markers', () =
       throw new Error('Layout failed')
     },
     requestRender: () => undefined,
-    pushUndoEntry: undo.push.bind(undo)
+    pushUndoStep: undo.push.bind(undo)
   }
   expect(() =>
     executeAtomicTool(editor, api, setLayoutChild, {

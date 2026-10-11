@@ -19,7 +19,7 @@ test.each(['returned error', 'thrown error'])(
     const entries: unknown[] = []
     const store = asDouble<EditorStore>({
       ...editor,
-      pushUndoEntry: (entry) => entries.push(entry)
+      pushUndoStep: (entry) => entries.push(entry)
     })
     const run = executeWithPageUndo(
       store,
@@ -50,7 +50,7 @@ test('related pages use one Undo entry and both replay directions', async () => 
   const a = editor.graph.createNode('RECTANGLE', first, { x: 1 })
   const b = editor.graph.createNode('RECTANGLE', second, { x: 2 })
   const entries: { forward: () => void; inverse: () => void }[] = []
-  const store = asDouble<EditorStore>({ ...editor, pushUndoEntry: (entry) => entries.push(entry) })
+  const store = asDouble<EditorStore>({ ...editor, pushUndoStep: (entry) => entries.push(entry) })
   await executeWithPageUndo(
     store,
     first,

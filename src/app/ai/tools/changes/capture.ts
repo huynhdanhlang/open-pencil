@@ -1,8 +1,13 @@
 import { diffLines, type ChangeObject } from 'diff'
-import { compact } from 'es-toolkit/array'
+import { compact, uniq } from 'es-toolkit/array'
 
-import { graphFromPageSnapshot, type PageSnapshot } from '@open-pencil/core/editor'
+import {
+  graphFromDocumentChange,
+  isEmptyDocumentChange,
+  type DocumentChange
+} from '@open-pencil/core/editor'
 import { diffPageLayersJSX } from '@open-pencil/core/tools'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { changePreviewSize } from '@/app/ai/chat/preferences'
 import type { EditorStore } from '@/app/editor/active-store'
@@ -46,23 +51,34 @@ export function clipChangedJSX(before: string, after: string): [string, string] 
   return [clip(before), clip(after)]
 }
 
+/** The first page, the call's own one first, whose layers the change added, removed, or changed. */
+function changedPage(before: SceneGraph, after: SceneGraph, change: DocumentChange) {
+  for (const pageId of uniq([change.pageId, ...change.pageIds])) {
+    const layers = diffPageLayersJSX(before, after, pageId)
+    if (layers.length > 0) return { pageId, layers }
+  }
+  return null
+}
+
 /**
- * Records what a finished call changed on its page. The structural diff is immediate; images
- * render afterwards from frozen copies of both states, so later edits cannot leak into them.
+ * Records what a finished call changed, called right after it while the document is as the call
+ * left it. The review shows one page: the one the call ran on when its layers changed, otherwise
+ * the first other page whose layers did. The structural diff is immediate; images render
+ * afterwards from frozen copies of both states, so later edits cannot leak into them.
  */
 export function recordToolChange(
   store: EditorStore,
   toolCallId: string,
-  before: PageSnapshot,
-  after: PageSnapshot
+  documentChange: DocumentChange
 ): ToolChange | null {
-  const beforeGraph = graphFromPageSnapshot(store.graph, before)
-  const afterGraph = graphFromPageSnapshot(store.graph, after)
-  const pageId = after.values().next().value?.id
-  if (!beforeGraph || !afterGraph || !pageId) return null
+  if (isEmptyDocumentChange(documentChange)) return null
+  const beforeGraph = graphFromDocumentChange(store.graph, documentChange, 'before')
+  const afterGraph = graphFromDocumentChange(store.graph, documentChange, 'after')
+  if (!beforeGraph || !afterGraph) return null
   // The same JSX diff `diff_jsx` returns decides which layers changed.
-  const layers = diffPageLayersJSX(beforeGraph, afterGraph, pageId)
-  if (layers.length === 0) return null
+  const shown = changedPage(beforeGraph, afterGraph, documentChange)
+  if (!shown) return null
+  const { pageId, layers } = shown
   const nodeIds = layers.map((layer) => layer.id)
   const [jsxBefore, jsxAfter] = clipChangedJSX(
     joinJSX(layers.map((layer) => layer.before)),

@@ -5,7 +5,7 @@ import type { CanvasKit } from 'canvaskit-wasm'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { initCanvasKit } from '#cli/headless'
-import { buildParagraph, nodeFontReadiness } from '#core/canvas/text'
+import { nodeFontReadiness } from '#core/canvas/text'
 import { TextLayout } from '#core/canvas/text/layout'
 import { buildParagraph } from '#core/canvas/text/layout/build'
 import type { ParagraphNode } from '#core/canvas/text/paragraph/inputs'
@@ -271,6 +271,8 @@ describe('text preparation cache', () => {
         textDecorationFills: [
           { type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
         ],
+        textDecorationSkipInk: false,
+        textUnderlineOffset: 4,
         textTruncation: 'ENDING',
         maxLines: 2,
         textParagraphs: [{ listType: 'UNORDERED', indentation: 1 }],

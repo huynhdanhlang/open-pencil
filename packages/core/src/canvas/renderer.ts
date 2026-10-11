@@ -39,6 +39,7 @@ import * as RenderPipeline from './renderer/pipeline'
 import type { SceneBacking, SceneBackingBuild } from './renderer/retained-backing/types'
 import * as RendererState from './renderer/state'
 import * as RenderText from './text'
+import type { SavedDecorationCache } from './text/decorations'
 import { createDerivedGlyphPathCache, createGlyphSilhouetteCache } from './text/derived'
 import { TextPreparationCache } from './text/preparation/cache'
 export type {
@@ -155,6 +156,7 @@ export class SkiaRenderer {
   /** Path-text glyph silhouettes (stroke-and-union, font units) keyed by blob hash + relative weight. */
   glyphSilhouetteCache = createGlyphSilhouetteCache()
   derivedGlyphPathCache = createDerivedGlyphPathCache()
+  derivedDecorationCache: SavedDecorationCache = new WeakMap()
   renderingSceneBacking = false
   scenePicture: SkPicture | null = null
   scenePictureVersion = -1

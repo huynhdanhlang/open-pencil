@@ -26,7 +26,11 @@ interface OutlineFont {
   unitsPerEm: number
   ascender: number
   descender: number
-  tables: { os2?: { sTypoLineGap?: number }; fvar?: unknown }
+  tables: {
+    os2?: { sTypoLineGap?: number; yStrikeoutPosition?: number; yStrikeoutSize?: number }
+    post?: { underlinePosition?: number; underlineThickness?: number }
+    fvar?: unknown
+  }
   glyphs: { get(index: number): OutlineGlyph | undefined }
   charToGlyphIndex(char: string): number
   charToGlyph(char: string): OutlineGlyph
@@ -122,6 +126,44 @@ export function measureTextWithOpenType(
     return { width: maxWidth, height: Math.ceil(lines * lineH) }
   }
   return { width: Math.ceil(singleLineWidth), height: lineH }
+}
+
+/**
+ * Where a font draws its underline and strikethrough, in ems: each line's top edge below the
+ * baseline (negative above it) and its thickness. Figma places an underline's top half its
+ * thickness below the font's underline position, and a strikethrough's top at its strikeout
+ * position.
+ */
+export interface FontDecorationMetrics {
+  underlineTop: number
+  underlineThickness: number
+  strikethroughTop: number
+  strikethroughThickness: number
+}
+
+/** The decoration metrics of a loaded font, or `null` when it is not loaded or lacks them. */
+export function fontDecorationMetricsSync(
+  family: string,
+  style: string
+): FontDecorationMetrics | null {
+  const font = getParsedFont(family, style)
+  const post = font?.tables.post
+  const os2 = font?.tables.os2
+  if (
+    !font ||
+    post?.underlinePosition === undefined ||
+    !post.underlineThickness ||
+    os2?.yStrikeoutPosition === undefined ||
+    !os2.yStrikeoutSize
+  )
+    return null
+  const em = font.unitsPerEm
+  return {
+    underlineTop: (post.underlineThickness / 2 - post.underlinePosition) / em,
+    underlineThickness: post.underlineThickness / em,
+    strikethroughTop: -os2.yStrikeoutPosition / em,
+    strikethroughThickness: os2.yStrikeoutSize / em
+  }
 }
 
 export interface GlyphOutlineMetrics {

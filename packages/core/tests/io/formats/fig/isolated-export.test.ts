@@ -37,7 +37,7 @@ test('isolated Save prepares text outside the worker and releases the heap', asy
     thumbnailPNG: new Uint8Array([9]),
     prepare: async () => {
       prepared = true
-      return { shapedText: new Map(), fontDigests: new Map() }
+      return { shapedText: new Map(), textDecorations: new Map(), fontDigests: new Map() }
     }
   })
   expect([...bytes]).toEqual([1, 2])
@@ -67,7 +67,11 @@ test('native Save releases its codec heap before invoking the Rust packer', asyn
   globalThis.Worker = OwnedWorker as unknown as typeof Worker
   const bytes = await exportFigInWorker(new SceneGraph(), undefined, {
     thumbnailPNG: new Uint8Array([9]),
-    prepare: async () => ({ shapedText: new Map(), fontDigests: new Map() }),
+    prepare: async () => ({
+      shapedText: new Map(),
+      textDecorations: new Map(),
+      fontDigests: new Map()
+    }),
     packNative: async (payload) => {
       expect(terminated).toBe(1)
       expect([...payload]).toEqual([3, 4])

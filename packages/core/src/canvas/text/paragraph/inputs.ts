@@ -1,6 +1,9 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-/** Paragraph construction is typed against this list, which also drives cache invalidation. */
+/**
+ * Paragraph construction is typed against this list, which also drives cache invalidation; the
+ * decoration fields keep the decorations a prepared text holds current with it.
+ */
 export const PARAGRAPH_INPUT_KEYS = [
   'text',
   'fontFamily',
@@ -21,6 +24,8 @@ export const PARAGRAPH_INPUT_KEYS = [
   'textDecorationStyle',
   'textDecorationThickness',
   'textDecorationFills',
+  'textDecorationSkipInk',
+  'textUnderlineOffset',
   'textTruncation',
   'maxLines',
   'textParagraphs',

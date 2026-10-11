@@ -324,6 +324,12 @@ export interface NodeChange {
       /** Radians along the text path; kiwi omits the field for axis-aligned text. */
       rotation?: number
     }>
+    /** Underlines and strikethroughs, which Figma draws saved text's decorations from. */
+    decorations?: Array<{
+      rects: Array<{ x: number; y: number; w: number; h: number }>
+      /** The override table entry of the characters decorated, or 0 for the text's own style. */
+      styleID: number
+    }>
     fontMetaData?: Array<{
       key: { family: string; style: string; postscript?: string }
       fontLineHeight: number

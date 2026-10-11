@@ -23,6 +23,7 @@ import { RenderCreationJournal } from './render-creation'
 import { prepareScalarBindings } from './scalar-bindings'
 import { DESIGN_JSX_STYLE_KEYS } from './schema'
 import type { DesignJSXServices } from './services'
+import { isTextContent, TEXT_CONTENT_NAMES, textContentFields } from './text-content'
 import { FRAGMENT, isTreeNode } from './tree'
 import type { TreeNode } from './tree'
 import type { RenderOptions } from './types'
@@ -509,11 +510,10 @@ export function elementOverrides(
   }
 
   if (isText) {
-    const childText = tree.children.filter((c): c is string => typeof c === 'string').join('')
-    const propText =
-      props.text ?? props.characters ?? props.content ?? props.label ?? props.value ?? props.title
-    if (childText) overrides.text = childText
-    else if (typeof propText === 'string') overrides.text = propText
+    // A span's variables give their values; characters keep no bindings of their own.
+    const spanOverrides = (spanProps: Record<string, unknown>) =>
+      propsToOverrides(preparePropsForRender(graph, spanProps, true, parentId).props, true, 'NONE')
+    Object.assign(overrides, textContentFields(tree, props, overrides, spanOverrides))
   }
   return { overrides, bindings, bindingSources }
 }
@@ -581,6 +581,8 @@ async function renderNodeContent<Artwork>(
   })
   if (reka) return reka
 
+  if (isTextContent(tree))
+    throw new Error(`<${TEXT_CONTENT_NAMES[tree.type]}> must be inside <Text>`)
   const nodeType = TYPE_MAP[tree.type]
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
 
@@ -591,7 +593,7 @@ async function renderNodeContent<Artwork>(
   applyBindings(graph, node.id, bindings)
 
   for (const child of tree.children) {
-    if (typeof child === 'string') continue
+    if (typeof child === 'string' || (node.type === 'TEXT' && isTextContent(child))) continue
     if (isTreeNode(child)) {
       await renderNode(services, graph, child, journal, node.id, onNode, scope)
     }

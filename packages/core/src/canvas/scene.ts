@@ -41,7 +41,8 @@ import {
   normalizeDashPattern
 } from './strokes'
 import { textVerticalOffset, withTextParagraph } from './text'
-import { hasHangingListBox, hangingListClipRects } from './text/clip'
+import { hasHangingListBox } from './text/clip'
+import { drawTextLayout } from './text/decorations'
 import {
   canDrawSavedText,
   drawDerivedText,
@@ -946,13 +947,9 @@ function drawPaintedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): bool
       halfLeading: true,
       foregroundPaint: r.fillPaint
     },
-    (paragraph) => {
-      paragraph.draw(
-        canvas,
-        0,
-        textVerticalOffset(node, paragraph.getHeight()),
-        hangingListClipRects(r.ck, canvas, node)
-      )
+    (paragraph, prepared) => {
+      const y = textVerticalOffset(node, paragraph.getHeight())
+      drawTextLayout(r.ck, canvas, node, prepared, y, r.fillPaint)
       return true
     }
   )
@@ -1036,10 +1033,16 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
     return
   }
   if (r.fontsLoaded && r.fontProvider) {
-    withTextParagraph(r, node, r.fillPaint.getColor(), { halfLeading: true }, (paragraph) => {
-      const paragraphY = textVerticalOffset(node, paragraph.getHeight())
-      paragraph.draw(canvas, 0, paragraphY, hangingListClipRects(r.ck, canvas, node))
-    })
+    withTextParagraph(
+      r,
+      node,
+      r.fillPaint.getColor(),
+      { halfLeading: true },
+      (paragraph, prepared) => {
+        const paragraphY = textVerticalOffset(node, paragraph.getHeight())
+        drawTextLayout(r.ck, canvas, node, prepared, paragraphY, r.fillPaint)
+      }
+    )
   } else if (r.textFont) {
     if (hasHangingListBox(node)) {
       canvas.clipRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.ck.ClipOp.Intersect, false)

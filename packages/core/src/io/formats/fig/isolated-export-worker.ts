@@ -35,9 +35,7 @@ self.onmessage = async (event: MessageEvent<IsolatedFigExportRequest | PreparedR
       })
       self.postMessage({
         type: 'prepare',
-        nodes: [...graph.nodes.values()].filter(
-          (node) => node.type === 'TEXT' && !node.derivedTextGlyphs?.length
-        ),
+        nodes: [...graph.nodes.values()].filter((node) => node.type === 'TEXT'),
         fontKeys: fontKeysForGraph(graph)
       } satisfies IsolatedFigExportResult)
       resources = await pending

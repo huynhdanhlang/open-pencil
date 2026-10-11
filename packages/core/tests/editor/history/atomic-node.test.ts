@@ -17,7 +17,7 @@ function setup() {
     graph,
     runLayoutForNode: (_id: string) => undefined,
     requestRender: () => undefined,
-    pushUndoEntry: undo.push.bind(undo)
+    pushUndoStep: undo.push.bind(undo)
   }
   const definition = ALL_TOOLS.find((tool) => tool.name === 'update_node')
   if (!definition) throw new Error('Missing update_node')

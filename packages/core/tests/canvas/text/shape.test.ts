@@ -115,14 +115,14 @@ describe('text shaping for saved glyphs', () => {
     expect(shaped.glyphs.every((glyph) => glyph.commands === null)).toBe(true)
   })
 
-  test('keeps the layout but no outlines for decorations across lines', async () => {
+  test('keeps outlines for decorations across lines, which Figma draws from saved rects', async () => {
     const shaped = expectDefined(
       await shape({ text: SENTENCE, textDecoration: 'UNDERLINE' }),
       'shaped text'
     )
 
     expect(shaped.baselines).toHaveLength(2)
-    expect(shaped.glyphs.every((glyph) => glyph.commands === null)).toBe(true)
+    expect(shaped.glyphs.every((glyph) => glyph.commands !== null)).toBe(true)
   })
 
   test('does not shape truncated text', async () => {

@@ -11,13 +11,16 @@ import {
 import type { DerivedTextGlyph, SceneNode } from '@open-pencil/scene-graph'
 
 import { bytesToHex } from '../bytes'
+import type { PlacedTextGlyph, TextDecorationRecord } from '../export/runtime'
 import { weightToFigmaStyle } from '../font/style'
 import { bakeGlyphScale, encodePathCommandsBlob, type OutlineCommand } from '../path/commands'
+import { characterStyleIDs } from '../text/data-export'
 import { buildDerivedTextData } from './data'
 
 type DerivedTextData = NonNullable<NodeChange['derivedTextData']>
 type DerivedTextBaseline = NonNullable<DerivedTextData['baselines']>[number]
 type DerivedTextGlyphRecord = NonNullable<DerivedTextData['glyphs']>[number]
+type DerivedTextDecoration = NonNullable<DerivedTextData['decorations']>[number]
 
 /**
  * One shaped glyph in node space: `x`/`y` sit on its baseline, and `commands` are its outline in
@@ -47,6 +50,7 @@ export interface DerivedTextBuildContext {
   blobs: Uint8Array[]
   glyphBlobMap: Map<string, number>
   shapeText(node: SceneNode): ShapedText | null
+  textDecorations(node: SceneNode, glyphs: readonly PlacedTextGlyph[]): TextDecorationRecord[]
 }
 
 // Figma stores a whitespace glyph as a lone close command.
@@ -241,6 +245,25 @@ function savedGlyphRecords(
   })
 }
 
+/**
+ * Decorations as Figma saves them, which it draws saved text's underlines and strikethroughs
+ * from: their rects by the style of the characters they decorate.
+ */
+function derivedDecorations(
+  node: SceneNode,
+  glyphs: readonly PlacedTextGlyph[],
+  context: DerivedTextBuildContext
+): DerivedTextDecoration[] | undefined {
+  const records = context.textDecorations(node, glyphs)
+  if (records.length === 0) return undefined
+  const styleIDs = characterStyleIDs(node)
+  const byStyle = groupBy(records, (record) => String(styleIDs[record.firstCharacter] ?? 0))
+  return Object.entries(byStyle).map(([styleID, rects]) => ({
+    rects: rects.map(({ x, y, width, height }) => ({ x, y, w: width, h: height })),
+    styleID: Number(styleID)
+  }))
+}
+
 /** Glyphs are derived data: a shaper failure must not fail the save or copy that writes them. */
 function shapeOrNull(node: SceneNode, context: DerivedTextBuildContext): ShapedText | null {
   try {
@@ -266,6 +289,7 @@ export function buildNodeDerivedTextData(
     return buildDerivedTextData({
       node,
       glyphs: savedGlyphRecords(node, saved, context),
+      decorations: node.textPathData ? undefined : derivedDecorations(node, saved, context),
       fontMetaData: fonts,
       ...savedGlyphLayout(node, saved)
     })
@@ -274,6 +298,7 @@ export function buildNodeDerivedTextData(
   return buildDerivedTextData({
     node,
     glyphs: shaped ? shapedGlyphRecords(shaped, context) : [],
+    decorations: shaped ? derivedDecorations(node, shaped.glyphs, context) : undefined,
     fontMetaData: fonts,
     baselines: shaped?.baselines ?? [],
     logicalIndexToCharacterOffsetMap: shaped?.logicalIndexToCharacterOffsetMap ?? []

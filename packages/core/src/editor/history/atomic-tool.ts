@@ -33,7 +33,7 @@ const SCOPED_NODE_TOOLS = new Set<ToolDef>([
 
 export type MutationEditor = Pick<
   Editor,
-  'graph' | 'runLayoutForNode' | 'requestRender' | 'pushUndoEntry'
+  'graph' | 'runLayoutForNode' | 'requestRender' | 'pushUndoStep'
 >
 type Changes<T> = {
   id: string
@@ -164,7 +164,7 @@ export function executeAtomicTool(
       nodeChanges.some((change) => Object.keys(change.after).some((key) => key !== 'source'))
     if (!contentChanged && nodeChanges.length) replay(nodeChanges, [], 'before')
     if (contentChanged) {
-      editor.pushUndoEntry({
+      editor.pushUndoStep({
         label: `${options.label ?? 'Agent'}: ${def.name}`,
         inverse: () => replay(nodeChanges, variableChanges, 'before'),
         forward: () => replay(nodeChanges, variableChanges, 'after')

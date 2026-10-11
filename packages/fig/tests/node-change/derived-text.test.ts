@@ -6,7 +6,8 @@ import {
   convertFigmaDerivedTextGlyphs,
   nodeChangeToProps,
   type DerivedTextBuildContext,
-  type ShapedText
+  type ShapedText,
+  type TextDecorationRecord
 } from '#fig/node-change/index'
 
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
@@ -45,12 +46,16 @@ function textNode(props: Partial<SceneNode> = {}): SceneNode {
   })
 }
 
-function context(shaped: ShapedText | null): DerivedTextBuildContext & { blobs: Uint8Array[] } {
+function context(
+  shaped: ShapedText | null,
+  decorations: TextDecorationRecord[] = []
+): DerivedTextBuildContext & { blobs: Uint8Array[] } {
   return {
     digestMap: new Map(),
     blobs: [],
     glyphBlobMap: new Map(),
-    shapeText: () => shaped
+    shapeText: () => shaped,
+    textDecorations: () => decorations
   }
 }
 
@@ -109,6 +114,25 @@ describe('derived text writer', () => {
     expect(data.baselines).toHaveLength(2)
     expect(data.glyphs?.every((glyph) => glyph.commandsBlob === undefined)).toBe(true)
     expect(writer.blobs).toHaveLength(0)
+  })
+
+  test('writes decorations by the style of the characters they decorate', () => {
+    // Figma draws saved text's underlines and strikethroughs from these rects only.
+    const node = textNode({
+      textDecoration: 'UNDERLINE',
+      styleRuns: [{ start: 3, length: 1, style: { textDecoration: 'STRIKETHROUGH' } }]
+    })
+    const rect = { x: 0, y: 14, width: 16, height: 1 }
+    const writer = context(twoLines(SQUARE), [
+      { firstCharacter: 0, ...rect },
+      { firstCharacter: 3, ...rect, y: 22 }
+    ])
+    const data = expectDefined(buildNodeDerivedTextData(node, writer), 'derived text')
+
+    expect(data.decorations).toEqual([
+      { rects: [{ x: 0, y: 14, w: 16, h: 1 }], styleID: 0 },
+      { rects: [{ x: 0, y: 22, w: 16, h: 1 }], styleID: 1 }
+    ])
   })
 
   test('writes no glyphs for text that could not be shaped', () => {

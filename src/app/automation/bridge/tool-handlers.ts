@@ -39,7 +39,7 @@ import {
   executeAtomicEditorTool,
   structuralFontRoots,
   extractToolNodeIds,
-  executeWithPageUndo
+  executeWithDocumentUndo
 } from '@/app/automation/execution/editor'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { useLibraryService } from '@/app/libraries'
@@ -63,7 +63,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const store = target.store
     const tree = decodeTreeFromTransport(toolArgs.tree)
     const placement = resolveRenderPlacement(store.graph, placementInput, target.pageId)
-    const results = await executeWithPageUndo(
+    const results = await executeWithDocumentUndo(
       store,
       placement.pageId,
       automationUndoLabel('render'),
@@ -247,7 +247,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           )
         // View tools (selection, viewport, pages) leave the document and its history alone.
         result = toolChangesDocument(def)
-          ? await executeWithPageUndo(
+          ? await executeWithDocumentUndo(
               store,
               pageId,
               automationUndoLabel(def.name),

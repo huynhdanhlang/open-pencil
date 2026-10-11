@@ -1,6 +1,6 @@
 import { isEqual } from 'es-toolkit'
 
-import { executeAtomicTool } from '@open-pencil/core/editor'
+import { executeAtomicTool, isEmptyDocumentChange } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import type { ToolDef } from '@open-pencil/core/tools'
 import type { SceneGraph, SceneMutationImpact } from '@open-pencil/scene-graph'
@@ -122,12 +122,41 @@ export async function executeWithPageUndo<T>(
       if (failed && options.rollbackOnError) {
         store.restorePageFromSnapshot(before)
       } else {
-        store.pushUndoEntry({
+        store.pushUndoStep({
           label,
           forward: () => store.restorePageFromSnapshot(after),
           inverse: () => store.restorePageFromSnapshot(before)
         })
       }
     }
+  }
+}
+
+/** Record document-wide changes; grouped diff recovery retains its immutable snapshot owner. */
+export async function executeWithDocumentUndo<T>(
+  store: EditorStore,
+  pageId: string,
+  label: string,
+  run: () => Promise<T>,
+  onPhase?: (phase: 'snapshot-before' | 'construction' | 'snapshot-after' | 'undo-commit') => void,
+  options: { rollbackOnError?: boolean; additionalPageIds?: readonly string[] } = {}
+): Promise<T> {
+  if (options.rollbackOnError || options.additionalPageIds?.length)
+    return executeWithPageUndo(store, pageId, label, run, onPhase, options)
+  onPhase?.('snapshot-before')
+  const finish = store.captureDocumentChange(pageId)
+  try {
+    onPhase?.('construction')
+    return await run()
+  } finally {
+    onPhase?.('snapshot-after')
+    const change = finish()
+    onPhase?.('undo-commit')
+    if (!isEmptyDocumentChange(change))
+      store.pushUndoStep({
+        label,
+        forward: () => store.restoreDocumentChange(change, 'after'),
+        inverse: () => store.restoreDocumentChange(change, 'before')
+      })
   }
 }

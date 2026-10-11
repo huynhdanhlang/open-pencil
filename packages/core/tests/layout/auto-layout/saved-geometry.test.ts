@@ -121,11 +121,11 @@ describe('a frame read from a .fig file reflows once its layout is edited', () =
       editor.graph.updateNode(second.id, { x: 157, derivedLayout: { x: 157 } })
     })
     const before = [280, 11, 157]
-    const finish = editor.capturePageChange(editor.state.currentPageId)
+    const finish = editor.captureDocumentChange(editor.state.currentPageId)
     editor.graph.createNode('RECTANGLE', row.id, { width: 50, height: 40 })
     editor.runLayoutForNode(row.id)
     const change = finish()
-    editor.restorePageChange(change, 'before')
+    editor.restoreDocumentChange(change, 'before')
     editor.runLayoutForNode(row.id)
     expect([row.width, first.x, second.x]).toEqual(before)
     editor.dispose()

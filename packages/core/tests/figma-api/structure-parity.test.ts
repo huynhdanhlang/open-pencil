@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { expectFills } from '#core-tests/helpers/assert'
+
 import { FigmaAPI, type FigmaNodeProxy } from '@open-pencil/core/figma-api'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -70,7 +72,7 @@ describe('plugin API structure parity', () => {
     expect(component.type).toBe('COMPONENT')
     expect(component.name).toBe('r')
     expect([component.x, component.y, component.width, component.height]).toEqual([100, 0, 50, 50])
-    expect(component.fills[0]?.color).toMatchObject({ r: 1, g: 1, b: 1 })
+    expect(expectFills(component.fills)[0]?.color).toMatchObject({ r: 1, g: 1, b: 1 })
     expect(order()).toEqual(['a', 'r', 'z'])
     expect(r.removed).toBe(false)
     expect(component.children[0]?.id).toBe(r.id)

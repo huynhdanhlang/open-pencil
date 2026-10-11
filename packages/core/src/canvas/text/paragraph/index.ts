@@ -92,31 +92,6 @@ export function textFontFeatures(
   }))
 }
 
-function textDecorationValue(ck: CanvasKit, decoration: string): number {
-  switch (decoration) {
-    case 'UNDERLINE':
-      return ck.UnderlineDecoration
-    case 'STRIKETHROUGH':
-      return ck.LineThroughDecoration
-    default:
-      return ck.NoDecoration
-  }
-}
-
-export function textDecorationStyleValue<T>(
-  ck: { DecorationStyle: { Solid: T; Dotted: T; Wavy: T } },
-  style: SceneNode['textDecorationStyle'] | undefined
-): T {
-  switch (style) {
-    case 'DOTTED':
-      return ck.DecorationStyle.Dotted
-    case 'WAVY':
-      return ck.DecorationStyle.Wavy
-    default:
-      return ck.DecorationStyle.Solid
-  }
-}
-
 export function textHeightBehaviorValue<T>(
   ck: { TextHeightBehavior: { DisableAll: T } },
   leadingTrim: SceneNode['leadingTrim']
@@ -142,17 +117,6 @@ function blockHeightBehavior(
   if (first) return ck.TextHeightBehavior.DisableFirstAscent
   if (last) return ck.TextHeightBehavior.DisableLastDescent
   return ck.TextHeightBehavior.All
-}
-
-function textDecorationColor(
-  ck: CanvasKit,
-  fills: SceneNode['textDecorationFills'] | undefined,
-  fallback: Float32Array
-): Float32Array {
-  const fill = fills?.find((item) => item.visible && item.type === 'SOLID')
-  if (!fill) return fallback
-  const color = resolveRGBAForPreview(fill.color).color
-  return ck.Color4f(color.r, color.g, color.b, color.a * fill.opacity)
 }
 
 function styleRunColor(
@@ -207,17 +171,6 @@ function pushStyleRun(
     ),
     fontFeatures: textFontFeatures(style.fontFeatures ?? node.fontFeatures),
     letterSpacing: style.letterSpacing ?? (node.letterSpacing || 0),
-    decoration: textDecorationValue(ck, style.textDecoration ?? node.textDecoration),
-    decorationStyle: textDecorationStyleValue(
-      ck,
-      style.textDecorationStyle ?? node.textDecorationStyle
-    ),
-    decorationThickness: style.textDecorationThickness ?? node.textDecorationThickness ?? undefined,
-    decorationColor: textDecorationColor(
-      ck,
-      style.textDecorationFills ?? node.textDecorationFills,
-      baseColor
-    ),
     heightMultiplier: runLineHeight ? runLineHeight / runFontSize : undefined,
     halfLeading
   })
@@ -360,10 +313,6 @@ export function buildSkParagraph(
     ),
     fontFeatures: textFontFeatures(node.fontFeatures),
     letterSpacing: node.letterSpacing || 0,
-    decoration: textDecorationValue(ck, node.textDecoration),
-    decorationStyle: textDecorationStyleValue(ck, node.textDecorationStyle),
-    decorationThickness: node.textDecorationThickness ?? undefined,
-    decorationColor: textDecorationColor(ck, node.textDecorationFills, baseColor),
     heightMultiplier: node.lineHeight ? node.lineHeight / baseFontSize : undefined,
     halfLeading
   }

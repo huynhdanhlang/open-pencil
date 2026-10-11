@@ -90,6 +90,10 @@ export function useSelectionColors() {
   const stopHistory = editor.undo.onBeforeHistory((direction) => {
     pendingSessionEdit = false
     if (!frozen.value) return
+    if (direction === 'step') {
+      invalidate()
+      return
+    }
     const entry = direction === 'undo' ? editor.undo.peekUndo() : editor.undo.peekRedo()
     if (!entry || !sessionEntries.has(entry)) invalidate()
   })

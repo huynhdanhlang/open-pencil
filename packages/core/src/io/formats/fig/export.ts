@@ -186,16 +186,31 @@ export async function exportFigFile(
       prepare: (nodes, fontKeys) =>
         withFigExportRuntimeForNodes(nodes, ck, async (runtime) => {
           const shapedText: PreparedFigResources['shapedText'] = new Map()
+          const textDecorations: PreparedFigResources['textDecorations'] = new Map()
           for (const node of nodes) {
+            let shaped = null
             try {
-              shapedText.set(node.id, runtime.shapeText(node))
+              if (!node.derivedTextGlyphs?.length && !node.textPathData)
+                shaped = runtime.shapeText(node)
+              shapedText.set(node.id, shaped)
             } catch (error) {
               // Match the writer's existing derived-glyph policy, preserving editable text.
               console.warn(`Writing "${node.name}" without glyphs; text shaping failed:`, error)
               shapedText.set(node.id, null)
             }
+            const glyphs = node.derivedTextGlyphs?.length
+              ? node.derivedTextGlyphs
+              : (shaped?.glyphs ?? [])
+            textDecorations.set(
+              node.id,
+              node.textPathData ? [] : runtime.textDecorations(node, glyphs)
+            )
           }
-          return { shapedText, fontDigests: await buildFontDigestMapFromKeys(fontKeys) }
+          return {
+            shapedText,
+            textDecorations,
+            fontDigests: await buildFontDigestMapFromKeys(fontKeys)
+          }
         }),
       packNative: IS_TAURI
         ? async (payload) => {
@@ -230,8 +245,13 @@ async function writeFigFile(
     graph = cloneSceneGraphForFigExport(sourceGraph)
     populateReaderExport(sourceGraph, graph)
   }
-  if (options.prepared)
-    runtime = { shapeText: (node) => options.prepared!.shapedText.get(node.id) ?? null }
+  const prepared = options.prepared
+  if (prepared)
+    runtime = {
+      ...runtime,
+      shapeText: (node) => prepared.shapedText.get(node.id) ?? null,
+      textDecorations: (node) => prepared.textDecorations.get(node.id) ?? []
+    }
   const setup = await prepareFigExport(graph, runtime, {
     fontDigestMap: options.prepared?.fontDigests
   })
