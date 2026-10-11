@@ -262,6 +262,20 @@ function earlierOpenPencilData(characters: string, lineHeight: number): DerivedT
 describe('derived text reader', () => {
   const blobs = [new Uint8Array([0])]
 
+  test('leaves out the glyphs Figma hides past the ellipsis of truncated text', () => {
+    // Figma lays truncated text out whole and puts an ellipsis, with no character, where it is
+    // cut; the glyphs after it, from `truncationStartIndex`, are not drawn.
+    const characters = 'Long label'
+    const data = earlierOpenPencilData(characters, 16)
+    data.logicalIndexToCharacterOffsetMap = data.logicalIndexToCharacterOffsetMap?.slice(0, -1)
+    const glyphs = data.glyphs ?? []
+    glyphs.splice(4, 0, { ...glyphs[4], firstCharacter: undefined })
+    data.truncationStartIndex = 5
+
+    const read = convertFigmaDerivedTextGlyphs(data, blobs, characters)
+    expect(read.map((glyph) => glyph.firstCharacter)).toEqual([0, 1, 2, 3, undefined])
+  })
+
   test("keeps a glyph's own advance through reading and saving", () => {
     const characters = 'Table item'
     const data = earlierOpenPencilData(characters, 16)

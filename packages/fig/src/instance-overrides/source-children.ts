@@ -1,7 +1,7 @@
 import { setInstanceOverride, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import type { MaterializedInstance } from './materialize-instance'
-import { occurrences } from './occurrence/path'
+import { occurrences, resolveOccurrencePath } from './occurrence/path'
 import type { InstanceOccurrence } from './occurrence/types'
 
 export interface MaterializedComponentOccurrence {
@@ -14,6 +14,16 @@ export function reconcileOccurrenceStructure(
   graph: SceneGraph,
   components: ReadonlyMap<string, MaterializedComponentOccurrence>
 ): void {
+  // Resolve claims before reconciliation changes their paths. Invalid archive claims
+  // still fail; only a valid target removed by the live source may lose its claim.
+  const claimTargets = new Map(
+    [...occurrences(target)].map((owner) => [
+      owner,
+      new Map(
+        owner.propertyClaims.map((claim) => [claim, resolveOccurrencePath(owner, claim.path)])
+      )
+    ])
+  )
   const matchChildren = (
     current: InstanceOccurrence,
     source: InstanceOccurrence,
@@ -59,6 +69,15 @@ export function reconcileOccurrenceStructure(
     matchChildren(current, component.occurrence, component.materialized.nodes)
   }
   visit(target)
+  const retained = new Set(occurrences(target))
+  for (const owner of retained) {
+    const targets = claimTargets.get(owner)
+    owner.propertyClaims = owner.propertyClaims.filter((claim) => {
+      const claimed = targets?.get(claim)
+      if (!claimed) throw new Error('Missing reconciled property claim target')
+      return retained.has(claimed)
+    })
+  }
 }
 
 /**

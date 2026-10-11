@@ -348,14 +348,16 @@ export interface FigExportSetup {
 
 export interface FigExportSetupOptions {
   fontDigestMap?: Map<string, Uint8Array>
+  /** Saved identities on pages that may not be loaded; new layer IDs must not claim them. */
+  archiveRecordIds?: readonly string[]
   /** The first local ID a new GUID may take, above every GUID the target archive holds. */
   nextLocalId?: number
   /** The target archive's blobs, so the indices of new blobs follow theirs. */
   blobs?: Uint8Array[]
   /**
    * The layer each archive GUID belongs to; only that layer writes the archive's record. Writing
-   * into an archive also gives new layers and pages counter GUIDs, past every GUID it holds,
-   * rather than their graph IDs, which a record on a page not loaded may already use.
+   * into an archive preserves new layers' numeric graph IDs when unclaimed across all pages;
+   * incompatible or colliding IDs fall back to counter GUIDs past the archive's reserved range.
    */
   recordOwners?: ReadonlyMap<string, string>
   /** Writing into an archive: the variables, collections and modes it holds keep their GUIDs. */
@@ -391,6 +393,7 @@ export async function prepareFigExport(
   const propertyIdToGuid = new Map<string, GUID>()
 
   const nodeSourceGuidValues = layerSourceGuids(graph)
+  const reservedLayerGuids = new Set([...nodeSourceGuidValues, ...(options.archiveRecordIds ?? [])])
   const propertyIds = collectComponentPropertyIds(graph)
   // Before any canvas, variable or layer takes a counter GUID, so none collides.
   localIdCounter.value = Math.max(
@@ -406,8 +409,8 @@ export async function prepareFigExport(
     localIdCounter,
     nodeIdToGuid,
     assignedGuidValues,
-    nodeSourceGuidValues,
-    !options.recordOwners
+    reservedLayerGuids,
+    true
   )
   // Archive records keep their GUIDs: claim them before any copy that kept one can.
   for (const [guid, nodeId] of options.recordOwners ?? []) {
@@ -426,7 +429,9 @@ export async function prepareFigExport(
     modeIdToGuid,
     assignedGuidValues,
     nodeSourceGuidValues,
-    archived ? (id) => archived.has(id) : undefined
+    archived
+      ? (id) => archived.has(id) || ownGuid(id, reservedLayerGuids, assignedGuidValues) !== null
+      : undefined
   )
 
   assignComponentPropertyGuids(
@@ -437,8 +442,7 @@ export async function prepareFigExport(
     nodeSourceGuidValues
   )
   const pluginDataOverrides = renamedBehaviourPluginData(graph, propertyIdToGuid)
-  if (!options.recordOwners)
-    assignOwnLayerGuids(graph, nodeSourceGuidValues, nodeIdToGuid, assignedGuidValues)
+  assignOwnLayerGuids(graph, reservedLayerGuids, nodeIdToGuid, assignedGuidValues)
 
   return {
     graph,

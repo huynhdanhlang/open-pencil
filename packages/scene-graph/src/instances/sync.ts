@@ -20,10 +20,11 @@ import {
   unplacedCopy,
   type InstanceSyncContext
 } from './copies'
-import { INSTANCE_SYNC_FIELDS, INSTANCE_SYNC_PROPS } from './fields'
+import { INSTANCE_SYNC_FIELD_OWNERS, INSTANCE_SYNC_FIELDS, INSTANCE_SYNC_PROPS } from './fields'
 import { instanceMainComponent } from './main-component'
+import { PLACEMENT_FIELDS, placedByConstraints } from './placement'
 
-const componentSyncProps = new Set(INSTANCE_SYNC_PROPS)
+const componentSyncProps: ReadonlySet<string> = new Set(INSTANCE_SYNC_PROPS)
 
 function setSceneProp<K extends keyof SceneNode>(
   target: Partial<SceneNode>,
@@ -118,6 +119,44 @@ export function sourceInTargetCoordinates(source: SceneNode, targetScale: number
     ...source,
     ...scaleNodeChanges(source, factor, true),
     ...scaleVariableBindingUnits(source, factor)
+  }
+}
+
+interface SyncedFieldsInput {
+  compParent: SceneNode
+  instParent: SceneNode
+  /** The component's coordinates in the copy's. */
+  factor: number
+  /** Fields the copy keeps: overridden, bound, or driven by a property. */
+  skip: (key: string) => boolean
+  /** A selected master supplies appearance, not placement inside the enclosing parent. */
+  applyConstraints?: boolean
+}
+
+/** The fields a copy takes from its component's layer, placed in the copy's parent. */
+function copySyncedFields(
+  updates: Partial<SceneNode>,
+  copy: SceneNode,
+  source: SceneNode,
+  { compParent, instParent, factor, skip, applyConstraints = true }: SyncedFieldsInput
+): void {
+  // In an auto layout flow the layout places the copy, as it placed the component's layer.
+  const placedByLayout =
+    applyConstraints && instParent.layoutMode !== 'NONE' && source.layoutPositioning !== 'ABSOLUTE'
+  const placed =
+    applyConstraints && !placedByLayout
+      ? placedByConstraints(source, compParent, instParent, factor)
+      : source
+  for (const key of INSTANCE_SYNC_FIELDS) {
+    if (key === 'boundVariables') continue
+    if (placedByLayout && (key === 'x' || key === 'y')) continue
+    if (skip(key)) continue
+    const owner = INSTANCE_SYNC_FIELD_OWNERS[key]
+    if (owner && skip(owner)) continue
+    const from = PLACEMENT_FIELDS.has(key) ? placed : source
+    // Most fields already match: comparing first spares cloning them for nothing.
+    if (isEqual(copy[key], from[key])) continue
+    copyProp(updates, from, key)
   }
 }
 
@@ -534,15 +573,22 @@ function syncMatchedChildren(
       componentPropertyReferences: structuredClone(compChild.componentPropertyReferences)
     }
     syncBindingFields(instChild, selectedSource ?? source, updates, protectedField)
-    for (const key of INSTANCE_SYNC_FIELDS) {
-      if (key === 'boundVariables') continue
-      if (driven.has(key)) continue
-      if (isProtectedSyncField(instChild, key, protectedField)) continue
-      copyProp(
-        updates,
-        selectedSource && componentSyncProps.has(key) ? selectedSource : source,
-        key
-      )
+    const keeps = (key: string) =>
+      driven.has(key) || isProtectedSyncField(instChild, key, protectedField)
+    copySyncedFields(updates, instChild, source, {
+      compParent,
+      instParent,
+      factor: componentScale / compChild.componentScale,
+      skip: (key) => keeps(key) || Boolean(selectedSource && componentSyncProps.has(key))
+    })
+    if (selectedSource) {
+      copySyncedFields(updates, instChild, selectedSource, {
+        compParent,
+        instParent,
+        factor: componentScale / compChild.componentScale,
+        applyConstraints: false,
+        skip: (key) => keeps(key) || !componentSyncProps.has(key)
+      })
     }
     Object.assign(updates, assignedFieldValues(graph, instChild, compChild))
     updateSyncedProps(graph, instChild, updates)

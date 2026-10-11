@@ -120,10 +120,21 @@ export interface DesignJSXElement {
   tag: string
   /** Each attribute as `sceneNodeAttributes` prints it, keyed by name: `w={320}`. */
   attributes: Record<string, string>
-  /** Text content of a text layer as JSX writes it, else `null`. */
+  /**
+   * A text layer's content as JSX writes it between its tags, `<Span>`s and `<Paragraph>`s
+   * included, for an element at the start of its line; `null` for no content or another layer.
+   */
   text: string | null
   /** The layers written as child elements, in order. */
   childIds: string[]
+}
+
+/** What a text's element holds between its tags, printed as `sceneNodeToJSX` prints it. */
+function textContent(node: SceneNode, tag: string): string | null {
+  const { children, inline } = textChildren(node, 0)
+  if (children.length === 0) return null
+  const printed = jsx.printJSX(jsx.element(tag, [], children, 0, inline))
+  return printed.slice(tag.length + 2, printed.lastIndexOf(`</${tag}>`))
 }
 
 export function designJSXElement(nodeId: string, graph: SceneGraph): DesignJSXElement | null {
@@ -138,10 +149,7 @@ export function designJSXElement(nodeId: string, graph: SceneGraph): DesignJSXEl
       .filter(({ name }) => !isText || name !== 'text')
       .map(({ name, source }) => [name, source])
   )
-  if (isText) {
-    const text = node.text ? jsx.printJSX(jsx.text(node.text)) : null
-    return { tag, attributes, text, childIds: [] }
-  }
+  if (isText) return { tag, attributes, text: textContent(node, tag), childIds: [] }
   const childIds = graph
     .getChildren(node.id)
     .filter((child) => NODE_TYPE_TO_TAG[child.type])

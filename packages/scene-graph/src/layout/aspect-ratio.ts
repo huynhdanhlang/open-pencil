@@ -1,5 +1,4 @@
 import type { SceneGraph } from '../index'
-import { findInstanceAncestor } from '../instances'
 import type { Vector } from '../primitives'
 import type { SceneNode } from '../types'
 
@@ -12,7 +11,7 @@ export function lockedAspectRatioTarget(width: number, height: number): Vector {
 
 /** Whether the lock can change: a layer inside an instance keeps its component's, as in Figma. */
 export function aspectRatioLockEditable(graph: SceneGraph, node: SceneNode): boolean {
-  return !node.parentId || !findInstanceAncestor(graph, node.parentId)
+  return !node.parentId || !graph.closest(node.parentId, (layer) => layer.type === 'INSTANCE')
 }
 
 /**

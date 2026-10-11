@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing stable release tag to rebuild without moving it (vX.Y.Z).
+        description: Existing release tag to rebuild without moving it (vX.Y.Z or vX.Y.Z-beta.N).
         required: true
         type: string
   push:

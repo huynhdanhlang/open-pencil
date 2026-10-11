@@ -30,7 +30,12 @@ import {
 } from './plugin-data'
 import { importStyleRuns } from './style/runs'
 import { importParagraphStyles } from './text/lines'
-import { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text/values'
+import {
+  convertLetterSpacing,
+  convertLineHeight,
+  isFigmaAutoLineHeight,
+  mapTextDecoration
+} from './text/values'
 import {
   alignGeometryWindingRules,
   resolveGeometryPaths,
@@ -308,6 +313,23 @@ function convertPolygonProps(
   if (nc.starInnerScale !== undefined && Number.isFinite(nc.starInnerScale))
     props.starInnerRadius = clamp(nc.starInnerScale, 0, 1)
   return props
+}
+
+/**
+ * A text's line height. Figma writes auto as 100 percent, and OpenPencil once wrote none for
+ * it; a text in auto lines up each line at its own font's height. A height in pixels is the one
+ * the saved lines were laid out at, which a style the text uses may set apart from its own.
+ */
+function importedTextLineHeight(nc: NodeChange): number | null {
+  if (!nc.lineHeight || isFigmaAutoLineHeight(nc.lineHeight)) return null
+  const derivedLineHeight = nc.derivedTextData?.baselines?.[0]?.lineHeight
+  if (
+    nc.lineHeight.units === 'PIXELS' &&
+    derivedLineHeight !== undefined &&
+    Number.isFinite(derivedLineHeight)
+  )
+    return derivedLineHeight
+  return convertLineHeight(nc.lineHeight, nc.fontSize)
 }
 
 type TextProps = Pick<

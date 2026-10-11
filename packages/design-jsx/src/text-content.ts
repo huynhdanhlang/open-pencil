@@ -36,7 +36,12 @@ export const SPAN_STYLE_FIELDS = [
   'fills',
   'letterSpacing',
   'lineHeight',
-  'textDecoration'
+  'textDecoration',
+  'textDecorationStyle',
+  'textDecorationFills',
+  'textDecorationThickness',
+  'textUnderlineOffset',
+  'textDecorationSkipInk'
 ] as const satisfies readonly (keyof CharacterStyleOverride & keyof SceneNode)[]
 
 export type SpanStyle = Pick<CharacterStyleOverride, (typeof SPAN_STYLE_FIELDS)[number]>

@@ -1,4 +1,7 @@
+import { isEqual, omitBy, pick } from 'es-toolkit'
+
 import {
+  createDefaultNode,
   layoutSizing,
   type SceneGraph,
   type SceneNode,
@@ -8,6 +11,7 @@ import { DEFAULT_FONT_FAMILY } from '@open-pencil/scene-graph/constants'
 import { resolveNodeTextDirection } from '@open-pencil/scene-graph/text-direction'
 
 import { componentPropertyScope } from '../component-properties'
+import { collectDecorationProps } from './decoration'
 import {
   collectCornerRadii,
   collectPadding,
@@ -218,6 +222,19 @@ function collectTextSizingProps(node: SceneNode, graph: SceneGraph, props: JSXPr
   if (emitH && node.height > 0) props.push(['h', node.height])
 }
 
+const DECORATION_FIELDS = [
+  'textDecorationStyle',
+  'textDecorationFills',
+  'textDecorationThickness',
+  'textUnderlineOffset',
+  'textDecorationSkipInk'
+] as const
+
+const TEXT_DEFAULTS = pick(
+  createDefaultNode(() => '', 'TEXT'),
+  DECORATION_FIELDS
+)
+
 /** A font weight as `weight` writes it, by name for the weights that have one. */
 export function fontWeightValue(weight: number): string | number {
   if (weight === 700) return 'bold'
@@ -243,9 +260,18 @@ function collectTextNodeProps(node: SceneNode, props: JSXProp[]): void {
   if (node.letterSpacing !== 0) props.push(['letterSpacing', node.letterSpacing])
   if (node.textDecoration !== 'NONE')
     props.push(['textDecoration', node.textDecoration.toLowerCase()])
+  collectDecorationProps(
+    omitBy(pick(node, DECORATION_FIELDS), (value, key) => isEqual(value, TEXT_DEFAULTS[key])),
+    node,
+    props
+  )
   if (node.textCase !== 'ORIGINAL') props.push(['textCase', node.textCase.toLowerCase()])
   if (node.maxLines != null) props.push(['maxLines', node.maxLines])
   if (node.textTruncation === 'ENDING' && node.maxLines == null) props.push(['truncate', true])
+  if (node.paragraphSpacing !== 0) props.push(['paragraphSpacing', node.paragraphSpacing])
+  if (node.listSpacing !== 0) props.push(['listSpacing', node.listSpacing])
+  if (node.paragraphIndent !== 0) props.push(['paragraphIndent', node.paragraphIndent])
+  if (node.hangingList) props.push(['hangingList', true])
 }
 
 const TEXT_AUTO_RESIZE: Record<SceneNode['textAutoResize'], string> = {

@@ -222,7 +222,8 @@ describe('rich text round trip', () => {
     const graph = new SceneGraph()
     const [source] = await renderJSX(
       graph,
-      `<Text size={24} color="#111111">
+      `<Text size={24} color="#111111" lineHeight={30} paragraphSpacing={6} textDecorationColor="#2222EE">
+  <Paragraph list="unordered" indent={2}>Auto <Span lineHeight="auto" textDecoration="underline" textDecorationStyle="dotted" textDecorationColor="currentColor" textDecorationThickness={3} textUnderlineOffset="auto" textDecorationSkipInk={false}>underlined</Span> <Span fills={[]}>hidden</Span></Paragraph>
   <Paragraph spacing={12}>Hello <Span weight={700} color="#EE2222">bold <Span italic>world</Span></Span>!</Paragraph>
   <Paragraph list="ordered">First <Span textDecoration="underline" letterSpacing={1}>item</Span></Paragraph>
   <Paragraph list="ordered" level={2} listSpacing={4} indent={8}>Nested</Paragraph>
@@ -232,7 +233,7 @@ describe('rich text round trip', () => {
     )
     const node = getNodeOrThrow(graph, expectDefined(source, 'render result').id)
     expect(node.styleRuns.length).toBeGreaterThan(0)
-    expect(node.textParagraphs).toHaveLength(4)
+    expect(node.textParagraphs).toHaveLength(5)
     await expectRoundTrip(graph, node.id)
   })
 

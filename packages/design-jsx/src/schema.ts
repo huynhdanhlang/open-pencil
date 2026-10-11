@@ -86,7 +86,20 @@ export const DESIGN_JSX_SPAN_PROPERTY_NAMES = [
   'fills',
   'lineHeight',
   'letterSpacing',
-  'textDecoration'
+  'textDecoration',
+  'textDecorationStyle',
+  'textDecorationColor',
+  'textDecorationThickness',
+  'textUnderlineOffset',
+  'textDecorationSkipInk'
+] as const
+
+/** Props `<Text>` sets every paragraph's spacing with; a `<Paragraph>` sets its own. */
+export const DESIGN_JSX_TEXT_PARAGRAPH_PROPERTY_NAMES = [
+  'paragraphSpacing',
+  'listSpacing',
+  'paragraphIndent',
+  'hangingList'
 ] as const
 
 export const DESIGN_JSX_SUPPORTED_PROPERTY_NAMES = [
@@ -185,7 +198,15 @@ export const DESIGN_JSX_SUPPORTED_PROPERTY_NAMES = [
   'lineHeight',
   'letterSpacing',
   'textDecoration',
+  'textDecorationStyle',
+  'textDecorationColor',
+  'textDecorationThickness',
+  'textUnderlineOffset',
+  'textDecorationSkipInk',
   'textCase',
+  'paragraphSpacing',
+  'paragraphIndent',
+  'hangingList',
   'list',
   'level',
   'spacing',

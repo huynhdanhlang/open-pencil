@@ -20,6 +20,7 @@ describe('typography depth actions', () => {
       editor,
       nodes,
       activeFormatting: computed(() => []),
+      supports: () => true,
       options: {}
     })
 
@@ -41,6 +42,7 @@ describe('typography depth actions', () => {
       editor,
       nodes: computed(() => [editor.graph.getNode(text.id)].filter((node) => node !== undefined)),
       activeFormatting: computed(() => []),
+      supports: () => true,
       options: {}
     })
 
@@ -73,6 +75,7 @@ describe('typography depth actions', () => {
           .filter((node) => node !== undefined)
       ),
       activeFormatting: computed(() => []),
+      supports: () => true,
       options: {}
     })
 

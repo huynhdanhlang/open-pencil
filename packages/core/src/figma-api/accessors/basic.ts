@@ -17,6 +17,7 @@ import { refreshRenamedVariant } from '@open-pencil/scene-graph/variant-properti
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import {
+  prepareFollowedFieldEdit,
   fitGroupsAround,
   graph,
   hostFitOptions,
@@ -124,6 +125,12 @@ export function installBasicNodeProxyAccessors(
         return containerTransform(raw(this, internals), graph(this, internals))[2]
       },
       set(this: ProxyThis, value: number) {
+        prepareFollowedFieldEdit(
+          graph(this, internals),
+          raw(this, internals),
+          'x',
+          'relative-transform'
+        )
         setTransform(this, internals, (matrix) => withOrigin(matrix, value, matrix[5]))
       }
     },
@@ -133,6 +140,12 @@ export function installBasicNodeProxyAccessors(
         return containerTransform(raw(this, internals), graph(this, internals))[5]
       },
       set(this: ProxyThis, value: number) {
+        prepareFollowedFieldEdit(
+          graph(this, internals),
+          raw(this, internals),
+          'y',
+          'relative-transform'
+        )
         setTransform(this, internals, (matrix) => withOrigin(matrix, matrix[2], value))
       }
     },
@@ -159,6 +172,12 @@ export function installBasicNodeProxyAccessors(
       },
       // Figma turns a node counterclockwise about its top-left corner.
       set(this: ProxyThis, value: number) {
+        prepareFollowedFieldEdit(
+          graph(this, internals),
+          raw(this, internals),
+          'rotation',
+          'relative-transform'
+        )
         setTransform(this, internals, (matrix) => withFigmaRotation(matrix, value))
       }
     },
@@ -183,6 +202,12 @@ export function installBasicNodeProxyAccessors(
         return figmaTransform(containerTransform(node, scene))
       },
       set(this: ProxyThis, value: FigmaTransform) {
+        prepareFollowedFieldEdit(
+          graph(this, internals),
+          raw(this, internals),
+          'relativeTransform',
+          'relative-transform'
+        )
         const [[a, b, x], [c, d, y]] = value
         setTransform(this, internals, () => [a, b, x, c, d, y, 0, 0, 1])
       }

@@ -158,7 +158,7 @@ export type StyleProps = {
 
   size?: number | DesignVariable
   fontSize?: number | DesignVariable
-  lineHeight?: number | DesignVariable
+  lineHeight?: number | 'auto' | DesignVariable
   letterSpacing?: number | DesignVariable
   font?: string
   fontFamily?: string
@@ -206,6 +206,11 @@ export type SpanProps = Pick<
   style?: Record<string, unknown>
   italic?: boolean
   textDecoration?: 'none' | 'underline' | 'strikethrough'
+  textDecorationStyle?: 'solid' | 'dotted' | 'wavy'
+  textDecorationColor?: string | Color | Fill
+  textDecorationThickness?: number | 'auto'
+  textUnderlineOffset?: number | 'auto'
+  textDecorationSkipInk?: boolean
   children?: unknown
 }
 

@@ -92,8 +92,17 @@ function solidShorthand(fills: Fill[]): string | null {
   return formatColor(fill.color, fill.color.a)
 }
 
+/** One paint as a colour prop takes it: a colour string when it is plain, its helper otherwise. */
+export function paintPropValue(fill: Fill, node: SceneNode): JSXValue {
+  return solidShorthand([fill]) ?? fillValue(fill, node)
+}
+
 export function collectFillProps(node: SceneNode, props: JSXProp[]): void {
-  if (node.fills.length === 0) return
+  if (node.fills.length === 0) {
+    // A text is painted black unless it says it is not painted.
+    if (node.type === 'TEXT') props.push(['fills', []])
+    return
+  }
   const shorthand = solidShorthand(node.fills)
   if (shorthand) props.push([node.type === 'TEXT' ? 'color' : 'bg', shorthand])
   else props.push(['fills', node.fills.map((fill) => fillValue(fill, node))])

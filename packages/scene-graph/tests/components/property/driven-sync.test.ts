@@ -143,6 +143,18 @@ test('host synchronization keeps the selected nested component appearance and si
   }
 })
 
+for (const horizontalConstraint of ['STRETCH', 'SCALE'] as const) {
+  test(`a selected master's ${horizontalConstraint} canvas constraint does not place its occurrence`, () => {
+    const { graph, host, selected, instance, child } = graphWithAssignedSwap()
+    graph.updateNode(host.id, { width: 200 })
+    graph.updateNode(instance.id, { width: 400 })
+    graph.updateNode(selected.id, { x: 900, horizontalConstraint })
+    graph.syncInstances(host.id)
+    expect([child.width, child.height]).toEqual([150, 60])
+    expect([child.x, child.y]).toEqual([12, 8])
+  })
+}
+
 test('host synchronization preserves an explicit paint override on the swapped child', () => {
   const { graph, host, instance, child } = graphWithAssignedSwap()
   const fills = [{ ...child.fills[0], color: { r: 0, g: 0, b: 1, a: 1 } }]

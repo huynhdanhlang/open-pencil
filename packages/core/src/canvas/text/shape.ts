@@ -49,22 +49,23 @@ function runOutlineSource(
   const start = Math.min(...offsets)
   const end = Math.max(...offsets)
   const { family, style } = fontStyleAt(node, start)
-  const source = glyphOutlineSourceSync(family, style, fontData?.get(`${family}|${style}`))
+  const source = glyphOutlineSourceSync(
+    family,
+    style,
+    node.fontVariations,
+    fontData?.get(`${family}|${style}`)
+  )
   const characters = text.slice(start, end).replace(/\s/g, '')
   return source?.covers(characters) ? source : null
 }
 
 /**
- * Whether saved glyphs could stand for this text: truncation and case changes that alter its
- * length move glyphs off the characters they came from, and path text is placed along its path.
+ * Whether saved glyphs could stand for this text: case changes that alter its length move
+ * glyphs off the characters they came from, and path text is placed along its path. Truncated
+ * text saves the characters it shows and the ellipsis after them.
  */
 function canShape(node: SceneNode, text: string): boolean {
-  return (
-    node.text.length > 0 &&
-    node.textTruncation !== 'ENDING' &&
-    text.length === node.text.length &&
-    !node.textPathData
-  )
+  return node.text.length > 0 && text.length === node.text.length && !node.textPathData
 }
 
 function shapedRunGlyphs(
@@ -110,6 +111,7 @@ function markerGlyphs(
   const source = glyphOutlineSourceSync(
     marker.face.family,
     marker.face.style,
+    [],
     fontData?.get(`${marker.face.family}|${marker.face.style}`)
   )
   const baseline = marker.paragraph.getLineMetrics().at(0)?.baseline ?? 0

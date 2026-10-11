@@ -37,6 +37,41 @@ function setup() {
   return { graph, occurrence, target, materialized, checkpoint, removed, kept }
 }
 
+test('reconciliation removes only property claims targeting authoritatively removed children', () => {
+  const { graph, occurrence, target, materialized, removed, kept } = setup()
+  target.propertyClaims.push(
+    { declaredBy: '1:5', path: [guid(3)], properties: { name: 'Deleted override' } },
+    { declaredBy: '1:5', path: [guid(4)], properties: { name: 'Kept override' } }
+  )
+  graph.deleteNode(removed.id)
+  const components = new Map([['1:1', { occurrence, materialized }]])
+  reconcileOccurrenceStructure(target, graph, components)
+  expect(target.propertyClaims.map((claim) => claim.path)).toEqual([[guid(4)]])
+  const result = materializeInstance(
+    graph,
+    graph.getPages()[0].id,
+    target,
+    new Map([['1:1', materialized.root.id]]),
+    { sourceChildren: mapInstanceSourceChildren(target, components) }
+  )
+  expect([...result.nodes.values()].some((node) => node.name === kept.name)).toBe(true)
+  reconcileOccurrenceStructure(target, graph, components)
+  expect(target.propertyClaims).toHaveLength(1)
+})
+
+test('reconciliation rejects invalid claims rather than treating them as live deletions', () => {
+  const { graph, occurrence, target, materialized, removed } = setup()
+  const claim = { declaredBy: '1:5', path: [guid(999)], properties: { name: 'Invalid' } }
+  target.propertyClaims.push(claim)
+  graph.deleteNode(removed.id)
+  const components = new Map([['1:1', { occurrence, materialized }]])
+  expect(() => reconcileOccurrenceStructure(target, graph, components)).toThrow(
+    'Expected one instance-path target for 1:999; found 0'
+  )
+  expect(target.propertyClaims).toEqual([claim])
+  expect(target.children[0].children).toHaveLength(2)
+})
+
 for (const last of [false, true]) {
   test(`resumed nested source deletion reconciles ${last ? 'all' : 'one'} children before correspondence`, () => {
     const { graph, occurrence, target, materialized, checkpoint, removed, kept } = setup()

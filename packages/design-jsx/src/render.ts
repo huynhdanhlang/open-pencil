@@ -10,7 +10,8 @@ import { renderRoots, renderTree, componentPropNames, type RenderResult } from '
 import {
   DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES,
   DESIGN_JSX_SPAN_PROPERTY_NAMES,
-  DESIGN_JSX_SUPPORTED_PROPERTY_NAMES
+  DESIGN_JSX_SUPPORTED_PROPERTY_NAMES,
+  DESIGN_JSX_TEXT_PARAGRAPH_PROPERTY_NAMES
 } from './schema'
 import type { DesignJSXServices } from './services'
 import { PARAGRAPH, SPAN, TEXT_CONTENT_NAMES } from './text-content'
@@ -38,9 +39,12 @@ function unsupportedPropWarnings(graph: SceneGraph, tree: TreeNode): string[] {
   return warnings
 }
 
-// Paragraph props describe a paragraph of a text, never a layer.
+// Paragraph props describe a paragraph of a text, never a layer, unless a text sets them too.
 const LAYER_PROPS = new Set<string>(
-  difference(DESIGN_JSX_SUPPORTED_PROPERTY_NAMES, DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES)
+  difference(
+    DESIGN_JSX_SUPPORTED_PROPERTY_NAMES,
+    difference(DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES, DESIGN_JSX_TEXT_PARAGRAPH_PROPERTY_NAMES)
+  )
 )
 const SVG_ROOT_PROPS = new Set([...LAYER_PROPS, 'viewBox', 'body'])
 const PARAGRAPH_PROPS = new Set<string>(['key', ...DESIGN_JSX_PARAGRAPH_PROPERTY_NAMES])

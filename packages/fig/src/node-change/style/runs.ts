@@ -47,8 +47,8 @@ function convertStyleOverride(
     )
   }
   if (override.lineHeight) {
-    const lh = convertLineHeight(override.lineHeight, override.fontSize ?? fallbackFontSize)
-    if (lh != null) style.lineHeight = lh
+    // A run in auto lines up at its own font's height, even in text with a fixed one.
+    style.lineHeight = convertLineHeight(override.lineHeight, override.fontSize ?? fallbackFontSize)
   }
   applyTextDecorationOverride(style, override)
   if (override.fillPaints) {

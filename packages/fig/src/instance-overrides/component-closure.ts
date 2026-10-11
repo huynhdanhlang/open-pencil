@@ -13,6 +13,7 @@ import {
   mapInstanceSourceChildren,
   type MaterializedComponentOccurrence
 } from './source-children'
+import { indexRecords } from './source-index'
 
 export interface MaterializedComponentClosure extends ReadonlyMap<
   string,
@@ -32,6 +33,7 @@ export function materializeComponentClosure(
   options: InterpretInstanceOptions = {}
 ): MaterializedComponentClosure {
   const interpreter = createOccurrenceInterpreter(changes)
+  const sources = indexRecords(changes)
   const existingNodeIds = new Set(graph.nodes.keys())
   const resolveReference = createResourceResolver(changes)
   const externalPreferredKeys = new Set<string>()
@@ -45,8 +47,7 @@ export function materializeComponentClosure(
         occurrence.properties,
         resolveReference,
         (key) => externalPreferredKeys.add(key),
-        (key) =>
-          !resolveReference.hasAssetKey(key) && interpreter.sources.has(key) ? key : undefined
+        (key) => (!resolveReference.hasAssetKey(key) && sources.has(key) ? key : undefined)
       ))
         propertyDependencies.add(dependency)
       if (occurrence.mainComponentId !== null) ensure(occurrence.mainComponentId)

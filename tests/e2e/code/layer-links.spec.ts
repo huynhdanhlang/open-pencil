@@ -254,6 +254,39 @@ test('canvas edits patch code a person wrote and keep the rest as written', asyn
   )
 })
 
+function richText(page: Page, name: string) {
+  return page.evaluate((name) => {
+    const store = window.openPencil?.getStore?.()
+    const node = [...(store?.graph.getAllNodes() ?? [])].find((n) => n.name === name)
+    return node ? { styleRuns: node.styleRuns, textParagraphs: node.textParagraphs } : null
+  }, name)
+}
+
+test('rich text styled on the canvas is written into the code and kept by code edits', async () => {
+  await buildScene(editor.page)
+  await openCode(editor.page)
+  await personalizeCode(editor.page)
+
+  const styleRuns = [{ start: 6, length: 5, style: { fontWeight: 700 } }]
+  await editLayer(editor.page, 'Fine print', { styleRuns })
+  await expect(codeLine(editor.page, 'name="Fine print"')).toContainText(
+    'Terms <Span weight="bold">apply</Span></Text>'
+  )
+
+  const textParagraphs = [{ listType: 'UNORDERED', indentation: 1 }]
+  await editLayer(editor.page, 'Fine print', { textParagraphs })
+  await expect(
+    codeLine(editor.page, '<Paragraph list="unordered">Terms <Span weight="bold">apply</Span>')
+  ).toBeVisible()
+  expect(await codeText(editor.page)).toContain('// Pricing card')
+
+  // Code edited after that renders the text with its spans and paragraphs, not as plain text.
+  await codeLine(editor.page, 'name="Card"').locator('span', { hasText: /^320$/ }).dblclick()
+  await editor.page.keyboard.type('360')
+  await expect.poll(() => cardSize(editor.page)).toBe('360x160')
+  expect(await richText(editor.page, 'Fine print')).toEqual({ styleRuns, textParagraphs })
+})
+
 test('layers added or deleted on the canvas are written into the code', async () => {
   await buildScene(editor.page)
   await openCode(editor.page)

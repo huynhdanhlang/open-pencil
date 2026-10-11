@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { sceneNodeToJSX } from '#design-jsx/index'
+import { designJSXElement, sceneNodeToJSX } from '#design-jsx/index'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { colorToFill } from '@open-pencil/scene-graph/color'
@@ -10,7 +10,6 @@ function exportText(fields: Partial<SceneNode>): string {
   const node = graph.createNode('TEXT', graph.getPages()[0].id, {
     name: 'Note',
     textAutoResize: 'WIDTH_AND_HEIGHT',
-    fills: [],
     ...fields
   })
   return sceneNodeToJSX(node.id, graph)
@@ -26,7 +25,7 @@ describe('rich text export', () => {
       ]
     })
     expect(code).toBe(
-      '<Text name="Note" weight="bold">Hello <Span color="#EE2222">world</Span>!</Text>'
+      '<Text name="Note" color="#000000" weight="bold">Hello <Span color="#EE2222">world</Span>!</Text>'
     )
   })
 
@@ -51,7 +50,7 @@ describe('rich text export', () => {
       ]
     })
     expect(code).toBe(
-      '<Text name="Note"><Span size={20} font="Roboto" weight="medium" italic lineHeight={30} letterSpacing={1} textDecoration="strikethrough">a</Span>b</Text>'
+      '<Text name="Note" color="#000000"><Span size={20} font="Roboto" weight="medium" italic lineHeight={30} letterSpacing={1} textDecoration="strikethrough">a</Span>b</Text>'
     )
   })
 
@@ -65,10 +64,67 @@ describe('rich text export', () => {
       ],
       styleRuns: [{ start: 6, length: 5, style: { fontWeight: 700 } }]
     })
-    expect(code).toBe(`<Text name="Note">
+    expect(code).toBe(`<Text name="Note" color="#000000">
   <Paragraph spacing={12}>Intro</Paragraph>
   <Paragraph list="ordered"><Span weight="bold">First</Span></Paragraph>
   <Paragraph list="ordered" level={2} listSpacing={4} indent={8}>Nested</Paragraph>
+</Text>`)
+  })
+
+  test('writes decoration details on the text and on spans', () => {
+    const code = exportText({
+      text: 'ab',
+      textDecoration: 'UNDERLINE',
+      textDecorationStyle: 'DOTTED',
+      textDecorationFills: [colorToFill('#EE2222')],
+      textDecorationThickness: 2,
+      textDecorationSkipInk: false,
+      styleRuns: [
+        {
+          start: 1,
+          length: 1,
+          style: {
+            textDecorationStyle: 'WAVY',
+            textDecorationFills: [],
+            textDecorationThickness: null,
+            textUnderlineOffset: 3,
+            textDecorationSkipInk: true
+          }
+        }
+      ]
+    })
+    expect(code).toBe(
+      '<Text name="Note" color="#000000" textDecoration="underline" textDecorationStyle="dotted" textDecorationColor="#EE2222" textDecorationThickness={2} textDecorationSkipInk={false}>a<Span textDecorationStyle="wavy" textDecorationColor="currentColor" textDecorationThickness="auto" textUnderlineOffset={3} textDecorationSkipInk>b</Span></Text>'
+    )
+  })
+
+  test('writes auto line height and no fills in a span', () => {
+    const code = exportText({
+      text: 'ab',
+      lineHeight: 20,
+      styleRuns: [{ start: 1, length: 1, style: { lineHeight: null, fills: [] } }]
+    })
+    expect(code).toBe(
+      '<Text name="Note" color="#000000" lineHeight={20}>a<Span fills={[]} lineHeight="auto">b</Span></Text>'
+    )
+  })
+
+  test('writes the text-wide spacing, and a paragraph only where it differs', () => {
+    const code = exportText({
+      text: 'a\nb',
+      paragraphSpacing: 8,
+      listSpacing: 2,
+      paragraphIndent: 4,
+      hangingList: true,
+      textParagraphs: [
+        { listType: 'NONE', indentation: 0, paragraphSpacing: 8, paragraphIndent: 6 },
+        { listType: 'NONE', indentation: 0, paragraphSpacing: 8 }
+      ]
+    })
+    expect(code)
+      .toBe(`<Text name="Note" color="#000000" paragraphSpacing={8} listSpacing={2} paragraphIndent={4} hangingList>
+  <Paragraph indent={6}>a</Paragraph>
+  <Paragraph>b</Paragraph>
 </Text>`)
   })
 
@@ -77,7 +133,9 @@ describe('rich text export', () => {
       text: ' a {b} ',
       styleRuns: [{ start: 1, length: 1, style: { fontWeight: 700 } }]
     })
-    expect(code).toBe('<Text name="Note"> <Span weight="bold">a</Span>{" {b} "}</Text>')
+    expect(code).toBe(
+      '<Text name="Note" color="#000000"> <Span weight="bold">a</Span>{" {b} "}</Text>'
+    )
   })
 
   test('writes plain text as before', () => {
@@ -86,6 +144,45 @@ describe('rich text export', () => {
       textParagraphs: [{ listType: 'NONE', indentation: 0 }],
       styleRuns: [{ start: 0, length: 3, style: { fontWeight: 400 } }]
     })
-    expect(code).toBe('<Text name="Note">{"One\\nTwo"}</Text>')
+    expect(code).toBe('<Text name="Note" color="#000000">{"One\\nTwo"}</Text>')
+  })
+})
+
+describe('designJSXElement', () => {
+  function describeText(fields: Partial<SceneNode>) {
+    const graph = new SceneGraph()
+    const node = graph.createNode('TEXT', graph.getPages()[0].id, { name: 'Note', ...fields })
+    return { element: designJSXElement(node.id, graph), code: sceneNodeToJSX(node.id, graph) }
+  }
+
+  /** What the exported element holds between its opening and closing tags. */
+  function between(code: string): string {
+    return code.slice(code.indexOf('>') + 1, code.lastIndexOf('</Text>'))
+  }
+
+  test('describes plain text as before', () => {
+    expect(describeText({ text: 'One\nTwo' }).element?.text).toBe('{"One\\nTwo"}')
+    expect(describeText({ text: '' }).element?.text).toBeNull()
+  })
+
+  test('describes spans and paragraphs as the export writes them', () => {
+    const spans = describeText({
+      text: 'Hello world',
+      styleRuns: [{ start: 6, length: 5, style: { fontWeight: 700 } }]
+    })
+    expect(spans.element?.text).toBe('Hello <Span weight="bold">world</Span>')
+    expect(spans.element?.text).toBe(between(spans.code))
+
+    const paragraphs = describeText({
+      text: 'a\nb',
+      textParagraphs: [
+        { listType: 'UNORDERED', indentation: 1 },
+        { listType: 'UNORDERED', indentation: 1 }
+      ]
+    })
+    expect(paragraphs.element?.text).toBe(
+      '\n  <Paragraph list="unordered">a</Paragraph>\n  <Paragraph list="unordered">b</Paragraph>\n'
+    )
+    expect(paragraphs.element?.text).toBe(between(paragraphs.code))
   })
 })

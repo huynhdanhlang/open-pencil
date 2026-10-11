@@ -12,7 +12,7 @@ of them in one undo step, so a selection of text and other layers edits only the
 It exposes:
 
 - font family
-- font weight
+- font weight, and `weights`: the weights the selected layers' families have, read from installed fonts and web font providers, every weight while a family's faces are unknown
 - font size
 - formatting state
 - missing-font status
@@ -65,6 +65,8 @@ const typography = useTypography({
 ```
 
 ### Toggle formatting
+
+As in Figma, a family switch keeps each layer's weight and slant where the new family has them, otherwise the nearest weight with the same slant, and `toggleBold` or `toggleItalic` leave a layer alone when its family has no such face.
 
 ```ts
 typography.toggleBold()

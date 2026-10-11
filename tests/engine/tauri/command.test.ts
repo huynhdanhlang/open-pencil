@@ -157,8 +157,24 @@ describe('shell scope', () => {
     expect(validators.length).toBeGreaterThan(0)
     for (const validator of validators) {
       const pattern = new RegExp(v.parse(v.object({ validator: v.string() }), validator).validator)
-      for (const target of ['left-pad', '@open-pencil/mcp@0.15.1 & calc', '@open-pencil/mcp']) {
+      for (const target of [
+        'left-pad',
+        '@open-pencil/mcp@0.15.1 & calc',
+        '@open-pencil/mcp@0.16.0-beta.1 & calc',
+        '@open-pencil/mcp@0.16.0-rc.1',
+        '@open-pencil/mcp'
+      ]) {
         expect(pattern.test(target)).toBe(false)
+      }
+    }
+  })
+
+  test('lets npm install companions pinned to a stable or beta app version', () => {
+    for (const target of ['@open-pencil/harness@0.16.0', '@open-pencil/mcp@0.16.0-beta.1']) {
+      for (const userAgent of [WINDOWS_UA, MAC_UA]) {
+        const resolved = resolvePlatformCommand('npm', npmInstallArgs(target), userAgent)
+        const entry = spawnScope().find((candidate) => candidate.name === resolved.command)
+        expect(allowedArgs(entry?.args, resolved.args)).toEqual(resolved.args)
       }
     }
   })

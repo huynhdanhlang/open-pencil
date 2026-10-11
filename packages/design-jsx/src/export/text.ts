@@ -6,11 +6,15 @@ import {
   MAX_LIST_INDENTATION,
   paragraphStyleAt,
   textParagraphRanges,
+  withParagraphSpacing,
   type SceneNode,
+  type TextParagraphSpacingField,
   type TextParagraphStyle
 } from '@open-pencil/scene-graph'
 
+import { AUTO } from '../overrides/text'
 import { SPAN_STYLE_FIELDS, type SpanStyle } from '../text-content'
+import { collectDecorationProps } from './decoration'
 import { collectFillProps } from './paint'
 import { fontWeightValue } from './props'
 import { propAttribute, type JSXProp } from './value'
@@ -19,13 +23,6 @@ import { propAttribute, type JSXProp } from './value'
 export interface TextChildren {
   children: SyntaxNode[]
   inline: boolean
-}
-
-/** Whether a style can be written as `<Span>` props: auto line height and no fills cannot. */
-function writable(value: SpanStyle[keyof SpanStyle], key: keyof SpanStyle): boolean {
-  if (key === 'lineHeight') return value !== null
-  if (key === 'fills') return Array.isArray(value) && value.length > 0
-  return value !== undefined
 }
 
 /** Each character's style where it differs from the text's own, as a span writes it. */
@@ -37,7 +34,7 @@ function characterStyles(node: SceneNode): SpanStyle[] {
     for (let index = run.start; index < end; index++) styles[index] = { ...styles[index], ...style }
   }
   return styles.map((style) =>
-    omitBy(style, (value, key) => !writable(value, key) || isEqual(value, node[key]))
+    omitBy(style, (value, key) => value === undefined || isEqual(value, node[key]))
   )
 }
 
@@ -48,10 +45,11 @@ function spanProps(style: SpanStyle, node: SceneNode): JSXProp[] {
   if (style.fontWeight !== undefined) props.push(['weight', fontWeightValue(style.fontWeight)])
   if (style.italic !== undefined) props.push(['italic', style.italic])
   if (style.fills) collectFillProps({ ...node, fills: style.fills }, props)
-  if (style.lineHeight != null) props.push(['lineHeight', style.lineHeight])
+  if (style.lineHeight !== undefined) props.push(['lineHeight', style.lineHeight ?? AUTO])
   if (style.letterSpacing !== undefined) props.push(['letterSpacing', style.letterSpacing])
   if (style.textDecoration !== undefined)
     props.push(['textDecoration', style.textDecoration.toLowerCase()])
+  collectDecorationProps(style, node, props)
   return props
 }
 
@@ -78,6 +76,22 @@ function inlineContent(
   return content
 }
 
+/** `<Paragraph>`'s prop for each spacing a paragraph can set, in the order they are written. */
+const PARAGRAPH_SPACING_PROPS: readonly (readonly [TextParagraphSpacingField, string])[] = [
+  ['paragraphSpacing', 'spacing'],
+  ['listSpacing', 'listSpacing'],
+  ['paragraphIndent', 'indent']
+]
+
+/** A paragraph's style with only the spacing that differs from the text's own. */
+function ownParagraphStyle(node: SceneNode, paragraph: number): TextParagraphStyle {
+  let style = paragraphStyleAt(node.textParagraphs, paragraph)
+  for (const [field] of PARAGRAPH_SPACING_PROPS) {
+    if (style[field] === node[field]) style = withParagraphSpacing(style, field, undefined)
+  }
+  return style
+}
+
 function paragraphProps(style: TextParagraphStyle): JSXProp[] {
   const props: JSXProp[] = []
   if (style.listType !== 'NONE') {
@@ -85,21 +99,22 @@ function paragraphProps(style: TextParagraphStyle): JSXProp[] {
     const level = Math.min(style.indentation, MAX_LIST_INDENTATION)
     if (level > 1) props.push(['level', level])
   }
-  if (style.paragraphSpacing !== undefined) props.push(['spacing', style.paragraphSpacing])
-  if (style.listSpacing !== undefined) props.push(['listSpacing', style.listSpacing])
-  if (style.paragraphIndent !== undefined) props.push(['indent', style.paragraphIndent])
+  for (const [field, name] of PARAGRAPH_SPACING_PROPS) {
+    const value = style[field]
+    if (value !== undefined) props.push([name, value])
+  }
   return props
 }
 
 /**
  * A text's content as JSX children: its text alone when it is styled as a whole, with
  * `<Span>`s for characters styled apart, and as `<Paragraph>`s when a paragraph is a list item
- * or has spacing of its own.
+ * or has spacing other than the text's.
  */
 export function textChildren(node: SceneNode, depth: number): TextChildren {
   const styles = characterStyles(node)
   const ranges = textParagraphRanges(node.text)
-  const paragraphs = ranges.map((_, index) => paragraphStyleAt(node.textParagraphs, index))
+  const paragraphs = ranges.map((_, index) => ownParagraphStyle(node, index))
   const styledParagraphs = paragraphs.some(
     (style) => style.listType !== 'NONE' || hasParagraphSpacing(style)
   )

@@ -1,6 +1,6 @@
 import type { DBSchema } from 'idb'
 
-import { APP_DATABASE_NAMES, defineAppDatabase, openAppDatabase } from '@/app/storage/idb'
+import { APP_DATABASE_NAMES, defineAppDatabase, connectAppDatabase } from '@/app/storage/idb'
 
 import { fromStorableBlobs, toStorableBlobs } from './blobs'
 import type { Conversation, ConversationMeta, ConversationStore } from './types'
@@ -34,8 +34,8 @@ const definition = defineAppDatabase<ChatDatabase>({
 
 /** Transcript snapshots and Blob previews are committed atomically with their list metadata. */
 export function createConversationStore(): ConversationStore {
-  let database: ReturnType<typeof openAppDatabase<ChatDatabase>> | undefined
-  const getDatabase = () => (database ??= openAppDatabase(definition))
+  const database = connectAppDatabase(definition)
+  const getDatabase = () => database.open()
   return {
     async list(documentId) {
       const db = await getDatabase()

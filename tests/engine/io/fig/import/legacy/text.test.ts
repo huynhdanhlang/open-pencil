@@ -99,6 +99,39 @@ describe('fig-import: text properties', () => {
     expect(n.lineHeight).toBe(16.94)
   })
 
+  test('reads line heights as Figma writes them: auto as 100 percent, a percent as a multiplier', () => {
+    // A 40px word on the first line: its height must not fix every line of an auto text.
+    const derivedTextData = {
+      baselines: [
+        {
+          firstCharacter: 0,
+          endCharacter: 6,
+          position: { x: 0, y: 38.5 },
+          width: 100,
+          lineY: 0,
+          lineHeight: 48.4,
+          lineAscent: 38
+        }
+      ]
+    }
+    const text = (lineHeight: NodeChange['lineHeight'], guid: number) =>
+      node('TEXT', guid, 1, {
+        textData: { characters: 'Mixed\nlines' },
+        fontSize: 24,
+        lineHeight,
+        derivedTextData
+      } as Partial<NodeChange>)
+    const graph = materializeDocument([
+      doc(),
+      canvas(),
+      text({ value: 100, units: 'PERCENT' }, 10),
+      text({ value: 1.5, units: 'RAW' }, 11)
+    ]).graph
+    const [auto, raw] = graph.getChildren(graph.getPages()[0].id)
+    expect(auto?.lineHeight).toBeNull()
+    expect(raw?.lineHeight).toBe(36)
+  })
+
   test('applies shared text style refs', () => {
     const graph = materializeDocument([
       doc(),

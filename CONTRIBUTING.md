@@ -56,7 +56,7 @@ Pull requests must be reviewable without guessing the author's intent.
 
 - Write the title in English.
 - Be specific about the actual change; avoid vague titles such as `fix`, `update`, `some fixes`, `changes`, or `WIP`.
-- Use Conventional Commits, for example `fix: handle empty exports` or `docs: clarify CLI setup`. The exact `Release vX.Y.Z` release-title exception is preserved. See [Commit messages](#commit-messages) for validation commands.
+- Use Conventional Commits, for example `fix: handle empty exports` or `docs: clarify CLI setup`. The exact `Release vX.Y.Z` and `Release vX.Y.Z-beta.N` release-title exception is preserved. See [Commit messages](#commit-messages) for validation commands.
 
 ### PR body
 
@@ -94,9 +94,9 @@ The Commit messages check flags known AI co-author identities in newly introduce
 
 The **Commit messages** CI job checks every commit introduced by a PR, including docs-only PRs. It does not lint existing base-branch history or GitHub's synthetic merge commit. The aggregate CI result requires this job to pass.
 
-Use `type(optional-scope): short description`, for example `fix(MCP): preserve connection settings`. Allowed types are `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, and `chore`. Keep subjects short, imperative, and narrowly scoped; explain rationale in the body. Keep headers within 100 characters and omit a trailing period. Product names retain their casing (DOM/CSS, HTML, JSX, Tailwind, Kiwi, `.fig`, MCP, CLI, AI, ACP, i18n); bodies and footers may contain long lines. Release commits use exactly `Release vX.Y.Z`.
+Use `type(optional-scope): short description`, for example `fix(MCP): preserve connection settings`. Allowed types are `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, and `chore`. Keep subjects short, imperative, and narrowly scoped; explain rationale in the body. Keep headers within 100 characters and omit a trailing period. Product names retain their casing (DOM/CSS, HTML, JSX, Tailwind, Kiwi, `.fig`, MCP, CLI, AI, ACP, i18n); bodies and footers may contain long lines. Release commits use exactly `Release vX.Y.Z`, or `Release vX.Y.Z-beta.N` for a pre-release.
 
-PR titles follow the same convention because GitHub uses them as merge subjects. The separate **PR title** workflow checks new and updated PRs, including title edits, without rerunning the full CI suite. Title validation disables commitlint's default merge/revert exceptions. Release titles and commits retain the exact `Release vX.Y.Z` convention.
+PR titles follow the same convention because GitHub uses them as merge subjects. The separate **PR title** workflow checks new and updated PRs, including title edits, without rerunning the full CI suite. Title validation disables commitlint's default merge/revert exceptions. Release titles and commits retain the exact `Release vX.Y.Z` (or `-beta.N`) convention.
 
 Commit-range validation retains commitlint's default merge/revert exceptions, but they are not a naming convention. Preserve the validated PR title when merging via CLI/API (`gh pr merge --subject` must use it), and use explicit conventional subjects for branch updates, for example `chore: merge master into my-branch`. Do not rewrite published history solely to normalize messages. These checks validate structure and known AI co-author identities, not whether a description is meaningful or the type is appropriate.
 

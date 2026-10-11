@@ -9,7 +9,7 @@ import {
   utf8Bytes
 } from '@open-pencil/core/rpc'
 
-import { APP_DATABASE_NAMES, defineAppDatabase, openAppDatabase } from '@/app/storage/idb'
+import { APP_DATABASE_NAMES, defineAppDatabase, connectAppDatabase } from '@/app/storage/idb'
 
 import type { AgentTaskJournal, StoredAgentTask } from './types'
 
@@ -45,8 +45,8 @@ export function createAgentTaskJournal(
       }
     }
   })
-  let database: ReturnType<typeof openAppDatabase<AgentDatabase>> | undefined
-  const getDatabase = () => (database ??= openAppDatabase(definition))
+  const database = connectAppDatabase(definition)
+  const getDatabase = () => database.open()
   const parse = (record: StoredAgentTask | undefined): StoredAgentTask | undefined =>
     record === undefined ? undefined : v.parse(storedSchema, record)
   return {
