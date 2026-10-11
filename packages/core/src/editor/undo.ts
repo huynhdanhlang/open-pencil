@@ -9,7 +9,6 @@ import type { UndoEntry } from '@open-pencil/scene-graph/undo'
 import { textAutoResizeChanges } from '#core/layout/text-auto-resize'
 
 import { assertNodeEditable } from './capabilities'
-import { restoreSubtree, snapshotSubtree } from './clipboard/subtree-history'
 import {
   capturePageChange as startPageChange,
   restorePageChange as applyPageChangeToEditor,
@@ -21,6 +20,7 @@ import {
   snapshotPage as createPageSnapshot,
   type PageSnapshot
 } from './history/snapshot'
+import { restoreSubtree, snapshotSubtree } from './history/subtree'
 import type { EditorContext } from './types'
 
 /** A layer's place for a move: position, parent, and slot among the parent's children. */

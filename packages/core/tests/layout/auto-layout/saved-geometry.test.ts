@@ -252,3 +252,36 @@ test('a layer moved into a frame with saved geometry resizes it, even before it 
   expect([badge.width, badge.height]).toEqual([34, 21])
   editor.dispose()
 })
+
+test('a component read from a .fig file reflows once a layer in it is edited, but not before', () => {
+  const editor = createEditor()
+  const { graph } = editor
+  // A component's layers as a .fig file loads them: saved sizes, but no source format.
+  let button: SceneNode | undefined
+  let label: SceneNode | undefined
+  graph.applyImportedStateDuring(() => {
+    button = graph.createNode('COMPONENT', editor.state.currentPageId, {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'HUG',
+      counterAxisSizing: 'HUG',
+      paddingLeft: 20,
+      paddingRight: 20,
+      width: 244,
+      height: 40,
+      derivedLayout: { x: 0, y: 0, width: 244, height: 40 }
+    })
+    label = graph.createNode('RECTANGLE', button.id, {
+      x: 20,
+      width: 204,
+      height: 40,
+      derivedLayout: { x: 20, y: 0, width: 204, height: 40 }
+    })
+  })
+  if (!button || !label) throw new Error('Expected the component')
+  graph.applyDerivedLayoutDuring(() => editor.runLayoutForNode(button?.id ?? ''))
+  expect(button.width).toBe(244)
+
+  editor.updateNodeWithUndo(label.id, { width: 272 })
+  expect(button.width).toBe(312)
+  editor.dispose()
+})

@@ -131,8 +131,11 @@ export function createTypographyActions({
   const beforePreview = new Map<string, Preview>()
 
   /** Applies one change per text layer in one undo step. */
-  function updateEach(label: string, changes: (node: SceneNode) => Partial<SceneNode>) {
-    const targets = nodes.value
+  function updateEach(
+    label: string,
+    changes: (node: SceneNode) => Partial<SceneNode>,
+    targets = nodes.value
+  ) {
     if (targets.length === 0) return
     editor.undo.runBatch(label, () => {
       for (const target of targets) editor.updateNodeWithUndo(target.id, changes(target), label)
@@ -143,23 +146,46 @@ export function createTypographyActions({
     updateEach(label, () => changes)
   }
 
-  async function setFamily(family: string) {
+  /** The newest pending change for each layer and field, by `id:field`. */
+  const latestLoadingRequest = new Map<string, symbol>()
+
+  /**
+   * Applies a change once its faces have loaded, to the layers selected when it was asked for:
+   * the selection may change while the load is pending, and a layer may be deleted.
+   */
+  async function updateAfterLoading(
+    label: string,
+    changes: Partial<SceneNode>,
+    load: (target: SceneNode) => Promise<unknown> | undefined
+  ) {
     const targets = nodes.value
     if (targets.length === 0) return
-    await Promise.all(
-      targets.map((target) =>
-        options.fontLoader?.load(family, FONT_WEIGHT_NAMES[target.fontWeight] ?? 'Regular')
-      )
+    const request = Symbol(label)
+    const keys = (target: SceneNode) => Object.keys(changes).map((field) => `${target.id}:${field}`)
+    for (const target of targets)
+      for (const key of keys(target)) latestLoadingRequest.set(key, request)
+    await Promise.all(targets.map(load))
+    // A later choice for the same field wins, even when its face loaded first.
+    const current = targets.filter((target) =>
+      keys(target).every((key) => latestLoadingRequest.get(key) === request)
     )
-    update('Change font', { fontFamily: family })
+    for (const target of current) for (const key of keys(target)) latestLoadingRequest.delete(key)
+    const live = current.filter((target) => editor.graph.getNode(target.id))
+    updateEach(label, () => changes, live)
   }
 
+  async function setFamily(family: string) {
+    await updateAfterLoading('Change font', { fontFamily: family }, (target) =>
+      options.fontLoader?.load(family, FONT_WEIGHT_NAMES[target.fontWeight] ?? 'Regular')
+    )
+  }
+
+  /** Loads the face first, as for a family, so the text is laid out once with it. */
   async function setWeight(weight: number) {
-    const targets = nodes.value
-    if (targets.length === 0) return
-    update('Change font weight', { fontWeight: weight })
     const style = weightToStyle(weight)
-    await Promise.all(targets.map((target) => options.fontLoader?.load(target.fontFamily, style)))
+    await updateAfterLoading('Change font weight', { fontWeight: weight }, (target) =>
+      options.fontLoader?.load(target.fontFamily, style)
+    )
   }
 
   function setAlign(align: TextAlign) {

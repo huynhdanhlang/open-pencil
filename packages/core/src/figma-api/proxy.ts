@@ -1,4 +1,8 @@
-import { recordInstanceOverride, slotPropertyId } from '@open-pencil/scene-graph'
+import {
+  createsComponentCycle,
+  recordInstanceOverride,
+  slotPropertyId
+} from '@open-pencil/scene-graph'
 import type {
   GroupFitOptions,
   SceneGraph,
@@ -65,6 +69,17 @@ export interface NodeProxyHost {
 }
 
 export { MIXED }
+
+/** Figma refuses a move that would make a component contain itself. */
+function assertNoComponentCycle(
+  graph: SceneGraph,
+  parentId: string,
+  childId: string,
+  method: 'appendChild' | 'insertChild'
+): void {
+  if (createsComponentCycle(graph, childId, parentId))
+    throw new Error(`in ${method}: Cannot move node. Reparenting would create a component cycle`)
+}
 
 export class FigmaNodeProxy {
   [INTERNAL_ID]: string;
@@ -370,6 +385,12 @@ export class FigmaNodeProxy {
   appendChild(child: FigmaNodeProxy): void {
     assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
     assertNodeEditable(this[INTERNAL_GRAPH], child[INTERNAL_ID])
+    assertNoComponentCycle(
+      this[INTERNAL_GRAPH],
+      this[INTERNAL_ID],
+      child[INTERNAL_ID],
+      'appendChild'
+    )
     prepareSlotMove(this[INTERNAL_GRAPH], this[INTERNAL_ID], child[INTERNAL_ID], 'appendChild')
     this._reparentAndFit(child[INTERNAL_ID])
   }
@@ -394,6 +415,12 @@ export class FigmaNodeProxy {
   insertChild(index: number, child: FigmaNodeProxy): void {
     assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
     assertNodeEditable(this[INTERNAL_GRAPH], child[INTERNAL_ID])
+    assertNoComponentCycle(
+      this[INTERNAL_GRAPH],
+      this[INTERNAL_ID],
+      child[INTERNAL_ID],
+      'insertChild'
+    )
     prepareSlotMove(this[INTERNAL_GRAPH], this[INTERNAL_ID], child[INTERNAL_ID], 'insertChild')
     this._reparentAndFit(child[INTERNAL_ID])
     this[INTERNAL_GRAPH].reorderChild(child[INTERNAL_ID], this[INTERNAL_ID], index)

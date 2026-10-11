@@ -68,10 +68,10 @@ export function restoreSavedFlow(graph: SceneGraph, nodeId: string): void {
 }
 
 /**
- * Whether layout still keeps the geometry saved for `frame` and its flow. Any frame stops once a
- * layer joins, leaves, or moves in its flow or a flow inside it; a frame read from a .fig file
- * also stops once it or a layer in its flow has its layout edited, such as by adding auto layout
- * or a gap. Other frames otherwise keep geometry copied with them, as an instance's layers do.
+ * Whether layout still keeps the geometry saved for `frame` and its flow. A frame stops once a
+ * layer joins, leaves, or moves in its flow or a flow inside it, or once it or a layer in its flow
+ * has its layout edited, such as by adding auto layout or a gap or restyling text. That holds for
+ * layers read without a source format too, as a .fig file's components and instances are.
  */
 export function keepsSavedLayout(graph: SceneGraph, frame: SceneNode): boolean {
   const fromFig = frame.source.format === 'fig'
@@ -88,8 +88,6 @@ export function keepsSavedLayout(graph: SceneGraph, frame: SceneNode): boolean {
     stale.add(frame.id)
     return false
   }
-  // Geometry copied with other layers, as an instance's are, stays until their structure changes.
-  if (!fromFig) return true
   // A flow inside edited by now resizes this one, but a cancelled preview gives it back.
   const last = graphState(reflowed, graph, () => new Set<string>())
   const keeps =

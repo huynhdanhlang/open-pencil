@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { createEditor } from '@open-pencil/core/editor'
 import { setTextMeasurer } from '@open-pencil/core/layout'
 
-import { getNodeOrThrow } from '../helpers/assert'
+import { getNodeOrThrow } from '#core-tests/helpers/assert'
 
 afterEach(() => {
   setTextMeasurer(null)
