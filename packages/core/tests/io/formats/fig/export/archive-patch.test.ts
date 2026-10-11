@@ -9,15 +9,55 @@ import { parseFigBuffer } from '@open-pencil/fig'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { guidToString } from '@open-pencil/kiwi/fig/guid'
 import type { SceneNode } from '@open-pencil/scene-graph'
+import { recordInstanceOverride } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
 
 import { releaseFigArchive } from '#core/kiwi/fig/session/archive'
 import {
   hasPendingReaderPages,
-  populateFigInternalPages
+  populateFigInternalPages,
+  readerCheckpoint,
+  registerReaderRecovery
 } from '#core/kiwi/fig/session/document-state'
 
 setDefaultTimeout(60_000)
+
+test('a deleted nested model record stays deleted when pending uses resume before Save', async () => {
+  await initCodec()
+  const source = new SceneGraph()
+  const first = source.getPages()[0]
+  const model = source.createNode('COMPONENT', first.id, { name: 'Model', width: 100, height: 50 })
+  source.createNode('RECTANGLE', model.id, { name: 'Model background' })
+  const footer = source.createNode('COMPONENT', first.id, { name: 'Footer' })
+  expectDefined(source.createInstance(model.id, footer.id, { name: 'Old model' }))
+  const uses = source.addPage('Pending uses')
+  const instance = expectDefined(source.createInstance(footer.id, uses.id))
+  const child = source.getChildren(instance.id)[0]
+  source.updateNode(child.id, { width: 120 })
+  recordInstanceOverride(source, child.id, ['width'])
+  const bytes = await exportFigFile(source)
+  const graph = await open(bytes)
+  // The native population worker publishes a checkpoint, not a live host session.
+  registerReaderRecovery(
+    graph,
+    Uint8Array.from(bytes).buffer,
+    expectDefined(readerCheckpoint(graph))
+  )
+  const liveFooter = layerNamed(graph, 'Footer')
+  const old = layerNamed(graph, 'Old model')
+  graph.deleteNode(old.id)
+  graph.createNode('RECTANGLE', liveFooter.id, { name: 'New model' })
+  graph.syncInstances(liveFooter.id)
+  populateFigPage(graph, pageNamed(graph, 'Pending uses').id)
+  const saved = await exportFigFile(graph)
+  expect(
+    parseFigBuffer(Uint8Array.from(saved).buffer).nodeChanges.some((n) => n.name === 'Old model')
+  ).toBe(false)
+  const reopened = await open(saved)
+  populateAllFigPages(reopened)
+  expect(reopened.getAllNodes().some((n) => n.name === 'Old model')).toBe(false)
+  expect([...reopened.getAllNodes()].filter((n) => n.name === 'New model')).toHaveLength(2)
+})
 
 test('independent headless branches preserve distinct new GUIDs across patched saves', async () => {
   const bytes = await fixtureBytes()

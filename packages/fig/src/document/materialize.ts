@@ -125,7 +125,9 @@ function restoreAssemblyState(
     graph,
     nextImportedId: checkpoint.nextImportedId ?? inferNextImportedId(graph),
     components,
-    sources: new Map(checkpoint.sources),
+    // Component records include nested instances absent from the shell index. Retain
+    // their GUID-to-handle mappings after deletion so patched Save can remove them.
+    sources: figCheckpointRecords(checkpoint),
     componentIds: new Map(checkpoint.componentIds),
     savedSizeNodes: new Set(checkpoint.savedSizeNodeIds)
   }
