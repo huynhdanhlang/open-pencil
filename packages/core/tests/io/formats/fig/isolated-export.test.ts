@@ -13,9 +13,10 @@ test('isolated Save prepares text outside the worker and releases the heap', asy
   let terminated = 0
   let prepared = false
   let requestPrepared = false
-  class OwnedWorker {
-    onmessage: ((event: MessageEvent) => void) | null = null
-    onerror: ((event: ErrorEvent) => void) | null = null
+  class OwnedWorker extends EventTarget implements Worker {
+    onmessage: Worker['onmessage'] = null
+    onerror: Worker['onerror'] = null
+    onmessageerror: Worker['onmessageerror'] = null
     terminate() {
       terminated++
     }
@@ -32,7 +33,7 @@ test('isolated Save prepares text outside the worker and releases the heap', asy
       }
     }
   }
-  globalThis.Worker = OwnedWorker as unknown as typeof Worker
+  globalThis.Worker = OwnedWorker
   const bytes = await exportFigInWorker(new SceneGraph(), undefined, {
     thumbnailPNG: new Uint8Array([9]),
     prepare: async () => {
@@ -49,9 +50,10 @@ test('isolated Save prepares text outside the worker and releases the heap', asy
 test('native Save releases its codec heap before invoking the Rust packer', async () => {
   let terminated = 0
   let nativePacking = false
-  class OwnedWorker {
-    onmessage: ((event: MessageEvent) => void) | null = null
-    onerror: ((event: ErrorEvent) => void) | null = null
+  class OwnedWorker extends EventTarget implements Worker {
+    onmessage: Worker['onmessage'] = null
+    onerror: Worker['onerror'] = null
+    onmessageerror: Worker['onmessageerror'] = null
     terminate() {
       terminated++
     }
@@ -64,7 +66,7 @@ test('native Save releases its codec heap before invoking the Rust packer', asyn
       )
     }
   }
-  globalThis.Worker = OwnedWorker as unknown as typeof Worker
+  globalThis.Worker = OwnedWorker
   const bytes = await exportFigInWorker(new SceneGraph(), undefined, {
     thumbnailPNG: new Uint8Array([9]),
     prepare: async () => ({
@@ -85,9 +87,10 @@ test('native Save releases its codec heap before invoking the Rust packer', asyn
 
 test('host preparation failure rejects Save and releases the worker', async () => {
   let terminated = 0
-  class OwnedWorker {
-    onmessage: ((event: MessageEvent) => void) | null = null
-    onerror: ((event: ErrorEvent) => void) | null = null
+  class OwnedWorker extends EventTarget implements Worker {
+    onmessage: Worker['onmessage'] = null
+    onerror: Worker['onerror'] = null
+    onmessageerror: Worker['onmessageerror'] = null
     terminate() {
       terminated++
     }
@@ -97,7 +100,7 @@ test('host preparation failure rejects Save and releases the worker', async () =
       )
     }
   }
-  globalThis.Worker = OwnedWorker as unknown as typeof Worker
+  globalThis.Worker = OwnedWorker
   await expect(
     exportFigInWorker(new SceneGraph(), undefined, {
       thumbnailPNG: new Uint8Array([9]),

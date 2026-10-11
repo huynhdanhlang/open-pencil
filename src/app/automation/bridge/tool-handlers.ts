@@ -12,7 +12,8 @@ import {
   isToolExposed,
   parseToolArgs,
   prepareDiffApply,
-  toolChangesDocument
+  toolChangesDocument,
+  type ToolDef
 } from '@open-pencil/core/tools'
 import { decodeTreeFromTransport } from '@open-pencil/design-jsx'
 
@@ -105,6 +106,130 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     }
   }
 
+  async function admitToolRender(
+    target: AutomationTarget,
+    def: ToolDef,
+    toolArgs: Record<string, unknown>,
+    context?: AutomationRequestContext
+  ): Promise<string> {
+    const admittedGraph = target.store.graph
+    if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
+      throw new Error('Page closed before render started')
+    const { tree: transportTree, ...authoredArgs } = toolArgs
+    const placementInput = parseToolArgs(def.name, def.input, {
+      ...authoredArgs,
+      ...(transportTree ? { jsx: '' } : {})
+    }) as RenderPlacementInput
+    const renderPageId = resolveRenderPlacement(
+      target.store.graph,
+      placementInput,
+      target.pageId
+    ).pageId
+    if (renderPageId !== target.pageId) {
+      const ready = await awaitRenderPreparation(
+        target.store.preparePageNodes(renderPageId),
+        context
+      )
+      if (
+        !ready ||
+        target.store.graph !== admittedGraph ||
+        admittedGraph.getNode(renderPageId)?.type !== 'CANVAS'
+      ) {
+        throw new Error('Render destination changed during preparation')
+      }
+    }
+    if (
+      resolveRenderPlacement(admittedGraph, placementInput, target.pageId).pageId !== renderPageId
+    ) {
+      throw new Error('Render placement changed pages during preparation')
+    }
+    startRender(target.store.graph, context, renderPageId)
+    return renderPageId
+  }
+
+  async function finishDiffFonts(
+    store: AutomationTarget['store'],
+    figma: FigmaAPI,
+    roots: string[] | undefined,
+    result: unknown,
+    toolName: string,
+    context?: AutomationRequestContext
+  ): Promise<void> {
+    if (!roots || (result && typeof result === 'object' && 'error' in result)) return
+    try {
+      await ensureGraphFonts(store.graph, roots, store.renderer)
+      if (store.graph === figma.graph) {
+        assertAutomationRequestLive(context, toolName)
+        for (const id of roots) store.runLayoutForNode(id)
+      }
+    } catch (error) {
+      console.warn('[Agent fonts]', error)
+    }
+  }
+
+  async function executeMutatingTool(
+    target: AutomationTarget,
+    figma: FigmaAPI,
+    def: ToolDef,
+    toolArgs: Record<string, unknown>,
+    context?: AutomationRequestContext
+  ): Promise<{ result: unknown; edited: boolean }> {
+    const store = target.store
+    const toolName = def.name
+    const preparedDiff =
+      toolName === 'diff_apply' ? await prepareDiffApply(figma, toolArgs) : undefined
+    if (preparedDiff && store.graph !== figma.graph)
+      throw new Error(
+        'Document graph changed while preparing grouped edits; inspect the document again'
+      )
+    if (preparedDiff && !preparedDiff.changes) {
+      return { result: await preparedDiff.execute(), edited: false }
+    }
+    if (preparedDiff) assertAutomationRequestLive(context, toolName)
+    const pageIds =
+      toolName === 'diff_apply' && Array.isArray(toolArgs.page_ids)
+        ? toolArgs.page_ids.filter((id): id is string => typeof id === 'string')
+        : [figma.currentPageId]
+    const pageId = pageIds[0] ?? figma.currentPageId
+    let diffFontRoots: string[] | undefined
+    const mutate = () =>
+      store.runMutationWithLayout(
+        () => (preparedDiff ? preparedDiff.execute() : def.execute(figma, toolArgs)),
+        preparedDiff ? undefined : figma.currentPageId,
+        async (rendered, impact) => {
+          const pageNode = store.graph.getNode(figma.currentPageId)
+          const nodeIds =
+            structuralFontRoots(store.graph, toolName, impact) ??
+            (toolName === 'render' || toolName === 'batch_update'
+              ? extractToolNodeIds(rendered)
+              : pageNode?.childIds)
+          if (preparedDiff) {
+            diffFontRoots = nodeIds
+            return
+          }
+          if (toolName === 'render') markRenderStep(store.graph, 'fonts')
+          if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
+          if (toolName === 'render') markRenderStep(store.graph, 'layout-sync')
+        }
+      )
+    // View tools (selection, viewport, pages) leave the document and its history alone.
+    const result = toolChangesDocument(def)
+      ? await executeWithDocumentUndo(
+          store,
+          pageId,
+          automationUndoLabel(def.name),
+          mutate,
+          toolName === 'render' ? (phase) => markRenderStep(store.graph, phase) : undefined,
+          toolName === 'diff_apply'
+            ? { rollbackOnError: true, additionalPageIds: pageIds.slice(1) }
+            : undefined
+        )
+      : await mutate()
+    // Fonts are presentation after the grouped commit; they cannot undo authored content.
+    if (preparedDiff) await finishDiffFonts(store, figma, diffFontRoots, result, toolName, context)
+    return { result, edited: true }
+  }
+
   return async function handleTool(
     target: AutomationTarget,
     args: unknown,
@@ -143,42 +268,10 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const run = async () => {
       if (toolChangesDocument(def)) assertAutomationRequestLive(context, toolName)
-      let renderPageId = target.pageId
-      if (toolName === 'render') {
-        const admittedGraph = target.store.graph
-        if (target.store.graph.getNode(target.pageId)?.type !== 'CANVAS')
-          throw new Error('Page closed before render started')
-        const { tree: transportTree, ...authoredArgs } = toolArgs
-        const placementInput = parseToolArgs(def.name, def.input, {
-          ...authoredArgs,
-          ...(transportTree ? { jsx: '' } : {})
-        }) as RenderPlacementInput
-        renderPageId = resolveRenderPlacement(
-          target.store.graph,
-          placementInput,
-          target.pageId
-        ).pageId
-        if (renderPageId !== target.pageId) {
-          const ready = await awaitRenderPreparation(
-            target.store.preparePageNodes(renderPageId),
-            context
-          )
-          if (
-            !ready ||
-            target.store.graph !== admittedGraph ||
-            admittedGraph.getNode(renderPageId)?.type !== 'CANVAS'
-          ) {
-            throw new Error('Render destination changed during preparation')
-          }
-        }
-        if (
-          resolveRenderPlacement(admittedGraph, placementInput, target.pageId).pageId !==
-          renderPageId
-        ) {
-          throw new Error('Render placement changed pages during preparation')
-        }
-        startRender(target.store.graph, context, renderPageId)
-      }
+      const renderPageId =
+        toolName === 'render'
+          ? await admitToolRender(target, def, toolArgs, context)
+          : target.pageId
       if (toolName === 'render' && toolArgs.tree) {
         const placementInput = parseToolArgs(def.name, def.input, {
           ...Object.fromEntries(Object.entries(toolArgs).filter(([key]) => key !== 'tree')),
@@ -209,71 +302,9 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           label: AUTOMATION_UNDO_LABEL
         })
       } else if (def.mutates) {
-        const preparedDiff =
-          toolName === 'diff_apply' ? await prepareDiffApply(figma, toolArgs) : undefined
-        if (preparedDiff && store.graph !== figma.graph)
-          throw new Error(
-            'Document graph changed while preparing grouped edits; inspect the document again'
-          )
-        if (preparedDiff && !preparedDiff.changes) {
-          return { result: await preparedDiff.execute(), edited: false }
-        }
-        if (preparedDiff) assertAutomationRequestLive(context, toolName)
-        const pageIds =
-          toolName === 'diff_apply' && Array.isArray(toolArgs.page_ids)
-            ? toolArgs.page_ids.filter((id): id is string => typeof id === 'string')
-            : [figma.currentPageId]
-        const pageId = pageIds[0] ?? figma.currentPageId
-        let diffFontRoots: string[] | undefined
-        const mutate = () =>
-          store.runMutationWithLayout(
-            () => (preparedDiff ? preparedDiff.execute() : def.execute(figma, toolArgs)),
-            preparedDiff ? undefined : figma.currentPageId,
-            async (rendered, impact) => {
-              const pageNode = store.graph.getNode(figma.currentPageId)
-              const nodeIds =
-                structuralFontRoots(store.graph, toolName, impact) ??
-                (toolName === 'render' || toolName === 'batch_update'
-                  ? extractToolNodeIds(rendered)
-                  : pageNode?.childIds)
-              if (preparedDiff) {
-                diffFontRoots = nodeIds
-                return
-              }
-              if (toolName === 'render') markRenderStep(store.graph, 'fonts')
-              if (nodeIds) await ensureGraphFonts(store.graph, nodeIds, store.renderer)
-              if (toolName === 'render') markRenderStep(store.graph, 'layout-sync')
-            }
-          )
-        // View tools (selection, viewport, pages) leave the document and its history alone.
-        result = toolChangesDocument(def)
-          ? await executeWithDocumentUndo(
-              store,
-              pageId,
-              automationUndoLabel(def.name),
-              mutate,
-              toolName === 'render' ? (phase) => markRenderStep(store.graph, phase) : undefined,
-              toolName === 'diff_apply'
-                ? { rollbackOnError: true, additionalPageIds: pageIds.slice(1) }
-                : undefined
-            )
-          : await mutate()
-        // Fonts are presentation after the grouped commit; they cannot undo authored content.
-        if (
-          preparedDiff &&
-          diffFontRoots &&
-          !(result && typeof result === 'object' && 'error' in result)
-        ) {
-          try {
-            await ensureGraphFonts(store.graph, diffFontRoots, store.renderer)
-            if (store.graph === figma.graph) {
-              assertAutomationRequestLive(context, toolName)
-              for (const id of diffFontRoots) store.runLayoutForNode(id)
-            }
-          } catch (error) {
-            console.warn('[Agent fonts]', error)
-          }
-        }
+        const response = await executeMutatingTool(target, figma, def, toolArgs, context)
+        if (!response.edited) return response
+        result = response.result
       } else {
         result = await def.execute(figma, toolArgs)
       }

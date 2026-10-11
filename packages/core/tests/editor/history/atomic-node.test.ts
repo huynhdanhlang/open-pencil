@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
+import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
+
 import { createEditor, executeAtomicTool } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { ALL_TOOLS } from '@open-pencil/core/tools'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { copyFills } from '@open-pencil/scene-graph/copy'
 import { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import { computeLayout } from '#core/layout'
@@ -31,7 +34,7 @@ describe('scoped atomic node properties', () => {
   ] as const)('%s preserves paint-binding cleanup through Undo and rollback', (def, field) => {
     const { graph, figma, undo, editor } = setup()
     const target = figma.createRectangle()
-    const node = graph.getNode(target.id)!
+    const node = getNodeOrThrow(graph, target.id)
     node.boundVariables = {
       [field]: 'whole-paint-binding',
       [`${field}/5/color`]: 'removed-paint-binding',
@@ -74,8 +77,8 @@ describe('scoped atomic node properties', () => {
     executeAtomicTool(editor, figma, setStroke, args)
     const after = state()
     expect(target.strokes[0].weight).toBe(1.6)
-    expect(graph.getNode(target.id)!.strokeWeight).toBe(1.6)
-    expect(graph.getNode(target.id)!.strokeAlign).toBe('CENTER')
+    expect(getNodeOrThrow(graph, target.id).strokeWeight).toBe(1.6)
+    expect(getNodeOrThrow(graph, target.id).strokeAlign).toBe('CENTER')
     unrelated.name = 'Later unrelated edit'
     undo.undo()
     expect(state()).toEqual(before)
@@ -101,7 +104,7 @@ describe('scoped atomic node properties', () => {
     const occurrence = outer.createInstance()
     const nested = occurrence.children[0]
     const target = nested.children[0]
-    const targetNode = graph.getNode(target.id)!
+    const targetNode = getNodeOrThrow(graph, target.id)
     const collection = figma.createVariableCollection('Colors')
     const variable = figma.createVariable('Focus', 'COLOR', collection.id, {
       r: 0,
@@ -110,13 +113,19 @@ describe('scoped atomic node properties', () => {
       a: 1
     })
     const size = figma.createVariable('Radius', 'FLOAT', collection.id, 8)
-    graph.getNode(occurrence.id)!.variableAssignmentScales.cornerRadius = 2
+    getNodeOrThrow(graph, occurrence.id).variableAssignmentScales.cornerRadius = 2
     const foreign = figma.createPage()
     while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', foreign.id)
     const unrelated = graph.getChildren(foreign.id)[0]
     unrelated.source.fig.rawNodeFields.notCloneable = () => undefined
-    const bind = ALL_TOOLS.find((tool) => tool.name === 'bind_variable')!
-    const unbind = ALL_TOOLS.find((tool) => tool.name === 'unbind_variable')!
+    const bind = expectDefined(
+      ALL_TOOLS.find((tool) => tool.name === 'bind_variable'),
+      'bind_variable'
+    )
+    const unbind = expectDefined(
+      ALL_TOOLS.find((tool) => tool.name === 'unbind_variable'),
+      'unbind_variable'
+    )
     const state = () =>
       structuredClone([
         targetNode.boundVariables,
@@ -171,13 +180,14 @@ describe('scoped atomic node properties', () => {
   test('solid and gradient fills on a large document retain scoped Undo without cloning foreign pages', () => {
     const { graph, figma, undo, editor } = setup()
     const target = figma.createFrame()
-    const original = structuredClone(target.fills)
+    const targetNode = getNodeOrThrow(graph, target.id)
+    const original = copyFills(targetNode.fills)
     const foreign = figma.createPage()
     while (graph.nodes.size < 20_001) graph.createNode('RECTANGLE', foreign.id)
     const untouched = graph.getChildren(foreign.id)[0]
     untouched.source.fig.rawNodeFields.notCloneable = () => undefined
     executeAtomicTool(editor, figma, setFill, { id: target.id, color: '#123456' })
-    const solid = structuredClone(target.fills)
+    const solid = copyFills(targetNode.fills)
     expect(solid[0].type).toBe('SOLID')
     expect(solid[0].color).toEqual({ r: 18 / 255, g: 52 / 255, b: 86 / 255, a: 1 })
     executeAtomicTool(editor, figma, setFill, {
@@ -186,18 +196,18 @@ describe('scoped atomic node properties', () => {
       color_end: '#abcdef',
       gradient: 'left-right'
     })
-    const gradient = structuredClone(target.fills)
+    const gradient = copyFills(targetNode.fills)
     expect(gradient[0].type).toBe('GRADIENT_LINEAR')
     expect(gradient[0].gradientStops).toHaveLength(2)
     untouched.name = 'Later foreign edit'
     undo.undo()
-    expect(target.fills).toEqual(solid)
+    expect<unknown>(target.fills).toEqual(solid)
     undo.undo()
-    expect(target.fills).toEqual(original)
+    expect<unknown>(target.fills).toEqual(original)
     undo.redo()
-    expect(target.fills).toEqual(solid)
+    expect<unknown>(target.fills).toEqual(solid)
     undo.redo()
-    expect(target.fills).toEqual(gradient)
+    expect<unknown>(target.fills).toEqual(gradient)
     expect(untouched.name).toBe('Later foreign edit')
     expect(() =>
       executeAtomicTool(

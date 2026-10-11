@@ -10,6 +10,7 @@ const NODE_TYPES = {
 }
 
 const QUERYABLE_ATTRS = [
+  'id',
   'name',
   'width',
   'height',
@@ -267,12 +268,9 @@ export async function queryByXPath(
 ): Promise<SceneNode[]> {
   const { limit = 1000 } = options
   const pages = graph.getPages()
-  const targetPages =
-    options.pageId !== undefined
-      ? pages.filter((p) => p.id === options.pageId)
-      : options.page
-        ? pages.filter((p) => p.name === options.page)
-        : pages
+  let targetPages = pages
+  if (options.pageId !== undefined) targetPages = pages.filter((p) => p.id === options.pageId)
+  else if (options.page) targetPages = pages.filter((p) => p.name === options.page)
 
   if (targetPages.length === 0) return []
 

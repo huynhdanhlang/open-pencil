@@ -179,7 +179,8 @@ export function markRunWork(store: EditorStore, nodeIds: string[]): void {
  * Point the run's agent at the layers a call changed, on whichever page they are, for calls such
  * as `eval` whose result names none. Only the outermost of them are outlined.
  */
-export function markRunChange(store: EditorStore, change: DocumentChange): void {
+export function markRunChange(store: EditorStore, run: Run, change: DocumentChange): void {
+  if (!run.active || currentRun(store) !== run) return
   const { graph } = store
   const layers = new Set(
     [...change.created.map((node) => node.id), ...change.updated.map((update) => update.id)].filter(

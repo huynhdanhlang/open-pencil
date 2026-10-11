@@ -173,6 +173,15 @@ function collectSizingProps(
     if (node.height > 0) props.push(['h', node.height])
   }
 
+  collectChildSizingProps(node, ctx, graph, props)
+}
+
+function collectChildSizingProps(
+  node: SceneNode,
+  ctx: ReturnType<typeof getNodeContext>,
+  graph: SceneGraph,
+  props: JSXProp[]
+): void {
   if (!ctx.parentIsAutoLayout || node.layoutPositioning === 'ABSOLUTE') return
   const parent = node.parentId ? graph.getNode(node.parentId) : undefined
   // A flex child's main-axis fill keeps its grow factor; every other fill is `"fill"`.

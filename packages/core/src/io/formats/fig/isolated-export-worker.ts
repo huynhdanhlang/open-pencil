@@ -33,11 +33,14 @@ self.onmessage = async (event: MessageEvent<IsolatedFigExportRequest | PreparedR
       const pending = new Promise<PreparedFigResources>((resolve) => {
         resolvePreparation = resolve
       })
-      self.postMessage({
-        type: 'prepare',
-        nodes: [...graph.nodes.values()].filter((node) => node.type === 'TEXT'),
-        fontKeys: fontKeysForGraph(graph)
-      } satisfies IsolatedFigExportResult)
+      self.postMessage(
+        {
+          type: 'prepare',
+          nodes: [...graph.nodes.values()].filter((node) => node.type === 'TEXT'),
+          fontKeys: fontKeysForGraph(graph)
+        } satisfies IsolatedFigExportResult,
+        { transfer: [] }
+      )
       resources = await pending
     }
     const bytes = await exportFigFile(graph, undefined, undefined, pageId, false, {
@@ -49,7 +52,9 @@ self.onmessage = async (event: MessageEvent<IsolatedFigExportRequest | PreparedR
               transfer: [payload.buffer]
             })
             // The host terminates this heap before invoking the native packer.
-            return new Promise<Uint8Array>(() => {})
+            return new Promise<Uint8Array>(() => {
+              // Only the host resolves packing; this worker is terminated before Rust runs.
+            })
           }
         : undefined
     })
@@ -57,9 +62,12 @@ self.onmessage = async (event: MessageEvent<IsolatedFigExportRequest | PreparedR
       transfer: [bytes.buffer]
     })
   } catch (error) {
-    self.postMessage({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error)
-    } satisfies IsolatedFigExportResult)
+    self.postMessage(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error)
+      } satisfies IsolatedFigExportResult,
+      { transfer: [] }
+    )
   }
 }

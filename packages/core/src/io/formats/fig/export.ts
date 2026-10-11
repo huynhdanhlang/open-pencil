@@ -221,7 +221,7 @@ export async function exportFigFile(
     })
   }
   if (canUseWorker() && pendingThumbnail)
-    console.info('[FIG] Unopened thumbnail page uses the existing isolated renderer export')
+    console.debug('[FIG] Unopened thumbnail page uses the existing isolated renderer export')
   return withFigExportRuntime(sourceGraph, ck, (runtime) =>
     writeFigFile(sourceGraph, runtime, ck, renderer, pageId, renderHeadlessThumbnail)
   )

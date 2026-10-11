@@ -41,7 +41,6 @@ export function exportFigInWorker(
     const worker = new Worker(new URL('./isolated-export-worker.ts', import.meta.url), {
       type: 'module'
     })
-    let timeout: ReturnType<typeof setTimeout> | undefined
     let completed = false
     let terminated = false
     const terminate = () => {
@@ -63,7 +62,7 @@ export function exportFigInWorker(
             if (!options) throw new Error('Unexpected FIG preparation request')
             const resources = await options.prepare(data.nodes, data.fontKeys)
             if (completed) return
-            worker.postMessage({ type: 'prepared', resources })
+            worker.postMessage({ type: 'prepared', resources }, [])
           } else {
             if (!options?.packNative) throw new Error('Unexpected native FIG packing request')
             // Release the full document/codec heap before Rust compression starts.
@@ -87,19 +86,22 @@ export function exportFigInWorker(
       finish()
       reject(new Error(event.message || 'Isolated FIG export failed'))
     }
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       finish()
       reject(new Error('Isolated FIG export timed out after 60 seconds'))
     }, 60_000)
     try {
-      worker.postMessage({
-        graph: serializeSceneGraph(graph),
-        reader: readerExportState(graph),
-        pageId,
-        prepare: !!options,
-        thumbnailPNG: options?.thumbnailPNG,
-        nativePacking: !!options?.packNative
-      } satisfies IsolatedFigExportRequest)
+      worker.postMessage(
+        {
+          graph: serializeSceneGraph(graph),
+          reader: readerExportState(graph),
+          pageId,
+          prepare: !!options,
+          thumbnailPNG: options?.thumbnailPNG,
+          nativePacking: !!options?.packNative
+        } satisfies IsolatedFigExportRequest,
+        []
+      )
     } catch (error) {
       finish()
       reject(error)

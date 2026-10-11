@@ -148,7 +148,7 @@ describe('undo and redo', () => {
       }
     )
     for (let n = 0; n < 6; n++) await Promise.resolve()
-    void pending.catch(() => {})
+    void pending.catch(() => undefined)
     cancel.abort()
     release?.()
     await blocked

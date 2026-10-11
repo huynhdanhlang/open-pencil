@@ -1,4 +1,4 @@
-import { computed, markRaw, ref, type Ref } from 'vue'
+import { computed, markRaw, ref } from 'vue'
 
 import { designMessageWithImageFindings } from '@/app/ai/attachment/image/analyze'
 import { preparedImageFiles } from '@/app/ai/attachment/image/message'
@@ -13,22 +13,16 @@ import {
   setMessageAttachments
 } from '@/app/ai/attachment/presentation/store'
 import { setVisibleMessageText } from '@/app/ai/chat/presentation'
-import { reportSubmissionError, type SubmissionErrorOptions } from '@/app/ai/chat/submission/errors'
+import { reportSubmissionError } from '@/app/ai/chat/submission/errors'
 import { prepareSubmittedImages } from '@/app/ai/chat/submission/images'
 import { chatToResend } from '@/app/ai/chat/submission/resend'
-import type { ChatInstance, ChatSubmission } from '@/app/ai/chat/submission/types'
+import type {
+  ChatInstance,
+  ChatSubmission,
+  SubmissionOptions
+} from '@/app/ai/chat/submission/types'
 import { useUndoRecords } from '@/app/ai/chat/submission/undone'
 import { restoreTurn, revertTurn } from '@/app/ai/chat/turns'
-import type { EditorStore } from '@/app/editor/active-store'
-
-interface SubmissionOptions extends SubmissionErrorOptions {
-  chat: Ref<ChatInstance | null>
-  ensureChat: () => Promise<ChatInstance | null>
-  flush?: () => Promise<void>
-  clearFailure: () => void
-  getEditor: () => EditorStore
-  useAgentImages: () => boolean
-}
 
 export function useChatSubmission(options: SubmissionOptions) {
   const isPreparingAttachments = ref(false)

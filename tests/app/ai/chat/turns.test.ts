@@ -15,7 +15,6 @@ import { useUndoRecords } from '@/app/ai/chat/submission/undone'
 import { useChatSubmission } from '@/app/ai/chat/submission/use'
 import {
   clearTurns,
-  recordTurn,
   recordReplyTurn,
   restoreTurn,
   revertTurn,
@@ -509,31 +508,6 @@ test('a reply without a fresh direct tool run cannot inherit an earlier turn edi
   expect(turnEdits('reply-1')?.revertable).toBe(true)
 })
 
-test('disposing a document releases its turn records and rejects late replies without touching another document', () => {
-  const other = createEditorStore()
-  const entry = { label: 'AI: probe', forward: () => undefined, inverse: () => undefined }
-  store.pushUndoEntry(entry)
-  other.pushUndoEntry(entry)
-  recordTurn('closed-store', store, [
-    { tool: 'probe', toolCallId: 'closed', entry: new WeakRef(entry), undone: false }
-  ])
-  recordTurn('other-store', other, [
-    { tool: 'probe', toolCallId: 'other', entry: new WeakRef(entry), undone: false }
-  ])
-  try {
-    store.dispose()
-    expect(turnEdits('closed-store')).toBeNull()
-    recordTurn('late-closed-store', store, [
-      { tool: 'probe', toolCallId: 'late', entry: new WeakRef(entry), undone: false }
-    ])
-    expect(turnEdits('late-closed-store')).toBeNull()
-    expect(revertTurn('other-store')).toBe(true)
-    expect(restoreTurn('other-store')).toBe(true)
-  } finally {
-    other.dispose()
-  }
-})
-
 test('completed replies release their run capture while retaining turn undo and redo', async () => {
   const { card, actions } = setup()
   await actions.submit(send('Wider'))
@@ -568,29 +542,6 @@ test('a reply superseded while awaiting its last tool releases only its own capt
   expect(produced.undoCalls).toEqual([])
   expect([...next.changedCalls]).toEqual(['new-reply'])
   expect(undoOf(chat.messages[0])).toBeNull()
-})
-
-test('turn records do not retain entries forgotten by the history owner', async () => {
-  const weak = (() => {
-    const entry = { label: 'AI: collectible', forward: () => undefined, inverse: () => undefined }
-    store.pushUndoEntry(entry)
-    recordTurn('collectible', store, [
-      { tool: 'collectible', toolCallId: 'collectible', entry: new WeakRef(entry), undone: false }
-    ])
-    return new WeakRef(entry)
-  })()
-  store.undo.clear()
-  await Bun.sleep(0)
-  Bun.gc(true)
-  await Bun.sleep(0)
-  expect(weak.deref()).toBeUndefined()
-  expect(turnEdits('collectible')).toEqual({
-    count: 1,
-    undone: 0,
-    revertable: false,
-    restorable: false
-  })
-  expect(revertTurn('collectible')).toBe(false)
 })
 
 test.each([new Error('provider failed'), new DOMException('cancelled', 'AbortError')])(

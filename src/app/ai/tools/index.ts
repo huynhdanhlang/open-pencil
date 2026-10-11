@@ -156,7 +156,7 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
           } catch (error) {
             console.warn('Could not record AI tool change', error)
           }
-          if (run.active && currentRun(store) === run) markRunChange(store, change)
+          markRunChange(store, run, change)
         }
         if (figma.currentPageId !== pageId) await moveRunToPage(store, run, figma.currentPageId)
       } finally {
