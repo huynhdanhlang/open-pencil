@@ -23,7 +23,10 @@ export class RenderCreationJournal {
     }
   >()
 
-  constructor(private readonly graph: SceneGraph) {}
+  constructor(
+    private readonly graph: SceneGraph,
+    private readonly budget?: { remaining: number }
+  ) {}
 
   capture(create: () => SceneNode): SceneNode {
     return this.graph.observeNodeMutationsDuring(
@@ -32,7 +35,7 @@ export class RenderCreationJournal {
         this.recordTree(node.id)
         return node
       },
-      { created: (node) => this.created.add(node.id) }
+      { created: (node) => this.recordCreated(node.id) }
     )
   }
 
@@ -68,8 +71,15 @@ export class RenderCreationJournal {
   private recordTree(id: string): void {
     const node = this.graph.getNode(id)
     if (!node) return
-    this.created.add(id)
+    this.recordCreated(id)
     for (const childId of node.childIds) this.recordTree(childId)
+  }
+
+  private recordCreated(id: string): void {
+    if (this.created.has(id)) return
+    this.created.add(id)
+    if (this.budget && --this.budget.remaining < 0)
+      throw new Error('Grouped JSX exceeds its node creation budget')
   }
 
   rollback(error: unknown): never {

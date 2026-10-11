@@ -50,6 +50,7 @@ export {
 } from './tree'
 
 export type { RenderResult } from './renderer'
+export { resolveComponent } from './renderer'
 export { encodeTreeForTransport, decodeTreeFromTransport } from './tree-transport'
 
 export {

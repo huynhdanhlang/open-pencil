@@ -4,6 +4,8 @@
 
 ### Breaking changes
 
+- `diff_apply` directly edits only the current page unless `page_ids` explicitly includes the other pages; component propagation across pages remains automatic. In-app AI turns retain their current-page history boundary; grouped multi-page edits use MCP.
+
 - `FontFallbackScript` includes `'emoji'`, and `SkiaRenderer.nodeFontReadiness` can return `'partial'` when the requested faces are loaded but glyph coverage is still resolving or unavailable.
 - `SceneNode` from `@open-pencil/scene-graph` has `textParagraphs`, `listSpacing`, `paragraphSpacing`, `paragraphIndent`, and `hangingList`, so code that builds `SceneNode` objects itself must include them. `SkiaRenderer.buildParagraph` returns a `TextLayout`, which answers the `Paragraph` queries the renderer and text editor use for the whole text and draws with `draw(canvas, x, y)`, instead of a CanvasKit `Paragraph`.
 - `AUTO_LAYOUT_BREAK_THRESHOLD` is removed from `@open-pencil/core/constants`: a layer dragged out of auto layout now leaves by how far its own edge is past the frame, not by a cursor margin.
@@ -51,6 +53,8 @@
 - `RulerTheme` from `@open-pencil/core/canvas` no longer has `label`: ruler badges and size pills draw their text in the `foreground` of the editor state's new `selectionTheme`, which also sets the canvas selection color and defaults to the previous blue with white text.
 
 ### Added
+
+- MCP `diff_apply` accepts structured grouped updates, JSX subtree additions, removals and sibling reordering across explicitly included pages. One grouped Undo/Redo owns those pages and transitive component dependencies; artwork resolves before history, dry runs skip mutation/layout, and commit failures roll back the group. Requests are bounded to 500 operations, 1 MiB and 20,000 added nodes including instance expansion.
 
 - System emoji fonts participate in paragraph fallback, and readable text stays visible while missing glyphs resolve or remain unavailable.
 - Preserve native component property declarations, visibility/text references and named slots in Design JSX export/import. Agents can read property IDs and instance assignments through `get_node`, and `expose_instance_swap` returns its created definition; component maps explicitly identify page-local usage counts.

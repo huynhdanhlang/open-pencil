@@ -7,6 +7,33 @@ import { CommittedGraphEventError, restorePageCheckpoint } from '@open-pencil/sc
 
 import { createEditor } from '#core/editor'
 
+test('one snapshot restores multiple owned pages and preserves unrelated pages', () => {
+  const editor = createEditor()
+  const first = editor.state.currentPageId
+  const second = editor.graph.addPage('Related').id
+  const third = editor.graph.addPage('Unrelated').id
+  const a = editor.graph.createNode('RECTANGLE', first, { x: 1 })
+  const b = editor.graph.createNode('RECTANGLE', second, { x: 2 })
+  const untouched = editor.graph.createNode('RECTANGLE', third, { x: 3 })
+  const before = editor.snapshotPage(first, undefined, [second])
+  editor.graph.updateNode(a.id, { x: 10 })
+  editor.graph.deleteNode(b.id)
+  const added = editor.graph.createNode('RECTANGLE', second, { x: 20 })
+  editor.graph.updateNode(untouched.id, { x: 30 })
+  const after = editor.snapshotPage(first, before, [second])
+  editor.restorePageFromSnapshot(before)
+  expect(editor.graph.getNode(a.id)?.x).toBe(1)
+  expect(editor.graph.getNode(b.id)?.x).toBe(2)
+  expect(editor.graph.getNode(added.id)).toBeUndefined()
+  expect(editor.graph.getNode(untouched.id)?.x).toBe(30)
+  editor.restorePageFromSnapshot(after)
+  expect(editor.graph.getNode(a.id)?.x).toBe(10)
+  expect(editor.graph.getNode(b.id)).toBeUndefined()
+  expect(editor.graph.getNode(added.id)?.x).toBe(20)
+  expect(editor.graph.getNode(untouched.id)?.x).toBe(30)
+  editor.dispose()
+})
+
 test('checkpoint replay evaluates caller equality before any graph mutation', () => {
   const editor = createEditor()
   const node = editor.graph.createNode('RECTANGLE', editor.state.currentPageId)

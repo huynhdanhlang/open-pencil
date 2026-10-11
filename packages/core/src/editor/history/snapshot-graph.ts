@@ -15,7 +15,8 @@ function pageContext(source: SceneGraph, pageId: string, nodeIds: string[]): Sce
 
 /**
  * A standalone copy of the document whose snapshot page is as it was when taken, so a past
- * state can be rendered or diffed next to the live one. Other pages are left empty.
+ * state can be rendered or diffed next to the live one. Explicitly captured pages are rebuilt;
+ * foreign dependency forests alone do not populate their pages.
  */
 export function graphFromPageSnapshot(
   source: SceneGraph,
@@ -36,6 +37,7 @@ export function graphFromPageSnapshot(
     for (const childId of node.childIds) visit(childId)
   }
   visit(page.id)
+  for (const node of snapshot.values()) if (node.type === 'CANVAS') visit(node.id)
   for (const node of structuredClone(pageNodes).values()) graph.nodes.set(node.id, node)
   graph.clearAbsPosCache()
   return graph

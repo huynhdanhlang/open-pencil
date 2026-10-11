@@ -99,24 +99,35 @@ export async function executeWithPageUndo<T>(
   pageId: string,
   label: string,
   run: () => Promise<T>,
-  onPhase?: (phase: 'snapshot-before' | 'construction' | 'snapshot-after' | 'undo-commit') => void
+  onPhase?: (phase: 'snapshot-before' | 'construction' | 'snapshot-after' | 'undo-commit') => void,
+  options: { rollbackOnError?: boolean; additionalPageIds?: readonly string[] } = {}
 ): Promise<T> {
   onPhase?.('snapshot-before')
-  const before = store.snapshotPage(pageId)
+  const before = store.snapshotPage(pageId, undefined, options.additionalPageIds)
+  let failed = false
   try {
     onPhase?.('construction')
-    return await run()
+    const result = await run()
+    failed = !!result && typeof result === 'object' && 'error' in result
+    return result
+  } catch (error) {
+    failed = true
+    throw error
   } finally {
     onPhase?.('snapshot-after')
-    const after = store.snapshotPage(pageId, before)
+    const after = store.snapshotPage(pageId, before, options.additionalPageIds)
     onPhase?.('undo-commit')
     // Read-only scripts and no-op edits must not leave empty steps in the user's history.
     if (!isEqual(before, after)) {
-      store.pushUndoEntry({
-        label,
-        forward: () => store.restorePageFromSnapshot(after),
-        inverse: () => store.restorePageFromSnapshot(before)
-      })
+      if (failed && options.rollbackOnError) {
+        store.restorePageFromSnapshot(before)
+      } else {
+        store.pushUndoEntry({
+          label,
+          forward: () => store.restorePageFromSnapshot(after),
+          inverse: () => store.restorePageFromSnapshot(before)
+        })
+      }
     }
   }
 }

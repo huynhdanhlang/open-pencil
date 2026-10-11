@@ -3,8 +3,10 @@ import { describe, expect, test } from 'bun:test'
 import { expectDefined, getNodeOrThrow } from '#core-tests/helpers/assert'
 
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { ALL_TOOLS, diffDocuments } from '@open-pencil/core/tools'
+import { ALL_TOOLS, diffDocuments, prepareDiffApply } from '@open-pencil/core/tools'
 import { SceneGraph, type Color } from '@open-pencil/scene-graph'
+
+import { buildIconData } from '#core/icons/svg'
 
 type DiffResult = { diff?: string | null; message?: string; error?: string }
 type ApplyResult = {
@@ -54,6 +56,143 @@ async function createPatch(figma: FigmaAPI, from: string, to: string): Promise<s
 }
 
 describe('diff_create and diff_apply', () => {
+  test('explicit expected attributes survive artwork preparation and the commit boundary', async () => {
+    const { graph, figma, card, label } = setup()
+    figma.icons = {
+      ...figma.icons,
+      icons: async () => {
+        label.resize(90, 20)
+        return new Map([
+          [
+            'owned:dot',
+            buildIconData({ body: '<path d="M0 0h24v24H0z"/>' }, 'owned', 'dot', 24, 24, 24)
+          ]
+        ])
+      }
+    }
+    const prepared = await prepareDiffApply(figma, {
+      operations: [
+        { kind: 'update', id: label.id, attributes: 'name="Changed"', expected: 'w={80}' },
+        { kind: 'add', parentId: card.id, index: 0, jsx: '<Icon name="owned:dot" />' }
+      ]
+    })
+    expect(await prepared.execute()).toHaveProperty('error')
+    expect(graph.getNode(label.id)).toMatchObject({ name: 'Label', width: 90 })
+    const next = await prepareDiffApply(figma, {
+      operations: [
+        { kind: 'update', id: label.id, attributes: 'name="Changed"', expected: 'w={90}' }
+      ]
+    })
+    label.resize(100, 20)
+    await expect(next.execute()).rejects.toThrow('current state does not match')
+    expect(graph.getNode(label.id)).toMatchObject({ name: 'Label', width: 100 })
+  })
+  test('structured edits update, add, remove and reorder in one request', async () => {
+    const { graph, figma, card, label, badge } = setup()
+    const result = await run<ApplyResult>(figma, 'diff_apply', {
+      operations: [
+        { kind: 'update', id: card.id, attributes: 'width={240} rounded={16}' },
+        { kind: 'remove', id: label.id },
+        { kind: 'move', id: badge.id, index: 1 },
+        {
+          kind: 'add',
+          parentId: card.id,
+          index: 0,
+          jsx: '<Frame name="Note"><Text>Hello 🎬</Text></Frame>'
+        }
+      ]
+    })
+    expect(result).toMatchObject({ applied: 4, failed: 0 })
+    expect(graph.getNode(card.id)).toMatchObject({ width: 240, cornerRadius: 16 })
+    expect(graph.getNode(label.id)).toBeUndefined()
+    const children = getNodeOrThrow(graph, card.id).childIds
+    expect(children[1]).toBe(badge.id)
+    expect(graph.getNode(children[0])?.name).toBe('Note')
+  })
+
+  test('structured updates preserve explicit stale guards and dry run', async () => {
+    const { graph, figma, card } = setup()
+    const operations = [{ kind: 'update', id: card.id, attributes: 'w={240}', expected: 'w={200}' }]
+    expect(await run<ApplyResult>(figma, 'diff_apply', { operations, dryRun: true })).toMatchObject(
+      { failed: 0 }
+    )
+    expect(graph.getNode(card.id)?.width).toBe(200)
+    card.resize(210, 100)
+    expect(await run<ApplyResult>(figma, 'diff_apply', { operations })).toHaveProperty('error')
+    expect(graph.getNode(card.id)?.width).toBe(210)
+  })
+
+  test('rejects all edits when one target is outside the current page or removed by the group', async () => {
+    const { graph, figma, card, label } = setup()
+    const other = graph.createNode('FRAME', graph.addPage('Other').id)
+    for (const operations of [
+      [
+        { kind: 'update', id: card.id, attributes: 'w={240}' },
+        { kind: 'remove', id: other.id }
+      ],
+      [
+        { kind: 'remove', id: card.id },
+        { kind: 'update', id: label.id, attributes: 'w={120}' }
+      ]
+    ]) {
+      expect(await run<ApplyResult>(figma, 'diff_apply', { operations })).toHaveProperty('error')
+      expect(graph.getNode(card.id)?.width).toBe(200)
+      expect(graph.getNode(label.id)).toBeDefined()
+      expect(graph.getNode(other.id)).toBeDefined()
+    }
+  })
+
+  test('edits related pages only when they are explicitly included', async () => {
+    const { graph, figma, card } = setup()
+    const page = graph.addPage('Related')
+    const other = graph.createNode('FRAME', page.id)
+    expect(
+      await run<ApplyResult>(figma, 'diff_apply', {
+        page_ids: [figma.currentPageId, page.id],
+        operations: [
+          { kind: 'update', id: card.id, attributes: 'rounded={12}' },
+          { kind: 'update', id: other.id, attributes: 'rounded={12}' }
+        ]
+      })
+    ).toMatchObject({ applied: 2, failed: 0 })
+    expect(graph.getNode(card.id)?.cornerRadius).toBe(12)
+    expect(graph.getNode(other.id)?.cornerRadius).toBe(12)
+  })
+
+  test('rejects ambiguous inputs and duplicate updates before changing content', async () => {
+    const { graph, figma, card } = setup()
+    const operation = { kind: 'update', id: card.id, attributes: 'opacity={0.5}' }
+    expect(
+      await run<ApplyResult>(figma, 'diff_apply', {
+        patch: `@@ /Card #${card.id}\n+rounded={4}`,
+        operations: [operation]
+      })
+    ).toHaveProperty('error')
+    expect(
+      await run<ApplyResult>(figma, 'diff_apply', { operations: [operation, operation] })
+    ).toHaveProperty('error')
+    expect(graph.getNode(card.id)).toMatchObject({ opacity: 1, cornerRadius: 0 })
+  })
+
+  test('normalizes unset aliases and rejects contradictions, unknown unsets and duplicate moves', async () => {
+    const { graph, figma, card, badge } = setup()
+    expect(
+      await run<ApplyResult>(figma, 'diff_apply', {
+        operations: [{ kind: 'update', id: card.id, attributes: '', unset: ['width'] }]
+      })
+    ).toMatchObject({ applied: 1 })
+    expect(graph.getNode(card.id)?.width).not.toBe(200)
+    for (const operations of [
+      [{ kind: 'update', id: card.id, attributes: 'w={240}', unset: ['width'] }],
+      [{ kind: 'update', id: card.id, attributes: 'w={240}', unset: ['unknown'] }],
+      [
+        { kind: 'move', id: badge.id, index: 0 },
+        { kind: 'move', id: badge.id, index: 1 }
+      ]
+    ])
+      expect(await run<ApplyResult>(figma, 'diff_apply', { operations })).toHaveProperty('error')
+  })
+
   test('a patch from a modified copy makes the original match it', async () => {
     const { graph, figma, card, label, badge } = setup()
     const copy = card.clone()

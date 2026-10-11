@@ -12,9 +12,19 @@ export function restorePageCheckpoint(
 ) {
   const page = snapshot.values().next().value
   const livePage = page && graph.nodes.get(page.id)
-  if (!page || !livePage) return new Set<string>()
-  if (page.type !== 'CANVAS' || livePage.type !== 'CANVAS' || page.parentId !== livePage.parentId)
-    throw new Error('Page history must preserve its canvas root')
+  if (!page) return new Set<string>()
+  if (!livePage) {
+    if ([...snapshot.values()].filter((node) => node.type === 'CANVAS').length > 1)
+      throw new Error('Grouped history page no longer exists')
+    return new Set<string>()
+  }
+  const pages = [...snapshot.values()].filter((node) => node.type === 'CANVAS')
+  for (const root of pages) {
+    const live = graph.nodes.get(root.id)
+    if (!live || live.type !== 'CANVAS' || root.parentId !== live.parentId)
+      throw new Error('Page history must preserve its canvas roots')
+  }
+  if (page.type !== 'CANVAS') throw new Error('Page history must start with its canvas root')
   const targetIds = new Set<string>()
   const visit = (id: string, parentId: string | null) => {
     const node = snapshot.get(id)
@@ -29,7 +39,7 @@ export function restorePageCheckpoint(
     targetIds.add(id)
     for (const childId of node.childIds) visit(childId, id)
   }
-  visit(page.id, page.parentId)
+  for (const root of pages) visit(root.id, root.parentId)
   for (const [id, root] of dependentRoots) {
     const node = snapshot.get(id)
     if (!node) continue
@@ -52,7 +62,7 @@ export function restorePageCheckpoint(
     current.set(id, node)
     for (const childId of node.childIds) walk(childId)
   }
-  walk(page.id)
+  for (const root of pages) walk(root.id)
   for (const id of dependentRoots.keys()) walk(id)
   const removed = [...current.values()].filter((node) => !snapshot.has(node.id))
   const changed = [...snapshot.values()].filter(
@@ -134,7 +144,7 @@ export function restorePageCheckpoint(
         graph.emitter.emit('node:reparented', id, oldParentId, newParentId)
     })
   )
-  const layoutPages = new Set([page.id])
+  const layoutPages = new Set(pages.map((root) => root.id))
   for (const id of dependentRoots.keys()) {
     const ancestor = graph.closest(id, (node) => node.type === 'CANVAS')
     if (ancestor) layoutPages.add(ancestor.id)

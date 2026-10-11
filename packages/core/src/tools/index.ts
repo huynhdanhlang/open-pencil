@@ -7,6 +7,7 @@ export type {
   ComponentCatalogLibraryAsset
 } from './component-catalog'
 export { ALL_TOOLS, CORE_TOOLS, EXTENDED_TOOLS } from './registry'
+export { prepareDiffApply } from './analyze/diff/tools'
 export { exportImage } from './vector'
 export {
   defineTool,

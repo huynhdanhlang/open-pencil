@@ -21,7 +21,8 @@ const recentSnapshots = new WeakMap<SceneGraph, WeakMap<SceneNode, PageSnapshot>
 export function snapshotPage(
   graph: SceneGraph,
   pageId: string,
-  before?: PageSnapshot
+  before?: PageSnapshot,
+  additionalPageIds: readonly string[] = []
 ): PageSnapshot {
   const snapshot: PageSnapshot = new Map()
   const page = graph.getNode(pageId)
@@ -50,6 +51,10 @@ export function snapshotPage(
     for (const childId of node.childIds) walk(childId)
   }
   walk(pageId)
+  for (const id of additionalPageIds) {
+    if (graph.getNode(id)?.type !== 'CANVAS') throw new Error(`Page "${id}" not found`)
+    walk(id)
+  }
   const roots = new Map<string, DependentRoot>(before && dependentRoots.get(before))
   if (!before) captureDependentSnapshotRoots(graph, snapshot, roots, walk)
   // Freeze the same owned forest across both sides, even when the edit deleted a source.
@@ -184,7 +189,11 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
   const pageSnap = snapshot.values().next().value
   if (!pageSnap) return
   const page = ctx.graph.getNode(pageSnap.id)
-  if (!page) return
+  if (!page) {
+    if ([...snapshot.values()].filter((node) => node.type === 'CANVAS').length > 1)
+      throw new Error('Grouped history page no longer exists')
+    return
+  }
 
   let layoutPages = new Set([page.id])
   const errors: unknown[] = []
@@ -203,7 +212,7 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
   try {
     for (const id of snapshot.keys()) restoreSavedFlow(ctx.graph, id)
     ctx.graph.clearAbsPosCache()
-    if (page.id === ctx.state.currentPageId) {
+    if (snapshot.get(ctx.state.currentPageId)?.type === 'CANVAS') {
       ctx.setSelectedIds(new Set())
       ctx.state.hoveredNodeId = null
     }

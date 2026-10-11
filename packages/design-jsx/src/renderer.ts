@@ -86,7 +86,7 @@ export async function renderRoots<Artwork>(
   if (roots.length === 0) throw new Error('JSX must return a Figma element (Frame, Text, etc)')
   const parentId = options.parentId ?? graph.getPages()[0].id
 
-  const journal = new RenderCreationJournal(graph)
+  const journal = new RenderCreationJournal(graph, options.creationBudget)
   try {
     const nodes: SceneNode[] = []
     const position: Pick<RenderOptions, 'x' | 'y'> = {}
@@ -365,7 +365,7 @@ function namedComponent(graph: SceneGraph, props: Record<string, unknown>): Scen
   return undefined
 }
 
-function resolveComponent(
+export function resolveComponent(
   graph: SceneGraph,
   props: Record<string, unknown>
 ): SceneNode | undefined {

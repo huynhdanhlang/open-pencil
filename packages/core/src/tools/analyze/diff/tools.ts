@@ -8,10 +8,19 @@ import {
 } from '@open-pencil/design-jsx'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import type { FigmaAPI } from '#core/figma-api'
 import { toolNumber, nodeIdInput, nodeComparisonInput } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
-import { applyOperations, planOperations, type ApplyStatus } from './apply'
+import { applyOperations, planOperations, prepareAdditions, type ApplyStatus } from './apply'
+import {
+  bulkOperations,
+  bulkOperationsInput,
+  checkOperationScope,
+  checkBulkExpected,
+  MAX_DIFF_OPERATIONS,
+  MAX_DIFF_PAYLOAD
+} from './batch'
 import { formatOperations, parseOperations } from './format'
 import { deltaOperations, type DiffOperation } from './operations'
 import { DEFAULT_DIFF_DEPTH, diffProjections, projectTree, type ProjectOptions } from './projection'
@@ -116,51 +125,97 @@ export const diffShow = defineTool({
   }
 })
 
+const diffApplyInput = v.strictObject({
+  patch: v.optional(
+    v.pipe(v.string(), v.description('Patch text from diff_create, diff_show, or diff_changes'))
+  ),
+  operations: v.optional(bulkOperationsInput),
+  page_ids: v.optional(
+    v.pipe(
+      v.array(nodeIdInput),
+      v.minLength(1),
+      v.maxLength(100),
+      v.description(
+        'Explicit pages whose nodes may be directly edited; defaults to the current page. Component dependencies outside these pages are preserved by Undo.'
+      )
+    )
+  ),
+  dryRun: v.optional(
+    v.pipe(v.boolean(), v.description('Check and report changes without applying')),
+    false
+  ),
+  force: v.optional(
+    v.pipe(v.boolean(), v.description('Apply even when current values differ from the patch')),
+    false
+  )
+})
+
 export const diffApply = defineTool({
   name: 'diff_apply',
   description:
-    "Apply a patch from diff_create, diff_show, or diff_changes. Each node must still have the patch's old values unless force is set, and nothing changes unless every hunk applies. Use dryRun to check first.",
+    'Edit many related parts in one grouped request: provide a patch OR structured operations (update JSX attributes, add JSX subtrees, remove, move). Include page_ids for edits across pages of this document; otherwise only the current page is directly editable. Linked components propagate normally. Preflights every edit; use dryRun to inspect and expected attributes for stale guards. MCP uses one Undo/Redo and rolls back the whole group on failure. Up to 500 edits and 1 MiB payload.',
   execution: { kind: 'async', mutation: 'document' },
-  input: v.strictObject({
-    patch: v.pipe(
-      v.string(),
-      v.description('Patch text from diff_create, diff_show, or diff_changes')
-    ),
-    dryRun: v.optional(
-      v.pipe(v.boolean(), v.description('Check and report changes without applying')),
-      false
-    ),
-    force: v.optional(
-      v.pipe(v.boolean(), v.description('Apply even when current values differ from the patch')),
-      false
-    )
-  }),
-  execute: async (figma, args) => {
-    let operations: DiffOperation[]
-    try {
-      operations = parseOperations(args.patch)
-    } catch (error) {
-      return { error: errorMessage(error) }
-    }
-    if (operations.length === 0) return { error: 'No hunks found' }
-    const results = await applyOperations(figma, operations, {
-      dryRun: args.dryRun,
-      force: args.force
-    })
-    const count = (...statuses: ApplyStatus[]) =>
-      results.filter((result) => statuses.includes(result.status)).length
-    const failed = count('failed')
-    if (failed > 0 && !args.dryRun) {
+  input: diffApplyInput,
+  execute: async (figma, args) => (await prepareDiffApply(figma, args)).execute()
+})
+
+/** Resolve artwork before history, then commit only prepared graph operations. */
+export async function prepareDiffApply(
+  figma: FigmaAPI,
+  raw: Record<string, unknown>
+): Promise<{
+  changes: boolean
+  execute: () => Promise<Record<string, unknown>>
+}> {
+  const noChange = (result: Record<string, unknown>) => ({
+    changes: false,
+    execute: async () => result
+  })
+  try {
+    const args = v.parse(diffApplyInput, raw)
+    if ((args.patch !== undefined) === (args.operations !== undefined))
+      return noChange({ error: 'Provide exactly one of patch or operations' })
+    const payload = args.patch ?? JSON.stringify(args.operations)
+    if (new TextEncoder().encode(payload).byteLength > MAX_DIFF_PAYLOAD)
+      return noChange({ error: 'Diff payload exceeds 1 MiB; split into coherent groups' })
+    const operations = args.operations
+      ? bulkOperations(figma.graph, args.operations, args.force)
+      : parseOperations(args.patch!)
+    if (!operations.length) return noChange({ error: 'No hunks found' })
+    if (operations.length > MAX_DIFF_OPERATIONS)
+      return noChange({ error: 'Diff exceeds 500 operations; split into coherent groups' })
+    const pageIds = args.page_ids ?? [figma.currentPageId]
+    checkOperationScope(figma.graph, operations, pageIds)
+    const additions = await prepareAdditions(figma, operations, !args.dryRun)
+    if (args.operations) checkBulkExpected(figma.graph, args.operations, args.force)
+    checkOperationScope(figma.graph, operations, pageIds)
+    const plans = planOperations(figma.graph, operations, args.force, additions)
+    const summarize = (results: ReturnType<typeof planOperations>[number]['result'][]) => {
+      const count = (...statuses: ApplyStatus[]) =>
+        results.filter((result) => statuses.includes(result.status)).length
+      const failed = count('failed')
+      if (failed && !args.dryRun)
+        return { error: 'Patch does not apply', results: results.filter((result) => result.error) }
       return {
-        error: 'Patch does not apply',
-        results: results.filter((r) => r.error)
+        dryRun: args.dryRun,
+        applied: count('applied', 'removed', 'moved', 'added'),
+        failed,
+        results
       }
     }
+    if (args.dryRun || plans.some((plan) => plan.result.status === 'failed'))
+      return noChange(summarize(plans.map((plan) => plan.result)))
     return {
-      dryRun: args.dryRun,
-      applied: count('applied', 'removed', 'moved', 'added'),
-      failed,
-      results
+      changes: plans.some((plan) => plan.result.status !== 'unchanged'),
+      execute: async () => {
+        if (args.operations) checkBulkExpected(figma.graph, args.operations, args.force)
+        checkOperationScope(figma.graph, operations, pageIds)
+        return summarize(
+          await applyOperations(figma, operations, { dryRun: false, force: args.force, additions })
+        )
+      }
     }
+  } catch (error) {
+    return noChange({ error: errorMessage(error) })
   }
-})
+}

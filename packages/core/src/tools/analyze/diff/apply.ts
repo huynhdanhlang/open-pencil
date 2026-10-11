@@ -8,13 +8,18 @@ import {
   normalizeJSXAttributeSources,
   parseJSXAttributes,
   resolveToTree,
+  resolveComponent,
+  isTreeNode,
   sceneNodeAttributes,
-  type JSXAttributeSource
+  type JSXAttributeSource,
+  type TreeNode
 } from '@open-pencil/design-jsx'
 import { recordInstanceOverride, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import type { FigmaAPI } from '#core/figma-api'
+import type { IconProvider, IconData } from '#core/icons'
+import { layoutAuthoredNodes } from '#core/layout'
 
 import type { DiffOperation } from './operations'
 
@@ -33,6 +38,7 @@ export interface ApplyOptions {
   dryRun: boolean
   /** Skip comparing the patch's old values with the document. */
   force: boolean
+  additions?: PreparedAdditions
 }
 
 interface NodeUpdate {
@@ -48,6 +54,100 @@ interface Placement {
   index: number
   ids?: string[]
   jsx?: string
+  tree?: TreeNode
+}
+
+export interface PreparedAdditions {
+  trees: Map<DiffOperation, TreeNode>
+  icons: IconProvider
+  renderer?: ReturnType<typeof import('#core/design-jsx').designJSXRenderer>
+}
+
+/** All I/O precedes history capture. Commit reuses these exact trees and fetched artwork. */
+export async function prepareAdditions(
+  figma: FigmaAPI,
+  operations: DiffOperation[],
+  fetchIcons = true
+): Promise<PreparedAdditions> {
+  const trees = new Map<DiffOperation, TreeNode>()
+  const requests = new Map<number, Set<string>>()
+  let count = 0
+  const componentSizes = new Map<string, number>()
+  for (const operation of operations) {
+    if (operation.kind !== 'add') continue
+    const tree = resolveToTree(createElement(buildComponent(operation.jsx), null))
+    if (!tree) throw new Error('Added JSX renders nothing')
+    trees.set(operation, tree)
+    const pending = [tree]
+    while (pending.length) {
+      const node = pending.pop()!
+      if (++count > 20_000)
+        throw new Error('Added JSX exceeds 20,000 resolved elements; split into coherent groups')
+      if (node.type === 'instance') {
+        const component = resolveComponent(figma.graph, node.props)
+        if (component) {
+          let size = componentSizes.get(component.id)
+          if (size === undefined) {
+            size = 0
+            const ids = [...component.childIds]
+            while (ids.length) {
+              const child = figma.graph.getNode(ids.pop()!)
+              if (!child) continue
+              if (++size > 20_000) throw new Error('Instance expansion exceeds 20,000 nodes')
+              ids.push(...child.childIds)
+            }
+            componentSizes.set(component.id, size)
+          }
+          count += size
+          if (count > 20_000)
+            throw new Error(
+              'Added instance expansion exceeds 20,000 nodes; split into coherent groups'
+            )
+        }
+      }
+      if (node.type === 'icon') {
+        const name = node.props.name
+        const size = node.props.size ?? 24
+        if (
+          typeof name !== 'string' ||
+          !name ||
+          typeof size !== 'number' ||
+          !Number.isFinite(size) ||
+          size <= 0
+        )
+          throw new Error('Icon requires a name and positive size')
+        if (!requests.has(size)) requests.set(size, new Set())
+        requests.get(size)!.add(name)
+      }
+      for (const child of node.children) if (isTreeNode(child)) pending.push(child)
+    }
+  }
+  const artwork = new Map<number, Map<string, IconData>>()
+  for (const [size, names] of fetchIcons ? requests : []) {
+    const icons = await figma.icons.icons([...names], size)
+    for (const name of names)
+      if (!icons.get(name)?.paths.length) throw new Error(`Icon "${name}" not found`)
+    artwork.set(size, icons)
+  }
+  const icons: IconProvider =
+    requests.size === 0
+      ? figma.icons
+      : {
+          ...figma.icons,
+          icons: async (names, size) =>
+            new Map(
+              names.map((name) => {
+                const icon = artwork.get(size)?.get(name)
+                if (!icon) throw new Error(`Artwork "${name}" was not prepared`)
+                return [name, icon]
+              })
+            )
+        }
+  const renderer =
+    trees.size > 0 && fetchIcons
+      ? (await import('#core/design-jsx')).designJSXRenderer(icons)
+      : undefined
+  return { trees, icons, renderer }
 }
 
 /** A checked operation, with what committing it needs. */
@@ -187,13 +287,22 @@ function planUpdate(
   }
 }
 
-function planAdd(graph: SceneGraph, operation: Extract<DiffOperation, { kind: 'add' }>): Plan {
+function planAdd(
+  graph: SceneGraph,
+  operation: Extract<DiffOperation, { kind: 'add' }>,
+  additions?: PreparedAdditions
+): Plan {
   const parent = editableNode(graph, operation.parentId)
   if (typeof parent === 'string') return failed(operation, parent)
   if (!operation.jsx.trim()) return failed(operation, 'Added node has no JSX')
   try {
     // Evaluate now so invalid JSX fails before anything changes.
-    if (!resolveToTree(createElement(buildComponent(operation.jsx), null))) {
+    if (
+      !(
+        additions?.trees.get(operation) ??
+        resolveToTree(createElement(buildComponent(operation.jsx), null))
+      )
+    ) {
       return failed(operation, 'Added JSX renders nothing')
     }
   } catch (error) {
@@ -202,12 +311,18 @@ function planAdd(graph: SceneGraph, operation: Extract<DiffOperation, { kind: 'a
   const place = {
     parentId: parent.id,
     index: operation.index,
-    jsx: operation.jsx
+    jsx: operation.jsx,
+    tree: additions?.trees.get(operation)
   }
   return { result: { path: operation.path, id: null, status: 'added' }, place }
 }
 
-function planOperation(graph: SceneGraph, operation: DiffOperation, force: boolean): Plan {
+function planOperation(
+  graph: SceneGraph,
+  operation: DiffOperation,
+  force: boolean,
+  additions?: PreparedAdditions
+): Plan {
   switch (operation.kind) {
     case 'update':
       return planUpdate(graph, operation, force)
@@ -233,16 +348,17 @@ function planOperation(graph: SceneGraph, operation: DiffOperation, force: boole
       }
     }
   }
-  return planAdd(graph, operation)
+  return planAdd(graph, operation, additions)
 }
 
 /** Check every operation against the document without changing it. */
 export function planOperations(
   graph: SceneGraph,
   operations: DiffOperation[],
-  force: boolean
+  force: boolean,
+  additions?: PreparedAdditions
 ): Plan[] {
-  return operations.map((operation) => planOperation(graph, operation, force))
+  return operations.map((operation) => planOperation(graph, operation, force, additions))
 }
 
 function commitUpdate(graph: SceneGraph, update: NodeUpdate): void {
@@ -261,15 +377,27 @@ type Placed = Plan & { place: Placement }
  * an icon that cannot be fetched; then the nodes rendered so far are deleted and nothing else
  * is committed, so a patch never half-applies.
  */
-async function renderAdditions(figma: FigmaAPI, plans: Placed[]): Promise<boolean> {
-  const { designJSXRenderer } = await import('#core/design-jsx')
-  const { renderJSX } = designJSXRenderer(figma.icons)
+async function renderAdditions(
+  figma: FigmaAPI,
+  plans: Placed[],
+  additions?: PreparedAdditions
+): Promise<boolean> {
+  if (!plans.some((plan) => plan.place.jsx !== undefined)) return true
+  const { renderJSX, renderTreeRoots } =
+    additions?.renderer ?? (await import('#core/design-jsx')).designJSXRenderer(figma.icons)
   const rendered: string[] = []
+  const creationBudget = { remaining: 20_000 }
   for (const plan of plans) {
     const { jsx, parentId } = plan.place
     if (jsx === undefined) continue
     try {
-      const results = await renderJSX(figma.graph, jsx, { parentId })
+      const results = plan.place.tree
+        ? await renderTreeRoots(figma.graph, plan.place.tree, {
+            parentId,
+            deferLayout: true,
+            creationBudget
+          })
+        : await renderJSX(figma.graph, jsx, { parentId, deferLayout: true, creationBudget })
       plan.place.ids = results.map((result) => result.id)
       plan.result.id = results[0].id
       rendered.push(...plan.place.ids)
@@ -310,11 +438,11 @@ export async function applyOperations(
   operations: DiffOperation[],
   options: ApplyOptions
 ): Promise<ApplyResult[]> {
-  const plans = planOperations(figma.graph, operations, options.force)
+  const plans = planOperations(figma.graph, operations, options.force, options.additions)
   const results = () => plans.map((plan) => plan.result)
   if (options.dryRun || plans.some((plan) => plan.result.status === 'failed')) return results()
   const placed = plans.filter((plan): plan is Placed => !!plan.place)
-  if (!(await renderAdditions(figma, placed))) return results()
+  if (!(await renderAdditions(figma, placed, options.additions))) return results()
   for (const plan of plans) {
     if (plan.update && plan.result.status === 'applied') {
       commitUpdate(figma.graph, plan.update)
@@ -329,5 +457,9 @@ export async function applyOperations(
   for (const [parentId, group] of Object.entries(groupBy(placed, (plan) => plan.place.parentId))) {
     commitPlacements(figma.graph, parentId, group)
   }
+  layoutAuthoredNodes(
+    figma.graph,
+    placed.filter((plan) => plan.place.jsx !== undefined).flatMap((plan) => plan.place.ids ?? [])
+  )
   return results()
 }

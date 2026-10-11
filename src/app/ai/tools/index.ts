@@ -88,6 +88,15 @@ export function createAITools(store: EditorStore, diagnosticContext?: AIDiagnost
       },
       executeTool: async (def, figma, args, { toolCallId }) => {
         const pageId = figma.currentPageId
+        if (
+          def.name === 'diff_apply' &&
+          Array.isArray(args.page_ids) &&
+          args.page_ids.some((id) => id !== pageId)
+        ) {
+          throw new Error(
+            'Grouped multi-page edits require MCP; this AI turn owns only its current page'
+          )
+        }
         if (!def.mutates) return def.execute(figma, args)
         // A step's calls may run concurrently; whole-page snapshots must not interleave.
         const release = await acquireMutation()

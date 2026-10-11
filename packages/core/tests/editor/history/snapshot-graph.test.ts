@@ -19,6 +19,18 @@ function setup() {
 }
 
 describe('page snapshot graphs', () => {
+  test('rebuilds every explicitly captured page in a grouped preview', () => {
+    const editor = createEditor()
+    const first = editor.state.currentPageId
+    const second = editor.graph.addPage('Related').id
+    const node = editor.graph.createNode('RECTANGLE', second, { width: 10 })
+    const snapshot = editor.snapshotPage(first, undefined, [second])
+    editor.graph.updateNode(node.id, { width: 20 })
+    const preview = expectDefined(graphFromPageSnapshot(editor.graph, snapshot), 'preview')
+    expect(preview.getNode(node.id)?.width).toBe(10)
+    expect(editor.graph.getNode(node.id)?.width).toBe(20)
+    editor.dispose()
+  })
   test('keeps captured foreign instance forests out of a page preview', () => {
     const editor = createEditor()
     const page = editor.state.currentPageId
