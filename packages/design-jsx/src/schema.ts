@@ -259,6 +259,7 @@ export const DESIGN_JSX_HELPERS: DesignJSXHelperDefinition[] = [
   'radialGradient',
   'angularGradient',
   'diamondGradient',
+  'shader',
   'dropShadow',
   'innerShadow',
   'layerBlur',

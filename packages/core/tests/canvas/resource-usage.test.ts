@@ -5,6 +5,10 @@ import CanvasKitInit, { type CanvasKit } from 'canvaskit-wasm'
 import { SkiaRenderer } from '@open-pencil/core/canvas'
 import { initCanvasKit } from '@open-pencil/core/io'
 
+import type { LiveImageSource } from '#core/canvas/renderer'
+
+import { asDouble } from '../../../../tests/helpers/doubles'
+
 let ck: CanvasKit
 beforeAll(async () => {
   ck = await initCanvasKit()
@@ -15,6 +19,14 @@ function makeRenderer() {
   if (!surface) throw new Error('Cannot create diagnostic surface')
   return new SkiaRenderer(ck, surface)
 }
+
+test('a late shader frame cannot upload through a destroyed native surface', () => {
+  const renderer = makeRenderer()
+  renderer.destroy()
+  const frame = asDouble<LiveImageSource>({ width: 2, height: 2 })
+  expect(renderer.setLiveImage('late-frame', frame)).toBe(false)
+  expect(renderer.liveImages.size).toBe(0)
+})
 
 test('software surfaces report unavailable GPU cache bytes explicitly', () => {
   const renderer = makeRenderer()

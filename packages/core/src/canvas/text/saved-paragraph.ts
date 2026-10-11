@@ -94,7 +94,7 @@ export function drawMatchingSavedParagraph(
       ({ paragraph, matchesSavedGlyphs }) => {
         if (!matchesSavedGlyphs) return false
         warnedNodes.delete(node)
-        canvas.drawParagraph(paragraph, 0, textVerticalOffset(node, paragraph.getHeight()))
+        paragraph.draw(canvas, 0, textVerticalOffset(node, paragraph.getHeight()))
         return true
       }
     )

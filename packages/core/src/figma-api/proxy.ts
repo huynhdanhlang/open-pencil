@@ -15,7 +15,7 @@ import {
   setNodeStrokeOkHCL
 } from '@open-pencil/scene-graph/color'
 import type { OkHCLColor, OkHCLPayload } from '@open-pencil/scene-graph/color'
-import type { Rect } from '@open-pencil/scene-graph/primitives'
+import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import type { FigmaEffect } from '#core/figma-api/effects'
@@ -130,6 +130,11 @@ export class FigmaNodeProxy {
   declare maxWidth: number | null
   declare minHeight: number | null
   declare maxHeight: number | null
+  declare readonly targetAspectRatio: Vector | null
+  /** @deprecated Figma's alias for whether `targetAspectRatio` is set. */
+  declare constrainProportions: boolean
+  declare lockAspectRatio: () => void
+  declare unlockAspectRatio: () => void
   declare vectorPaths: readonly FigmaVectorPath[]
   declare vectorNetwork: FigmaVectorNetwork
   declare setVectorNetworkAsync: (vectorNetwork: FigmaVectorNetwork) => Promise<void>
@@ -161,6 +166,10 @@ export class FigmaNodeProxy {
   declare textCase: string
   declare textDecoration: string
   declare maxLines: number | null
+  declare listSpacing: number | symbol
+  declare paragraphSpacing: number | symbol
+  declare paragraphIndent: number | symbol
+  declare hangingList: boolean
   declare textTruncation: string
   declare autoRename: boolean
 
@@ -197,6 +206,72 @@ export class FigmaNodeProxy {
 
   deleteCharacters(start: number, end: number): void {
     TextProxy.deleteCharacters(this[INTERNAL_GRAPH], this._raw(), start, end)
+  }
+
+  getRangeListOptions(start: number, end: number): TextListOptions | symbol {
+    return TextProxy.getRangeListOptions(this._raw(), start, end, MIXED)
+  }
+
+  setRangeListOptions(start: number, end: number, value: TextListOptions): void {
+    assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
+    TextProxy.setRangeListOptions(this[INTERNAL_GRAPH], this._raw(), start, end, value)
+  }
+
+  getRangeIndentation(start: number, end: number): number | symbol {
+    return TextProxy.getRangeIndentation(this._raw(), start, end, MIXED)
+  }
+
+  setRangeIndentation(start: number, end: number, value: number): void {
+    assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
+    TextProxy.setRangeIndentation(this[INTERNAL_GRAPH], this._raw(), start, end, value)
+  }
+
+  getRangeListSpacing(start: number, end: number): number | symbol {
+    return TextProxy.getRangeParagraphSpacing(this._raw(), 'listSpacing', start, end, MIXED)
+  }
+
+  setRangeListSpacing(start: number, end: number, value: number): void {
+    assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
+    TextProxy.setRangeParagraphSpacing(
+      this[INTERNAL_GRAPH],
+      this._raw(),
+      'listSpacing',
+      start,
+      end,
+      value
+    )
+  }
+
+  getRangeParagraphSpacing(start: number, end: number): number | symbol {
+    return TextProxy.getRangeParagraphSpacing(this._raw(), 'paragraphSpacing', start, end, MIXED)
+  }
+
+  setRangeParagraphSpacing(start: number, end: number, value: number): void {
+    assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
+    TextProxy.setRangeParagraphSpacing(
+      this[INTERNAL_GRAPH],
+      this._raw(),
+      'paragraphSpacing',
+      start,
+      end,
+      value
+    )
+  }
+
+  getRangeParagraphIndent(start: number, end: number): number | symbol {
+    return TextProxy.getRangeParagraphSpacing(this._raw(), 'paragraphIndent', start, end, MIXED)
+  }
+
+  setRangeParagraphIndent(start: number, end: number, value: number): void {
+    assertNodeEditable(this[INTERNAL_GRAPH], this[INTERNAL_ID])
+    TextProxy.setRangeParagraphSpacing(
+      this[INTERNAL_GRAPH],
+      this._raw(),
+      'paragraphIndent',
+      start,
+      end,
+      value
+    )
   }
 
   get isMask(): boolean {
@@ -472,7 +547,7 @@ const proxyInternals = {
 }
 
 installStrokeNodeProxyAccessors(FigmaNodeProxy.prototype, proxyInternals)
-installTextNodeProxyAccessors(FigmaNodeProxy.prototype, proxyInternals)
+installTextNodeProxyAccessors(FigmaNodeProxy.prototype, proxyInternals, MIXED)
 installLayoutNodeProxyAccessors(FigmaNodeProxy.prototype, proxyInternals)
 installVariableModeNodeProxyAccessors(FigmaNodeProxy.prototype, proxyInternals)
 installComponentPropertyAccessors(FigmaNodeProxy.prototype, proxyInternals)

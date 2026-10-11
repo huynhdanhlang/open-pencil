@@ -3,6 +3,7 @@ import { shallowReactive } from 'vue'
 import { createEditor } from '@open-pencil/core/editor'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { createShaderRasterizer } from '@open-pencil/vue'
 
 import { disposeTurnsForStore } from '@/app/ai/chat/turns'
 import { disposeAgentsForStore } from '@/app/automation/agents'
@@ -23,7 +24,7 @@ import {
   type EditorPreparationEventName,
   type EditorPreparationEvents
 } from '@/app/editor/preparation/events'
-import type { EditorPreparationHandle } from '@/app/editor/preparation/types'
+import { pageProgressUnit, type EditorPreparationHandle } from '@/app/editor/preparation/types'
 import {
   createEditorComputedRefs,
   createEditorStoreModules,
@@ -50,6 +51,7 @@ function buildEditorStore(initialGraph?: SceneGraph) {
     graph,
     state,
     loadFont,
+    shaderRasterizer: createShaderRasterizer(),
     resolveFigmaClipboardImages: IS_TAURI ? resolveFigmaClipboardImages : undefined,
     skipInitialGraphSetup: !!initialGraph,
     getViewportSize: () =>
@@ -138,12 +140,6 @@ function buildEditorStore(initialGraph?: SceneGraph) {
 
   const panes = createCanvasPaneRegistry(state)
 
-  function progressUnit(phase: string): 'fonts' | 'pages' | undefined {
-    if (phase === 'resolving-fonts') return 'fonts'
-    if (phase === 'populating-page') return 'pages'
-    return undefined
-  }
-
   async function switchPage(
     pageId: string,
     options: {
@@ -172,7 +168,7 @@ function buildEditorStore(initialGraph?: SceneGraph) {
           options.onProgress?.(progress)
           preparation.update({
             ...progress,
-            unit: progressUnit(progress.phase)
+            unit: pageProgressUnit(progress.phase)
           })
         }
       })

@@ -158,7 +158,7 @@ describe('saved paragraph raster continuity', () => {
       )
       try {
         surface.getCanvas().clear(ck.TRANSPARENT)
-        surface.getCanvas().drawParagraph(paragraph, 0, 0)
+        paragraph.draw(surface.getCanvas(), 0, 0)
         surface.flush()
         const image = surface.makeImageSnapshot()
         try {

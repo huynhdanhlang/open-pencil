@@ -1,4 +1,4 @@
-import type { Paragraph, TypefaceFontProvider } from 'canvaskit-wasm'
+import type { TypefaceFontProvider } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Size } from '@open-pencil/scene-graph/primitives'
@@ -13,13 +13,15 @@ const MAX_PREPARED_TEXT_UNITS = 262_144
 // Layout measures a text at a few widths; more than this means the widths are not repeating.
 const MAX_MEASURED_WIDTHS = 16
 
-import type { ParagraphFontScope } from './font-scope'
-import { PARAGRAPH_INPUT_KEYS, shapingInputs } from './paragraph-inputs'
+import type { TextLayout } from '#core/canvas/text/layout'
+import { PARAGRAPH_INPUT_KEYS, shapingInputs } from '#core/canvas/text/paragraph/inputs'
+
+import type { ParagraphFontScope } from '../font-scope'
 
 type PreparationInput = SceneNode[(typeof PARAGRAPH_INPUT_KEYS)[number]]
 
 export interface PreparedText {
-  paragraph: Paragraph
+  paragraph: TextLayout
   missingGlyphs?: ReturnType<typeof missingGlyphOccurrences>
   matchesSavedGlyphs?: boolean
 }
@@ -56,8 +58,16 @@ export class TextPreparationCache {
   ) {
     this.entries = new ResourceCache({
       maxEntries,
-      maxWeight: maxTextUnits,
-      weight: (entry) => entry.units,
+      maxWeight: Number.isFinite(maxEntries) ? maxEntries : maxTextUnits,
+      // One budget unit represents a native paragraph; normalized text weight bounds both
+      // resources even when one layout owns many blocks and marker paragraphs.
+      weight: (entry) =>
+        Number.isFinite(maxEntries)
+          ? Math.max(
+              entry.paragraph.getNativeParagraphCount(),
+              entry.units === 0 ? 0 : Math.ceil((entry.units * maxEntries) / maxTextUnits)
+            )
+          : entry.units,
       dispose: (entry, key) => {
         const keys = this.nodeKeys.get(entry.nodeId)
         keys?.delete(key)
@@ -73,7 +83,7 @@ export class TextPreparationCache {
     variant: string,
     generation: number,
     provider: TypefaceFontProvider,
-    build: () => Paragraph | PreparedText,
+    build: () => TextLayout | PreparedText,
     consume: (prepared: PreparedText) => T
   ): T {
     this.synchronizeScope(generation, provider)
@@ -109,7 +119,13 @@ export class TextPreparationCache {
         savedGlyphs: node.derivedTextGlyphs,
         verticalAlignment: node.textAlignVertical
       }
-      this.entries.set(key, entry)
+      if (!this.entries.set(key, entry)) {
+        try {
+          return consume(entry)
+        } finally {
+          entry.paragraph.delete()
+        }
+      }
       const keys = this.nodeKeys.get(node.id) ?? new Set<string>()
       keys.add(key)
       this.nodeKeys.set(node.id, keys)

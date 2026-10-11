@@ -9,6 +9,8 @@ import {
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { buildParagraph, textVerticalOffset } from '#core/canvas/text'
+import type { TextLayout, TextLayoutMarker } from '#core/canvas/text/layout'
+import { utf16IndicesByUtf8 } from '#core/canvas/text/utf8'
 import { getCanvasKit } from '#core/canvaskit'
 import { transformTextCase } from '#core/text/case'
 import { fontManager, weightToStyle } from '#core/text/fonts'
@@ -35,11 +37,11 @@ function runOutlineSource(
   node: SceneNode,
   text: string,
   run: GlyphRun,
-  offsetsToCharacters: readonly number[],
+  characterAt: (offset: number) => number,
   fontData?: ReadonlyMap<string, ArrayBuffer>
 ): GlyphOutlineSource | null {
   if (run.fakeBold || run.fakeItalic || run.glyphs.length === 0) return null
-  const offsets = Array.from(run.offsets, (offset) => offsetsToCharacters[offset])
+  const offsets = Array.from(run.offsets, characterAt)
   const start = Math.min(...offsets)
   const end = Math.max(...offsets)
   const { family, style } = fontStyleAt(node, start)
@@ -73,14 +75,14 @@ function shapedRunGlyphs(
   source: GlyphOutlineSource | null,
   line: { left: number; baseline: number },
   characterOffsets: Array<number | undefined>,
-  offsetsToCharacters: readonly number[]
+  characterAt: (offset: number) => number
 ): ShapedTextGlyph[] {
   const glyphs: ShapedTextGlyph[] = []
   for (let index = 0; index < run.glyphs.length; index++) {
     const commands = source?.outline(run.glyphs[index], run.size) ?? null
     const x = run.positions[index * 2]
     const nextX = run.positions[(index + 1) * 2]
-    const firstCharacter = offsetsToCharacters[run.offsets[index]]
+    const firstCharacter = characterAt(run.offsets[index])
     glyphs.push({
       commands,
       x,
@@ -92,33 +94,45 @@ function shapedRunGlyphs(
     })
     characterOffsets[firstCharacter] ??= x - line.left
   }
-  const end = offsetsToCharacters[run.offsets[run.offsets.length - 1]]
+  const end = characterAt(run.offsets[run.offsets.length - 1])
   if (end < characterOffsets.length) {
     characterOffsets[end] ??= run.positions[run.positions.length - 2] - line.left
   }
   return glyphs
 }
 
-/** CanvasKit builds can expose UTF-8 run offsets; FIG text and line metrics use UTF-16. */
-function shapedCharacterOffsets(
-  text: string,
-  lines: ReturnType<Paragraph['getShapedLines']>
-): number[] {
-  if (lines.at(-1)?.textRange.last === text.length) {
-    return Array.from({ length: text.length + 1 }, (_, index) => index)
+/**
+ * A list marker's glyphs as Figma saves them: placed beside their item and drawing no
+ * character of the text.
+ */
+function markerGlyphs(
+  marker: TextLayoutMarker,
+  offsetY: number,
+  fontData?: ReadonlyMap<string, ArrayBuffer>
+): ShapedTextGlyph[] {
+  const source = glyphOutlineSourceSync(
+    marker.face.family,
+    marker.face.style,
+    fontData?.get(`${marker.face.family}|${marker.face.style}`)
+  )
+  const baseline = marker.paragraph.getLineMetrics().at(0)?.baseline ?? 0
+  const glyphs: ShapedTextGlyph[] = []
+  for (const line of marker.paragraph.getShapedLines()) {
+    for (const run of line.runs) {
+      const trusted = !run.fakeBold && !run.fakeItalic && source?.covers(marker.text)
+      for (let index = 0; index < run.glyphs.length; index++) {
+        const x = run.positions[index * 2]
+        glyphs.push({
+          commands: trusted ? (source?.outline(run.glyphs[index], run.size) ?? null) : null,
+          x: marker.x + x,
+          y: marker.y + baseline + offsetY,
+          fontSize: run.size,
+          advance: run.positions[(index + 1) * 2] - x
+        })
+      }
+    }
   }
-  const offsets: number[] = []
-  let index = 0
-  for (const character of text) {
-    const code = character.charCodeAt(0)
-    let bytes = 3
-    if (character.length === 2) bytes = 4
-    else if (code < 0x800) bytes = code < 0x80 ? 1 : 2
-    for (let byte = 0; byte < bytes; byte++) offsets.push(index)
-    index += character.length
-  }
-  offsets.push(text.length)
-  return offsets
+  return glyphs
 }
 
 /** Characters inside a glyph cluster or without a glyph take the offset of the one before. */
@@ -135,13 +149,20 @@ function completeCharacterOffsets(offsets: Array<number | undefined>): number[] 
  * the glyph ID CanvasKit chose, so ligatures and contextual forms keep their shapes. When a run's
  * font is missing, variable, or a fallback, or the glyphs could not draw the text's decorations,
  * no glyph gets an outline: the layout still stands, and readers draw the text themselves.
+ * Outlines that carry no decorations, as outlined text has none, set `decorations: false`.
  * Returns `null` for text saved glyphs cannot represent at all.
  */
 export function shapeText(
   ck: CanvasKit,
   fontProvider: TypefaceFontProvider,
   node: SceneNode,
-  fontData?: ReadonlyMap<string, ArrayBuffer>
+  {
+    decorations = true,
+    fontData
+  }: {
+    decorations?: boolean
+    fontData?: ReadonlyMap<string, ArrayBuffer>
+  } = {}
 ): ShapedText | null {
   const text = transformTextCase(node.text, node.textCase)
   if (!canShape(node, text)) return null
@@ -150,7 +171,7 @@ export function shapeText(
     halfLeading: true
   })
   try {
-    return shapeParagraph(node, paragraph, fontData)
+    return shapeParagraph(node, paragraph, fontData, { decorations })
   } finally {
     paragraph.delete()
   }
@@ -159,8 +180,9 @@ export function shapeText(
 /** Outline the same paragraph that will be painted, using its provider's pinned face buffers. */
 export function shapeParagraph(
   node: SceneNode,
-  paragraph: Paragraph,
-  fontData?: ReadonlyMap<string, ArrayBuffer>
+  paragraph: TextLayout,
+  fontData?: ReadonlyMap<string, ArrayBuffer>,
+  { decorations = true }: { decorations?: boolean } = {}
 ): ShapedText | null {
   const text = transformTextCase(node.text, node.textCase)
   if (!canShape(node, text)) return null
@@ -170,22 +192,25 @@ export function shapeParagraph(
 
   const offsetY = textVerticalOffset(node, paragraph.getHeight())
   const glyphs: ShapedTextGlyph[] = []
-  const offsetsToCharacters = shapedCharacterOffsets(text, lines)
+  const characterAt = utf16IndicesByUtf8(text)
+  const markers = new Map(paragraph.getMarkers().map((marker) => [marker.lineNumber, marker]))
   const characterOffsets: Array<number | undefined> = Array.from({
     length: text.length
   })
   for (const [lineIndex, line] of lines.entries()) {
+    const marker = markers.get(lineIndex)
+    if (marker) glyphs.push(...markerGlyphs(marker, offsetY, fontData))
     for (const run of line.runs) {
       glyphs.push(
         ...shapedRunGlyphs(
           run,
-          runOutlineSource(node, text, run, offsetsToCharacters, fontData),
+          runOutlineSource(node, text, run, characterAt, fontData),
           {
             left: metrics[lineIndex].left,
             baseline: metrics[lineIndex].baseline + offsetY
           },
           characterOffsets,
-          offsetsToCharacters
+          characterAt
         )
       )
     }
@@ -193,7 +218,8 @@ export function shapeParagraph(
   // Outlines from some runs only would draw the text with characters missing, and saved
   // glyphs draw decorations on one baseline.
   const outlined =
-    glyphs.every((glyph) => glyph.commands) && !(lines.length > 1 && hasDecoration(node))
+    glyphs.every((glyph) => glyph.commands) &&
+    !(decorations && lines.length > 1 && hasDecoration(node))
   return {
     glyphs: outlined ? glyphs : glyphs.map((glyph) => ({ ...glyph, commands: null })),
     baselines: metrics.map((line) => ({
@@ -249,7 +275,8 @@ export function createTextShapeRuntime(canvasKit: CanvasKit, nodes: Iterable<Sce
   const scope = createParagraphFontScope(canvasKit, nodes)
   return {
     ...scope,
-    shapeText: (node: SceneNode) => shapeText(canvasKit, scope.provider, node, scope.fontData)
+    shapeText: (node: SceneNode) =>
+      shapeText(canvasKit, scope.provider, node, { fontData: scope.fontData })
   }
 }
 

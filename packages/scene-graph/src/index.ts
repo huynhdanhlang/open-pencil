@@ -31,6 +31,8 @@ export * from './behaviours/kinds'
 export * from './icons/schema'
 export * from './icons/model'
 export * from './icons/glyph'
+export * from './shaders/schema'
+export * from './shaders/model'
 export * from './behaviours/layers'
 export * from './behaviours/model'
 export * from './behaviours/spec'
@@ -67,6 +69,7 @@ export * from './export-format'
 export * from './export-scale'
 export * from './coordinate'
 export * from './layout'
+export * from './text'
 export * from './group-bounds'
 export * from './constants'
 export * from './geometry'
@@ -95,7 +98,7 @@ import {
   invalidateTextCaches,
   textCacheInvalidationChanges,
   TEXT_PICTURE_KEYS
-} from './text-picture'
+} from './text/picture'
 import * as Variables from './variables'
 import type { VariableModeFallback } from './variables'
 import { normalizeVectorNetwork } from './vector-network'
@@ -558,7 +561,8 @@ export class SceneGraph {
     'minWidth',
     'maxWidth',
     'minHeight',
-    'maxHeight'
+    'maxHeight',
+    'targetAspectRatio'
   ])
 
   runPreviewUpdates(fn: () => void, beforeUpdate?: NodePreviewObserver): void {

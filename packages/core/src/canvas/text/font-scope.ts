@@ -8,8 +8,8 @@ import { fontManager, weightToStyle } from '#core/text/fonts'
 import { glyphOutlineSourceSync } from '#core/text/opentype'
 
 import { resolveParagraphFontFamilies } from './font-families'
-import type { ParagraphNode } from './paragraph-inputs'
-import type { TextPreparationCache } from './preparation-cache'
+import type { ParagraphNode } from './paragraph/inputs'
+import type { TextPreparationCache } from './preparation/cache'
 
 /** Current face buffers shared by authored paragraphs, saved replay and export shaping. */
 export function createParagraphFontScope(canvasKit: CanvasKit, nodes: Iterable<SceneNode>) {

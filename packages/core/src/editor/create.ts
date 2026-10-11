@@ -43,6 +43,8 @@ import { createNodeActions } from './nodes'
 import { createPageActions } from './pages'
 import { createPlayActions } from './play/actions'
 import { createSelectionActions } from './selection'
+import { createShaderActions } from './shaders/actions'
+import { createShaderFrames } from './shaders/frames'
 import { createShapeActions } from './shapes'
 import { createDefaultEditorState } from './state'
 import { createStructureActions } from './structure'
@@ -111,6 +113,15 @@ export function createEditor(options?: EditorOptions) {
       renderVersion: state.renderVersion,
       sceneVersion: state.sceneVersion
     })
+  }
+
+  /**
+   * The caret or selection of the edited text moved: the canvas repaints its overlay and the
+   * views that follow the selection update, without the document counting as changed.
+   */
+  function textSelectionChanged() {
+    state.textSelectionVersion++
+    requestRepaint()
   }
 
   function requestRefresh() {
@@ -224,6 +235,7 @@ export function createEditor(options?: EditorOptions) {
     icons: options?.icons ?? iconify,
     getCk: () => _ck,
     getRenderer: () => _renderer,
+    getRenderers: () => _renderers,
     getTextEditor: () => _textEditor,
     requestRender,
     requestRefresh,
@@ -242,7 +254,8 @@ export function createEditor(options?: EditorOptions) {
   // Assemble domain modules
   const viewport = createViewportActions(ctx)
   const selection = createSelectionActions(ctx)
-  const pages = createPageActions(ctx)
+  const shaderFrames = createShaderFrames(ctx, options)
+  const pages = createPageActions(ctx, shaderFrames)
   const guides = createGuideActions(ctx)
   const designIssues = createDesignIssueActions(ctx)
   const shapes = createShapeActions(ctx)
@@ -257,13 +270,24 @@ export function createEditor(options?: EditorOptions) {
   const designTokens = createDesignTokenActions(ctx, variables, nodes)
   const vectorize = createVectorizeActions(ctx)
   const icons = createIconActions(ctx)
+  const shaders = createShaderActions(ctx, nodes)
   const alignment = createAlignmentActions(ctx)
   const preview = createPlayActions(ctx)
   const clipboardBridge = createClipboardBridge(clipboard, selection)
   const componentBridge = createComponentBridge(components, selection, structure, pages)
   const structureBridge = createStructureBridge(structure, selection)
-  const undoBridge = createUndoBridge(undoActions, selection)
+  const undoBridge = createUndoBridge(undoActions, selection, nodes.flushNudge)
   const lintFixBridge = createLintFixBridge(ctx, nodes, structure, clipboard)
+
+  // The edited text follows changes made outside the editor, such as a panel field being
+  // dragged, so its caret and selection move with the text instead of after the change.
+  const invalidateEditedText = (id: string) => {
+    if (id !== state.editingTextId) return
+    const node = _graph.getNode(id)
+    if (node) _textEditor?.invalidateParagraph(node)
+  }
+  onEditorEvent('node:updated', invalidateEditedText)
+  onEditorEvent('node:previewUpdated', invalidateEditedText)
 
   function setCanvasKit(ck: CanvasKit, renderer: SkiaRenderer) {
     _ck = ck
@@ -355,6 +379,7 @@ export function createEditor(options?: EditorOptions) {
     isInteractiveEditing: () => interactiveEdits.size > 0,
     requestRender,
     requestRefresh,
+    textSelectionChanged,
     requestRepaint,
     onEditorEvent,
     setCanvasKit,
@@ -393,6 +418,8 @@ export function createEditor(options?: EditorOptions) {
     // Bitmap-to-vector replacement
     ...vectorize,
     ...icons,
+    ...shaders,
+    ...shaderFrames,
 
     // Variables
     ...variables,
@@ -406,6 +433,9 @@ export function createEditor(options?: EditorOptions) {
 
     // Undo — bridge functions that need cross-module refs
     ...undoBridge,
+    // While text is edited, what was typed undoes first and the editor keeps the result.
+    undoAction: () => text.runTextEditStep(undoBridge.undoAction),
+    redoAction: () => text.runTextEditStep(undoBridge.redoAction),
 
     setDocumentColorSpace: colorSpace.setDocumentColorSpace,
 

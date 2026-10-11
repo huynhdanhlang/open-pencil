@@ -29,6 +29,7 @@ import {
   readNodeChangePluginData
 } from './plugin-data'
 import { importStyleRuns } from './style/runs'
+import { importParagraphStyles } from './text/lines'
 import { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text/values'
 import {
   alignGeometryWindingRules,
@@ -328,6 +329,11 @@ type TextProps = Pick<
   | 'lineHeight'
   | 'letterSpacing'
   | 'maxLines'
+  | 'textParagraphs'
+  | 'listSpacing'
+  | 'paragraphSpacing'
+  | 'paragraphIndent'
+  | 'hangingList'
   | 'styleRuns'
   | 'fontVariations'
   | 'fontFeatures'
@@ -358,6 +364,21 @@ function convertTextDecorationProps(
   }
 }
 
+function convertParagraphProps(
+  nc: NodeChange
+): Pick<
+  SceneNode,
+  'textParagraphs' | 'listSpacing' | 'paragraphSpacing' | 'paragraphIndent' | 'hangingList'
+> {
+  return {
+    textParagraphs: importParagraphStyles(nc.textData?.lines, nc.textData?.styleOverrideTable),
+    listSpacing: nc.listSpacing ?? 0,
+    paragraphSpacing: nc.paragraphSpacing ?? 0,
+    paragraphIndent: nc.paragraphIndent ?? 0,
+    hangingList: nc.hangingList ?? false
+  }
+}
+
 function convertTextProps(nc: NodeChange, blobs: Uint8Array[]): TextProps {
   return {
     text: nc.textData?.characters ?? '',
@@ -380,6 +401,7 @@ function convertTextProps(nc: NodeChange, blobs: Uint8Array[]): TextProps {
     lineHeight: convertLineHeight(nc.lineHeight, nc.fontSize),
     letterSpacing: convertLetterSpacing(nc.letterSpacing, nc.fontSize),
     maxLines: (nc.maxLines ?? null) as number | null,
+    ...convertParagraphProps(nc),
     styleRuns: importStyleRuns(nc),
     fontVariations: convertFontVariations(nc),
     fontFeatures: convertFontFeatures(nc),
@@ -444,6 +466,12 @@ function minimumSizeDimension(size: NodeChange['minSize'], axis: 'x' | 'y'): num
 function maximumSizeDimension(size: NodeChange['maxSize'], axis: 'x' | 'y'): number | null {
   const value = size?.value?.[axis]
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+function targetAspectRatio(nc: NodeChange): SceneNode['targetAspectRatio'] {
+  const value = nc.targetAspectRatio?.value
+  if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) return null
+  return { x: value.x, y: value.y }
 }
 
 function convertLayoutProps(
@@ -672,6 +700,7 @@ export function nodeChangeToProps(
     maxWidth: maximumSizeDimension(nc.maxSize, 'x'),
     minHeight: minimumSizeDimension(nc.minSize, 'y'),
     maxHeight: maximumSizeDimension(nc.maxSize, 'y'),
+    targetAspectRatio: targetAspectRatio(nc),
     isMask: nc.mask ?? false,
     maskType: (nc.maskType ?? 'ALPHA') as 'ALPHA' | 'VECTOR' | 'LUMINANCE',
     maskIsOutline: nc.maskIsOutline ?? false,
@@ -1114,7 +1143,6 @@ export const FIGMA_RAW_NODE_FIELD_KEYS = [
   'borderLeftWeight',
   'minSize',
   'maxSize',
-  'targetAspectRatio',
   'gridRows',
   'gridColumns',
   'gridRowAnchor',

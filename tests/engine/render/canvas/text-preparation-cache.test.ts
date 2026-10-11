@@ -1,13 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { CanvasKit, Paragraph } from 'canvaskit-wasm'
+import type { CanvasKit } from 'canvaskit-wasm'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { initCanvasKit } from '#cli/headless'
 import { buildParagraph, nodeFontReadiness } from '#core/canvas/text'
-import type { ParagraphNode } from '#core/canvas/text/paragraph-inputs'
-import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
+import { TextLayout } from '#core/canvas/text/layout'
+import { buildParagraph } from '#core/canvas/text/layout/build'
+import type { ParagraphNode } from '#core/canvas/text/paragraph/inputs'
+import { TextPreparationCache } from '#core/canvas/text/preparation/cache'
 import { fontManager } from '#core/text/fonts'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -22,18 +24,18 @@ async function fixture(maxEntries = 8, maxUnits = 1000) {
     height: 50
   })
   const cache = new TextPreparationCache(maxEntries, maxUnits)
-  const built: Paragraph[] = []
+  const built: TextLayout[] = []
   function build() {
     const builder = ck.ParagraphBuilder.MakeFromFontProvider(
       new ck.ParagraphStyle({ textStyle: { fontSize: 16 } }),
       provider
     )
     builder.addText(node.text)
-    const paragraph = builder.build()
+    const layout = TextLayout.ofParagraph(ck, builder.build(), node.text.length)
     builder.delete()
-    paragraph.layout(node.width)
-    built.push(paragraph)
-    return paragraph
+    layout.layout(node.width)
+    built.push(layout)
+    return layout
   }
   function use(variant = 'draw', generation = 1) {
     return cache.use(node, variant, generation, provider, build, ({ paragraph }) =>
@@ -57,6 +59,43 @@ async function fixture(maxEntries = 8, maxUnits = 1000) {
 }
 
 describe('text preparation cache', () => {
+  test('bounds every native paragraph and marker owned by cached list layouts', async () => {
+    const f = await fixture(4)
+    const built: TextLayout[] = []
+    try {
+      f.graph.updateNode(f.node.id, {
+        text: 'One\nTwo\nThree',
+        textParagraphs: [0, 1, 2].map(() => ({ listType: 'UNORDERED', indentation: 1 }))
+      })
+      const use = () =>
+        f.cache.use(
+          f.node,
+          'list',
+          1,
+          f.provider,
+          () => {
+            const layout = buildParagraph(
+              { ck: f.ck, fontProvider: f.provider, fontsLoaded: true },
+              f.node
+            )
+            built.push(layout)
+            return layout
+          },
+          ({ paragraph }) => {
+            expect(paragraph.getNativeParagraphCount()).toBe(6)
+            expect(paragraph.isDeleted()).toBe(false)
+          }
+        )
+      use()
+      expect(built[0].isDeleted()).toBe(true)
+      use()
+      expect(built).toHaveLength(2)
+      expect(built[1].isDeleted()).toBe(true)
+    } finally {
+      f.dispose()
+    }
+  })
+
   test('does not repeatedly shape coverage when a dense scan exceeds paragraph capacity', async () => {
     const f = await fixture(8)
     const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
@@ -234,6 +273,11 @@ describe('text preparation cache', () => {
         ],
         textTruncation: 'ENDING',
         maxLines: 2,
+        textParagraphs: [{ listType: 'UNORDERED', indentation: 1 }],
+        listSpacing: 4,
+        paragraphSpacing: 6,
+        paragraphIndent: 8,
+        hangingList: true,
         textAutoResize: 'WIDTH_AND_HEIGHT',
         width: 100,
         height: 80,
