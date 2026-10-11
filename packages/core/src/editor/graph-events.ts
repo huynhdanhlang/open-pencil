@@ -6,6 +6,7 @@ import {
 } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import { markFlowChanged } from '#core/layout/derived'
 
 type EmittedGraphEventName = keyof SceneGraphEvents
 
@@ -131,6 +132,16 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
     requestRenderFor(options.getGraph())
   }
 
+  /**
+   * An edit that adds, removes, or moves a layer changes its parent's flow, which then stops
+   * keeping the geometry a file saved for it. Loading a page and laying out are not edits.
+   */
+  function flowChanged(parentId: string | null | undefined) {
+    const graph = options.getGraph()
+    if (!parentId || graph.isApplyingImportedState || graph.isApplyingLayout) return
+    markFlowChanged(graph, parentId)
+  }
+
   function subscribeToGraph() {
     unbindGraphEvents?.()
     unbindGraphEvents = options.getGraph().onNodeEvents({
@@ -139,11 +150,13 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
       created: (node) => {
         options.emitEditorEvent('node:created', node)
         onNodeStructureChanged(node.id)
+        flowChanged(node.parentId)
       },
       deleted: (id, _parentId) => {
         for (const renderer of options.getRenderers()) renderer.invalidateVectorPath(id)
         options.emitEditorEvent('node:deleted', id, _parentId)
         onNodeStructureChanged(id)
+        flowChanged(_parentId)
         options.scheduleComponentSync(_parentId ?? id, id)
       },
       reparented: (nodeId, oldParentId, newParentId) => {
@@ -151,12 +164,16 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
         if (oldParentId && oldParentId !== newParentId)
           options.scheduleComponentSync(oldParentId, nodeId)
         onNodeStructureChanged(nodeId)
+        flowChanged(oldParentId)
+        flowChanged(newParentId)
       },
       reordered: (nodeId, parentId, index, previousParentId) => {
         options.emitEditorEvent('node:reordered', nodeId, parentId, index, previousParentId)
         if (previousParentId && previousParentId !== parentId)
           options.scheduleComponentSync(previousParentId, nodeId)
         onNodeStructureChanged(nodeId)
+        flowChanged(parentId)
+        flowChanged(previousParentId)
       }
     })
   }

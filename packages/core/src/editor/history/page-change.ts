@@ -12,6 +12,7 @@ import {
 
 import type { EditorContext } from '#core/editor/types'
 import { computeAllLayouts } from '#core/layout'
+import { restoreSavedFlow } from '#core/layout/derived'
 
 import { diffFields, type FieldChanges } from './diff'
 
@@ -220,6 +221,8 @@ export function applyPageChange(graph: SceneGraph, change: PageChange, side: Sid
     for (const node of removed) graph.deleteNode(node.id)
     for (const update of change.updated) restoreLayer(graph, update, side)
   })
+  for (const { id } of [...restored, ...change.updated, ...change.children[side]])
+    restoreSavedFlow(graph, id)
   graph.clearAbsPosCache()
 }
 

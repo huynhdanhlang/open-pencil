@@ -101,9 +101,7 @@ export function createComponentSyncScheduler(
         if (component) componentIds.add(component.id)
       }
       const ordered = componentSyncOrder(graph, componentIds)
-      for (const compId of ordered) {
-        graph.syncInstances(compId, removed)
-      }
+      graph.syncInstancesTogether(ordered, removed)
       if (componentIds.size > 0) {
         for (const scopeId of affectedLayoutScopeIds(graph, ids, ordered))
           computeLayouts(graph, scopeId)

@@ -113,6 +113,24 @@ describe('a frame read from a .fig file reflows once its layout is edited', () =
     editor.dispose()
   })
 
+  test('recorded step Undo restores saved geometry after a structure edit', () => {
+    const { editor, row, first, second } = savedRow()
+    editor.graph.applyImportedStateDuring(() => {
+      editor.graph.updateNode(row.id, { width: 280, derivedLayout: { width: 280 } })
+      editor.graph.updateNode(first.id, { x: 11, derivedLayout: { x: 11 } })
+      editor.graph.updateNode(second.id, { x: 157, derivedLayout: { x: 157 } })
+    })
+    const before = [280, 11, 157]
+    const finish = editor.capturePageChange(editor.state.currentPageId)
+    editor.graph.createNode('RECTANGLE', row.id, { width: 50, height: 40 })
+    editor.runLayoutForNode(row.id)
+    const change = finish()
+    editor.restorePageChange(change, 'before')
+    editor.runLayoutForNode(row.id)
+    expect([row.width, first.x, second.x]).toEqual(before)
+    editor.dispose()
+  })
+
   test('adding auto layout hugs the layer and moves it into the flow', () => {
     for (const mode of ['HORIZONTAL', 'VERTICAL'] as const) {
       const editor = createEditor()
@@ -199,4 +217,38 @@ describe('a frame read from a .fig file reflows once its layout is edited', () =
     expect([row.width, first.x, second.x]).toEqual([230, 10, 120])
     editor.dispose()
   })
+})
+
+test('a layer moved into a frame with saved geometry resizes it, even before it was laid out', () => {
+  const editor = createEditor()
+  const { graph } = editor
+  const hug = {
+    layoutMode: 'HORIZONTAL',
+    primaryAxisSizing: 'HUG',
+    counterAxisSizing: 'HUG',
+    itemSpacing: 4,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingTop: 2,
+    paddingBottom: 2
+  } as const
+  // A component's layers as a .fig file loads them: saved sizes, no source format, not laid out.
+  const tag = graph.createNode('COMPONENT', editor.state.currentPageId, {
+    ...hug,
+    width: 62,
+    height: 41
+  })
+  const badge = graph.createNode('FRAME', tag.id, { ...hug, width: 24, height: 12 })
+  graph.createNode('ELLIPSE', badge.id, { width: 8, height: 8 })
+  const number = graph.createNode('RECTANGLE', tag.id, { width: 6, height: 17 })
+  for (const node of [tag, badge, number]) {
+    graph.applyImportedStateDuring(() =>
+      graph.updateNode(node.id, {
+        derivedLayout: { x: node.x, y: node.y, width: node.width, height: node.height }
+      })
+    )
+  }
+  editor.reorderChildWithUndo(number.id, badge.id, 1)
+  expect([badge.width, badge.height]).toEqual([34, 21])
+  editor.dispose()
 })

@@ -13,6 +13,13 @@ import {
 import { scaleNodeChanges } from '../scaling/node'
 import { ownsSlotContent, slotPropertyId } from '../slots/frames'
 import { scaleVariableBindingUnits } from '../variables/units'
+import {
+  createInstanceSyncContext,
+  hasUnplacedCopiesBelow,
+  restoreRemovedCopy,
+  unplacedCopy,
+  type InstanceSyncContext
+} from './copies'
 import { INSTANCE_SYNC_FIELDS, INSTANCE_SYNC_PROPS } from './fields'
 import { instanceMainComponent } from './main-component'
 
@@ -447,13 +454,64 @@ function matchLinkedChildren(
   }
 }
 
+/**
+ * Pass 3 of a sync: bring along the copy of a layer moved here inside the component, bring back
+ * one the sync removed when its layer returns, or clone a layer the instance has no copy of. A
+ * clone takes its own subtree unless copies the instance has belong in it, which the recursion
+ * moves in instead. Children left unmatched are the sync's to remove once it finishes.
+ */
+function placeMissingChildren(
+  graph: SceneGraph,
+  compParent: SceneNode,
+  instParent: SceneNode,
+  instChildMap: Map<string, SceneNode>,
+  usedInstChildIds: Set<string>,
+  context: InstanceSyncContext
+): void {
+  for (const child of instChildMap.values()) context.matched.add(child.id)
+
+  for (const compChildId of compParent.childIds) {
+    if (instChildMap.has(compChildId)) continue
+    const moved =
+      unplacedCopy(graph, context, compChildId, instParent.id) ??
+      restoreRemovedCopy(graph, context, compChildId, instParent.id)
+    if (moved) {
+      graph.insertChildAt(moved.id, instParent.id, instParent.childIds.length)
+      instChildMap.set(compChildId, moved)
+      usedInstChildIds.add(moved.id)
+      context.matched.add(moved.id)
+      continue
+    }
+    const src = graph.nodes.get(compChildId)
+    if (!src) continue
+    const clone = cloneChildInCoordinates(
+      graph,
+      src,
+      compParent,
+      instParent,
+      'deep',
+      context.overrides
+    )
+    if (src.childIds.length > 0 && !hasUnplacedCopiesBelow(graph, context, compChildId)) {
+      cloneChildrenWithMapping(graph, compChildId, clone.id, 'deep', context.overrides)
+    }
+    applyEnclosingAssignments(graph, clone)
+    instChildMap.set(compChildId, clone)
+    usedInstChildIds.add(clone.id)
+    context.matched.add(clone.id)
+  }
+  for (const childId of instParent.childIds) {
+    if (!usedInstChildIds.has(childId)) context.leftovers.add(childId)
+  }
+}
+
 function syncMatchedChildren(
   graph: SceneGraph,
   compParent: SceneNode,
   instParent: SceneNode,
   instChildMap: Map<string, SceneNode>,
   overrides: InstanceOverrideState,
-  removedSourceIds?: ReadonlySet<string>
+  context: InstanceSyncContext
 ): void {
   for (const compChildId of compParent.childIds) {
     const compChild = graph.nodes.get(compChildId)
@@ -493,7 +551,7 @@ function syncMatchedChildren(
       !hasNodeInstanceOverride(overrides, instParent.id, instChild.id, 'componentId') &&
       !ownsSlotContent(graph, instChild, slotPropertyId(compChild))
     ) {
-      syncChildren(graph, compChildId, instChild.id, overrides, removedSourceIds)
+      syncChildren(graph, compChildId, instChild.id, overrides, context)
     }
   }
 }
@@ -503,7 +561,7 @@ export function syncChildren(
   compParentId: string,
   instParentId: string,
   overrides: InstanceOverrideState,
-  removedSourceIds?: ReadonlySet<string>
+  context: InstanceSyncContext = createInstanceSyncContext(instParentId, overrides)
 ): void {
   // Guard against cyclic sync: if the instance parent is inside the component's own
   // subtree, syncing would clone the component into itself — a self-referential cycle
@@ -513,16 +571,6 @@ export function syncChildren(
   const compParent = graph.nodes.get(compParentId)
   const instParent = graph.nodes.get(instParentId)
   if (!compParent || !instParent) return
-
-  // Only authored/replayed deletions are authoritative. Unresolved imported links and
-  // unlinked local children remain intact; a missing source alone is not deletion evidence.
-  for (const child of graph.getChildren(instParentId)) {
-    const nestedSource = getInstanceOverride(overrides, instParentId, child.id, 'sourceComponentId')
-    if (child.type === 'INSTANCE' && typeof nestedSource !== 'string') continue
-    const sourceId = typeof nestedSource === 'string' ? nestedSource : child.componentId
-    if (sourceId && removedSourceIds?.has(sourceId) && !compParent.childIds.includes(sourceId))
-      graph.deleteNode(child.id)
-  }
 
   const instChildMap = new Map<string, SceneNode>()
   const usedInstChildIds = new Set<string>()
@@ -550,23 +598,10 @@ export function syncChildren(
     usedInstChildIds
   )
 
-  // Pass 3: Clone only genuinely missing component children
-  for (const compChildId of compParent.childIds) {
-    if (!instChildMap.has(compChildId)) {
-      const src = graph.nodes.get(compChildId)
-      if (!src) continue
-      const clone = cloneChildInCoordinates(graph, src, compParent, instParent, 'deep', overrides)
-      if (src.childIds.length > 0) {
-        cloneChildrenWithMapping(graph, compChildId, clone.id, 'deep', overrides)
-      }
-      applyEnclosingAssignments(graph, clone)
-      instChildMap.set(compChildId, clone)
-      usedInstChildIds.add(clone.id)
-    }
-  }
+  placeMissingChildren(graph, compParent, instParent, instChildMap, usedInstChildIds, context)
 
   // Pass 4: Synchronize properties and recurse
-  syncMatchedChildren(graph, compParent, instParent, instChildMap, overrides, removedSourceIds)
+  syncMatchedChildren(graph, compParent, instParent, instChildMap, overrides, context)
 
   // Pass 5: Sort instance children to match component child order
   sortInstanceChildren(graph, instParent, instParentId, compParent.childIds, overrides)

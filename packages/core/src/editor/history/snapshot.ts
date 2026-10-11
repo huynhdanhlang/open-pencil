@@ -7,6 +7,7 @@ import {
 
 import type { EditorContext } from '#core/editor/types'
 import { computeAllLayouts } from '#core/layout'
+import { restoreSavedFlow } from '#core/layout/derived'
 
 import { createSnapshotEquality, type equalSnapshotValues } from './snapshot-equality'
 
@@ -200,6 +201,7 @@ export function restorePageFromSnapshot(ctx: EditorContext, snapshot: PageSnapsh
     layoutPages = new Set(ctx.graph.getPages().map((p) => p.id))
   }
   try {
+    for (const id of snapshot.keys()) restoreSavedFlow(ctx.graph, id)
     ctx.graph.clearAbsPosCache()
     if (page.id === ctx.state.currentPageId) {
       ctx.setSelectedIds(new Set())
