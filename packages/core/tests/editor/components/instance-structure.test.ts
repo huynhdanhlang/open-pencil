@@ -126,6 +126,8 @@ test('an unrelated sync keeps unresolved imported links and unlinked local child
   const { editor, page, node } = setup()
   const component = node('COMPONENT', page, { name: 'Imported component' })
   const instance = await instanceOf(editor, component.id)
+  const localMaster = node('COMPONENT', page, { name: 'Local master' })
+  let nested: SceneNode
   let unresolved: SceneNode
   let local: SceneNode
   editor.graph.applyImportedStateDuring(() => {
@@ -134,10 +136,12 @@ test('an unrelated sync keeps unresolved imported links and unlinked local child
       text: 'Retained import'
     })
     local = node('TEXT', instance.id, { text: 'Local content' })
+    nested = editor.graph.createInstance(localMaster.id, instance.id)!
   })
   editor.updateNodeWithUndo(component.id, { name: 'Renamed component' })
   await synced()
   expect(editor.graph.getNode(unresolved!.id)?.text).toBe('Retained import')
   expect(editor.graph.getNode(local!.id)?.text).toBe('Local content')
+  expect(editor.graph.getNode(nested!.id)?.componentId).toBe(localMaster.id)
   editor.dispose()
 })

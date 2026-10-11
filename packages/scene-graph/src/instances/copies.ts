@@ -38,7 +38,9 @@ function copiedLayerId(node: SceneNode, context: InstanceSyncContext): string | 
     node.type === 'INSTANCE'
       ? getInstanceOverride(context.overrides, context.instanceId, node.id, 'sourceComponentId')
       : undefined
-  return typeof source === 'string' ? source : (node.componentId ?? undefined)
+  // An uncorresponded nested instance owns its selected master, not a layer of this component.
+  if (node.type === 'INSTANCE') return typeof source === 'string' ? source : undefined
+  return node.componentId ?? undefined
 }
 
 /** Whether sync goes inside a copy: not into slot content, a swapped instance, or an instance. */
