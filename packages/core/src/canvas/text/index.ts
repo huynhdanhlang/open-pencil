@@ -2,6 +2,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { transformTextCase } from '#core/text/case'
+import { emojiPresentationCharacters } from '#core/text/coverage'
 import { fontManager, weightToStyle } from '#core/text/fonts'
 import {
   fontCoverageDemand,
@@ -74,7 +75,7 @@ function transformedSourceOffsets(node: SceneNode): number[] {
   return offsets
 }
 
-export type NodeFontReadiness = 'ready' | 'substituted' | 'pending' | 'exhausted'
+export type NodeFontReadiness = 'ready' | 'substituted' | 'partial' | 'pending' | 'exhausted'
 
 function requiredFacesReadiness(r: FontReadinessRenderer, node: SceneNode): NodeFontReadiness {
   let pending = false
@@ -172,8 +173,9 @@ function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadi
       void fontResolver.demandForNode(demand, node.id, r.onFontResolutionSettled)
     }
   }
-  if (pending) return 'pending'
-  return exhausted ? 'exhausted' : 'ready'
+  // The requested faces are loaded. Missing glyphs must not hide their readable text while
+  // coverage resolves or after all candidates have been tried.
+  return pending || exhausted ? 'partial' : 'ready'
 }
 
 function canObserveGlyphCoverage(r: FontReadinessRenderer): r is TextRenderer {
@@ -185,16 +187,27 @@ export function nodeFontReadiness(r: FontReadinessRenderer, node: SceneNode): No
   const faces = requiredFacesReadiness(r, node)
   if (faces === 'pending' || faces === 'exhausted') return faces
   if (!node.text || !canObserveGlyphCoverage(r)) return faces
+  const emojiCharacters = emojiPresentationCharacters(node.text)
+  let emojiIncomplete = false
+  if (emojiCharacters.length > 0 && fontManager.getEmojiFallbackFamilies().length === 0) {
+    const demand = fontCoverageDemand('emoji', emojiCharacters)
+    emojiIncomplete = true
+    if (fontResolver.state(demand).state === 'idle') {
+      r.trackFontDemand?.(node, demand.key)
+      void fontResolver.demandForNode(demand, node.id, r.onFontResolutionSettled)
+    }
+  }
   const glyphs = observedGlyphReadiness(r, node)
+  if (emojiIncomplete) return 'partial'
   // Substituted text still needs script fallbacks (for example CJK) for glyphs the substitute
   // lacks, but stays visible when none can be found.
-  if (faces === 'substituted') return glyphs === 'pending' ? 'pending' : 'substituted'
+  if (faces === 'substituted') return glyphs === 'partial' ? 'partial' : 'substituted'
   return glyphs
 }
 
 export function isNodeFontLoaded(r: FontReadinessRenderer, node: SceneNode): boolean {
   const readiness = nodeFontReadiness(r, node)
-  return readiness === 'ready' || readiness === 'substituted'
+  return readiness === 'ready' || readiness === 'substituted' || readiness === 'partial'
 }
 
 export function measureTextNode(

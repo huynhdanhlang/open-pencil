@@ -65,6 +65,8 @@ export class FontManager {
   private cjkFallbackFamilies: string[] = []
   private cjkFallbackPromise: Promise<string[]> | null = null
   private arabicFallbackFamilies: string[] = []
+  private emojiFallbackFamilies: string[] = []
+  private emojiFallbackPromise: Promise<string[]> | null = null
   private arabicFallbackPromise: Promise<string[]> | null = null
 
   attachProvider(canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
@@ -448,6 +450,11 @@ export class FontManager {
     await Promise.all(
       scripts.map(async (script) => {
         signal?.throwIfAborted()
+        if (script === 'emoji') {
+          result[script] = await this.ensureEmojiFallback()
+          signal?.throwIfAborted()
+          return
+        }
         const target = script === 'arabic' ? this.arabicFallbackFamilies : this.cjkFallbackFamilies
         if (signal) {
           result[script] = await this.ensureFallbackFamilies(
@@ -474,6 +481,23 @@ export class FontManager {
     return this.arabicFallbackFamilies
   }
 
+  getEmojiFallbackFamilies(): string[] {
+    return this.emojiFallbackFamilies
+  }
+
+  private ensureEmojiFallback(): Promise<string[]> {
+    if (this.emojiFallbackFamilies.length > 0) return Promise.resolve(this.emojiFallbackFamilies)
+    // System emoji faces contain the complete font, unlike remote character-specific subsets.
+    // Share the load across distinct coverage demands and never retain another copy per glyph.
+    this.emojiFallbackPromise ??= this.ensureFallbackFamilies(
+      'emoji',
+      this.emojiFallbackFamilies
+    ).finally(() => {
+      this.emojiFallbackPromise = null
+    })
+    return this.emojiFallbackPromise
+  }
+
   setArabicFallbackFamily(family: string): void {
     if (!this.arabicFallbackFamilies.includes(family)) {
       this.arabicFallbackFamilies.push(family)
@@ -493,6 +517,7 @@ export class FontManager {
     for (const family of manifest.localFamilies) {
       signal?.throwIfAborted()
       const buffer =
+        (script === 'emoji' ? this.loadedData(family, 'Regular') : null) ??
         (await this.loadHostFont(family, 'Regular')) ??
         (await this.findLocalFont(family, undefined, {
           allowVariable: options.allowVariableLocalFonts

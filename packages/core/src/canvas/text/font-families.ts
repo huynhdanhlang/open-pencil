@@ -10,7 +10,8 @@ export function resolveParagraphFontFamilies(
   primary: string,
   style: string,
   arabicFallbacks: readonly string[] = fontManager.getArabicFallbackFamilies(),
-  cjkFallbacks: readonly string[] = fontManager.getCJKFallbackFamilies()
+  cjkFallbacks: readonly string[] = fontManager.getCJKFallbackFamilies(),
+  emojiFallbacks: readonly string[] = fontManager.getEmojiFallbackFamilies()
 ): string[] {
   const renderPrimary = fontManager.renderFamily(primary, style)
   const renderArabicFallbacks = arabicFallbacks.map((family) =>
@@ -19,12 +20,15 @@ export function resolveParagraphFontFamilies(
   const renderCJKFallbacks = cjkFallbacks.map((family) =>
     fontManager.renderFamily(family, 'Regular')
   )
-  const key = `${renderPrimary}\0${renderArabicFallbacks.join('\0')}\0${renderCJKFallbacks.join('\0')}`
+  const renderEmojiFallbacks = emojiFallbacks.map((family) =>
+    fontManager.renderFamily(family, 'Regular')
+  )
+  const key = `${renderPrimary}\0${renderArabicFallbacks.join('\0')}\0${renderCJKFallbacks.join('\0')}\0${renderEmojiFallbacks.join('\0')}`
   const cached = familiesCache.peek(key)
   if (cached) return cached
   const families = [renderPrimary]
   if (primary !== DEFAULT_FONT_FAMILY) families.push(DEFAULT_FONT_FAMILY)
-  families.push(...renderArabicFallbacks, ...renderCJKFallbacks)
+  families.push(...renderArabicFallbacks, ...renderCJKFallbacks, ...renderEmojiFallbacks)
   const resolved = uniq(families)
   familiesCache.set(key, resolved)
   return resolved

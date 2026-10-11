@@ -6,7 +6,8 @@ import type {
   ParagraphBuilder,
   TextFontFeatures,
   TextFontVariations,
-  TextHeightBehavior
+  TextHeightBehavior,
+  TextStyle
 } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
@@ -23,6 +24,7 @@ import {
 import type { TextRenderer } from '#core/canvas/text/renderer'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE } from '#core/constants'
 import { transformTextCase } from '#core/text/case'
+import { emojiPresentationSegments } from '#core/text/coverage'
 import { fontManager, weightToStyle } from '#core/text/fonts'
 
 import type { ParagraphNode } from './inputs'
@@ -181,7 +183,7 @@ function pushStyleRun(
   fontFamilies: (primary: string, weight: number, italic?: boolean) => string[],
   halfLeading: boolean,
   paintStyle?: ParagraphPaintStyle
-): void {
+): TextStyle {
   const ck = r.ck
   const style = run.style
   const runLineHeight = style.lineHeight !== undefined ? style.lineHeight : node.lineHeight
@@ -220,14 +222,36 @@ function pushStyleRun(
     halfLeading
   })
   pushParagraphStyle(builder, textStyle, paintStyle)
+  return textStyle
 }
 
 function addParagraphText(
   builder: ParagraphBuilder,
   node: Pick<ParagraphNode, 'textCase'>,
-  text: string
+  text: string,
+  textStyle: TextStyle,
+  paintStyle?: ParagraphPaintStyle
 ): void {
-  builder.addText(transformTextCase(text, node.textCase))
+  const shown = transformTextCase(text, node.textCase)
+  const emojiFamilies = fontManager.getEmojiFallbackFamilies()
+  const emojiSegments = emojiFamilies.length === 0 ? [] : emojiPresentationSegments(shown)
+  if (emojiSegments.length === 0) {
+    builder.addText(shown)
+    return
+  }
+  const families = [...emojiFamilies, ...(textStyle.fontFamilies ?? [])]
+  let pos = 0
+  for (const { segment, index } of emojiSegments) {
+    if (pos < index) builder.addText(shown.slice(pos, index))
+    pushParagraphStyle(builder, { ...textStyle, fontFamilies: families }, paintStyle)
+    try {
+      builder.addText(segment)
+    } finally {
+      builder.pop()
+    }
+    pos = index + segment.length
+  }
+  if (pos < shown.length) builder.addText(shown.slice(pos))
 }
 
 function addStyledRuns(
@@ -238,14 +262,16 @@ function addStyledRuns(
   baseFontSize: number,
   fontFamilies: (primary: string, weight: number, italic?: boolean) => string[],
   halfLeading: boolean,
+  baseTextStyle: TextStyle,
   paintStyle?: ParagraphPaintStyle
 ): void {
   const text = node.text
   let pos = 0
 
   for (const run of node.styleRuns) {
-    if (pos < run.start) addParagraphText(builder, node, text.slice(pos, run.start))
-    pushStyleRun(
+    if (pos < run.start)
+      addParagraphText(builder, node, text.slice(pos, run.start), baseTextStyle, paintStyle)
+    const runStyle = pushStyleRun(
       r,
       builder,
       node,
@@ -256,12 +282,18 @@ function addStyledRuns(
       halfLeading,
       paintStyle
     )
-    addParagraphText(builder, node, text.slice(run.start, run.start + run.length))
+    addParagraphText(
+      builder,
+      node,
+      text.slice(run.start, run.start + run.length),
+      runStyle,
+      paintStyle
+    )
     builder.pop()
     pos = run.start + run.length
   }
 
-  if (pos < text.length) addParagraphText(builder, node, text.slice(pos))
+  if (pos < text.length) addParagraphText(builder, node, text.slice(pos), baseTextStyle, paintStyle)
 }
 
 /** What a paragraph that is one block of a longer text needs beyond its node's own style. */
@@ -360,7 +392,7 @@ export function buildSkParagraph(
     }
     if (block.firstLineIndent) addFirstLineIndent(ck, builder, block.firstLineIndent)
     if (node.styleRuns.length === 0) {
-      addParagraphText(builder, node, node.text)
+      addParagraphText(builder, node, node.text, baseTextStyle, paintStyle)
     } else {
       addStyledRuns(
         r,
@@ -370,6 +402,7 @@ export function buildSkParagraph(
         baseFontSize,
         fontFamilies,
         halfLeading,
+        baseTextStyle,
         paintStyle
       )
     }

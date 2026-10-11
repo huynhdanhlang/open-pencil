@@ -41,6 +41,7 @@ import {
   normalizeDashPattern
 } from './strokes'
 import { textVerticalOffset, withTextParagraph } from './text'
+import { hasHangingListBox, hangingListClipRects } from './text/clip'
 import {
   canDrawSavedText,
   drawDerivedText,
@@ -946,7 +947,12 @@ function drawPaintedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): bool
       foregroundPaint: r.fillPaint
     },
     (paragraph) => {
-      paragraph.draw(canvas, 0, textVerticalOffset(node, paragraph.getHeight()))
+      paragraph.draw(
+        canvas,
+        0,
+        textVerticalOffset(node, paragraph.getHeight()),
+        hangingListClipRects(r.ck, canvas, node)
+      )
       return true
     }
   )
@@ -955,6 +961,7 @@ function drawPaintedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): bool
 function shouldClipTextToLayoutBox(node: SceneNode): boolean {
   return (
     !hasOverflowPathTextPaint(node) &&
+    !hasHangingListBox(node) &&
     (node.textAutoResize === 'NONE' || node.textAutoResize === 'TRUNCATE')
   )
 }
@@ -1004,6 +1011,13 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
     if (node.textPicture && r.isTextPictureCurrent(node)) {
       const pic = r.ck.MakePicture(node.textPicture)
       if (pic) {
+        if (hasHangingListBox(node)) {
+          canvas.clipRect(
+            r.ck.LTRBRect(0, 0, node.width, node.height),
+            r.ck.ClipOp.Intersect,
+            false
+          )
+        }
         canvas.drawPicture(pic)
         pic.delete()
         canvas.restore()
@@ -1024,9 +1038,12 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
   if (r.fontsLoaded && r.fontProvider) {
     withTextParagraph(r, node, r.fillPaint.getColor(), { halfLeading: true }, (paragraph) => {
       const paragraphY = textVerticalOffset(node, paragraph.getHeight())
-      paragraph.draw(canvas, 0, paragraphY)
+      paragraph.draw(canvas, 0, paragraphY, hangingListClipRects(r.ck, canvas, node))
     })
   } else if (r.textFont) {
+    if (hasHangingListBox(node)) {
+      canvas.clipRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.ck.ClipOp.Intersect, false)
+    }
     const fontSize = node.fontSize || r.DEFAULT_FONT_SIZE
     const paragraphY = textVerticalOffset(node, fontSize)
     canvas.drawText(

@@ -426,7 +426,7 @@ describe('renderText headless visual', () => {
       renderer.fontProvider = fontProvider
       const node = textNode({ text: '按钮', fontFamily: 'Undrawable Sans', fontWeight: 400 })
 
-      expect(nodeFontReadiness(renderer, node)).toBe('pending')
+      expect(nodeFontReadiness(renderer, node)).toBe('partial')
       await Promise.resolve()
       expect(fallbackPack).toHaveBeenCalled()
       expect(fallbackPack.mock.calls[0]?.[0]?.some((script) => script.startsWith('cjk'))).toBe(true)

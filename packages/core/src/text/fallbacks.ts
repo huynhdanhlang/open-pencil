@@ -5,7 +5,14 @@ import {
   CJK_GOOGLE_FONTS
 } from '#core/constants'
 
-export type FontFallbackScript = 'cjk' | 'cjk-sc' | 'cjk-tc' | 'cjk-jp' | 'cjk-kr' | 'arabic'
+export type FontFallbackScript =
+  | 'cjk'
+  | 'cjk-sc'
+  | 'cjk-tc'
+  | 'cjk-jp'
+  | 'cjk-kr'
+  | 'arabic'
+  | 'emoji'
 
 export function cjkFallbackScriptForLanguage(
   language: string | null | undefined
@@ -132,6 +139,15 @@ export function fontFallbackManifest(
       script: 'arabic',
       localFamilies: [...ARABIC_LOCAL_FALLBACK_FAMILIES],
       remoteFamilies: [...ARABIC_REMOTE_FALLBACK_FAMILIES]
+    },
+    emoji: {
+      script: 'emoji',
+      localFamilies: userAgent?.includes('Mac')
+        ? ['Apple Color Emoji', 'Noto Color Emoji']
+        : userAgent?.includes('Windows')
+          ? ['Segoe UI Emoji', 'Noto Color Emoji']
+          : ['Noto Color Emoji'],
+      remoteFamilies: []
     }
   }
 }

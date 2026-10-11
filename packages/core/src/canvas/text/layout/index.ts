@@ -10,6 +10,8 @@ import type {
   ShapedLine
 } from 'canvaskit-wasm'
 
+import type { TextClipRects } from '../clip'
+
 /** A list item's number or bullet, laid out on its own. */
 export interface TextLayoutMarker {
   paragraph: Paragraph
@@ -391,11 +393,33 @@ export class TextLayout {
     return markers
   }
 
-  draw(canvas: Canvas, x: number, y: number): void {
+  draw(canvas: Canvas, x: number, y: number, clip?: TextClipRects): void {
     for (const block of this.visibleBlocks()) {
-      canvas.drawParagraph(block.paragraph, x + block.x, y + block.y)
+      this.drawParagraph(canvas, block.paragraph, x + block.x, y + block.y, clip?.body)
       const marker = block.marker
-      if (marker) canvas.drawParagraph(marker.paragraph, x + marker.x, y + marker.y)
+      if (marker) {
+        this.drawParagraph(canvas, marker.paragraph, x + marker.x, y + marker.y, clip?.marker)
+      }
+    }
+  }
+
+  private drawParagraph(
+    canvas: Canvas,
+    paragraph: Paragraph,
+    x: number,
+    y: number,
+    clip?: Float32Array
+  ): void {
+    if (!clip) {
+      canvas.drawParagraph(paragraph, x, y)
+      return
+    }
+    canvas.save()
+    try {
+      canvas.clipRect(clip, this.ck.ClipOp.Intersect, false)
+      canvas.drawParagraph(paragraph, x, y)
+    } finally {
+      canvas.restore()
     }
   }
 

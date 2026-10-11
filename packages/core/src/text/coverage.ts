@@ -10,6 +10,29 @@ const CJK_HIRAGANA_KATAKANA_RE = /[\u3040-\u30ff]/u
 const CJK_HANGUL_RE = /[\uac00-\ud7af]/u
 const CJK_CHAR_RE = /[\p{Script=Han}\u3040-\u30ff\uac00-\ud7af]/u
 const ARABIC_CHAR_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/u
+const EMOJI_CHAR_RE = /[\p{Extended_Pictographic}\p{Emoji_Presentation}\u20e3]/u
+const EMOJI_PRESENTATION_RE = /[\p{Emoji_Presentation}\uFE0F\u20e3]/u
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+export function emojiPresentationSegments(text: string): Intl.SegmentData[] {
+  if (!EMOJI_PRESENTATION_RE.test(text)) return []
+  const result: Intl.SegmentData[] = []
+  for (const entry of graphemes.segment(text)) {
+    if (!entry.segment.includes('\uFE0E') && EMOJI_PRESENTATION_RE.test(entry.segment))
+      result.push(entry)
+  }
+  return result
+}
+
+/** Explicit emoji presentation can need a color face even when its base symbol is covered. */
+export function emojiPresentationCharacters(text: string): string[] {
+  return emojiPresentationSegments(text)
+    .flatMap(({ segment }) => Array.from(segment))
+    .filter(
+      (character) =>
+        EMOJI_CHAR_RE.test(character) || character === '\uFE0F' || character === '\u200D'
+    )
+}
 
 // Common Traditional-only characters. This is a heuristic for fallback order, not language ID.
 const TRADITIONAL_CJK_CHAR_RE =
@@ -17,6 +40,8 @@ const TRADITIONAL_CJK_CHAR_RE =
 
 function scriptCharRegex(script: FontFallbackScript): RegExp {
   switch (script) {
+    case 'emoji':
+      return EMOJI_CHAR_RE
     case 'arabic':
       return ARABIC_CHAR_RE
     case 'cjk-jp':
@@ -31,13 +56,14 @@ function scriptCharRegex(script: FontFallbackScript): RegExp {
 }
 
 export function textHasFallbackScript(text: string): boolean {
-  return ARABIC_CHAR_RE.test(text) || CJK_CHAR_RE.test(text)
+  return ARABIC_CHAR_RE.test(text) || CJK_CHAR_RE.test(text) || EMOJI_CHAR_RE.test(text)
 }
 
 export function fontFallbackScriptForCharacter(
   char: string,
   language?: string | null
 ): FontFallbackScript | null {
+  if (EMOJI_CHAR_RE.test(char)) return 'emoji'
   if (ARABIC_CHAR_RE.test(char)) return 'arabic'
   if (CJK_HANGUL_RE.test(char)) return 'cjk-kr'
   if (CJK_HIRAGANA_KATAKANA_RE.test(char)) return 'cjk-jp'
@@ -105,6 +131,8 @@ export function textFallbackScriptsWithoutCoverage(node: SceneNode): FontFallbac
 export function textNeededFallbackScripts(node: SceneNode): FontFallbackScript[] {
   const scripts = new Set<FontFallbackScript>()
   if (textNeedsFallbackScript(node, 'arabic')) scripts.add('arabic')
+  if (textNeedsFallbackScript(node, 'emoji')) scripts.add('emoji')
+  if (emojiPresentationCharacters(node.text).length > 0) scripts.add('emoji')
 
   let missingIdeograph = false
   let missingTraditionalIdeograph = false

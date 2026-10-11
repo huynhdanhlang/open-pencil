@@ -19,6 +19,8 @@ import { ResourceCache } from '#core/cache/resource'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { geometryBlobToPath } from '#core/vector'
 
+import { hangingListClipRects } from './clip'
+
 const MAX_GLYPH_SILHOUETTES = 512
 /** Saved glyphs a renderer keeps decoded: every text on a page of saved text redraws at once. */
 const MAX_DERIVED_GLYPH_PATHS = 16384
@@ -489,12 +491,20 @@ export function drawDerivedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode
   const snapBaselines = !hasRotatedDerivedGlyphs(node)
   const savedTextEligible = savedTextEligibility(node)
   const markerCharacters = markerStyleCharacters(node)
+  const clip = hangingListClipRects(r.ck, canvas, node)
   let underlineBaselineY = 0
   for (const [index, glyph] of node.derivedTextGlyphs.entries()) {
     const glyphY = snapBaselines ? snapDerivedGlyphBaseline(glyph.y) : glyph.y
     underlineBaselineY = Math.max(underlineBaselineY, glyphY)
     const path = derivedGlyphPath(r, glyph.commandsBlob)
     canvas.save()
+    if (clip) {
+      canvas.clipRect(
+        glyph.firstCharacter === undefined ? clip.marker : clip.body,
+        r.ck.ClipOp.Intersect,
+        false
+      )
+    }
     applyGlyphEmTransform(canvas, glyph, glyphY)
     const shouldUseHardCoverage = shouldUseHardDerivedGlyphCoverage(node)
     if (shouldUseHardCoverage) r.fillPaint.setAntiAlias(false)
@@ -522,6 +532,16 @@ export function drawDerivedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode
   }
 
   // Underline math assumes a single horizontal baseline — skip for path text.
-  if (snapBaselines) drawDerivedDecorations(r, canvas, node, underlineBaselineY)
+  if (snapBaselines) {
+    if (clip) {
+      canvas.save()
+      try {
+        canvas.clipRect(clip.body, r.ck.ClipOp.Intersect, false)
+        drawDerivedDecorations(r, canvas, node, underlineBaselineY)
+      } finally {
+        canvas.restore()
+      }
+    } else drawDerivedDecorations(r, canvas, node, underlineBaselineY)
+  }
   return true
 }
