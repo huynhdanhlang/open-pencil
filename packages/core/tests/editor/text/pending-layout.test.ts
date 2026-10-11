@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 /** A Hug row around auto-width text whose face loads after the first layout. */
-function setup() {
+function setup(partialSize: { width: number; height: number } | null = null) {
   const editor = createEditor()
   const graph = editor.graph
   const frame = graph.createNode('FRAME', editor.state.currentPageId, {
@@ -34,7 +34,7 @@ function setup() {
   let loaded = false
   const renderer: PendingLayoutRenderer = {
     fontsLoaded: true,
-    measureTextNode: () => (loaded ? { width: 234, height: 29 } : null)
+    measureTextNode: () => (loaded ? { width: 234, height: 29 } : partialSize)
   }
   const { runLayoutForNode } = createLayoutRunner(() => graph)
   let renders = 0
@@ -98,4 +98,18 @@ test('layers whose faces are still loading or that were removed are left alone',
   graph.deleteNode(text.id)
   pending.relayoutReady(renderer)
   expect(renders()).toBe(0)
+})
+
+test('readable partial glyph coverage relayouts text and Hug geometry once fallback settles', () => {
+  const { editor, frame, text, runLayoutForNode, load, relayouts, renders } = setup({
+    width: 180,
+    height: 24
+  })
+  runLayoutForNode(text.id)
+  expect([text.width, text.height, frame.width, frame.height]).toEqual([180, 24, 212, 48])
+  load()
+  expect([text.width, text.height, frame.width, frame.height]).toEqual([234, 29, 266, 53])
+  expect(relayouts).toEqual([false])
+  expect(renders()).toBe(1)
+  expect(editor.undo.canUndo).toBe(false)
 })

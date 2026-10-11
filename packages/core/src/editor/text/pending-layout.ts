@@ -1,10 +1,10 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
-import { isNodeFontLoaded } from '#core/canvas/text'
+import { nodeFontReadiness } from '#core/canvas/text'
 
 export type PendingLayoutRenderer = Pick<SkiaRenderer, 'measureTextNode' | 'fontsLoaded'> &
-  Parameters<typeof isNodeFontLoaded>[0]
+  Parameters<typeof nodeFontReadiness>[0]
 
 interface PendingTextLayoutContext {
   getGraph: () => SceneGraph
@@ -15,11 +15,13 @@ interface PendingTextLayoutContext {
 }
 
 function facesLoaded(renderer: PendingLayoutRenderer, node: SceneNode): boolean {
-  return renderer.fontsLoaded && isNodeFontLoaded(renderer, node)
+  if (!renderer.fontsLoaded) return false
+  const readiness = nodeFontReadiness(renderer, node)
+  return readiness === 'ready' || readiness === 'substituted'
 }
 
 /**
- * Text measured before its face loaded is laid out with an estimate. Remember those layers and
+ * Text measured before its faces or glyph coverage settle uses provisional metrics. Remember those layers and
  * lay them out again once their faces settle, so auto-sized text and the Hug frames around it
  * take their real size without adding an undo step. Layout of the document's own state stays
  * derived.
@@ -31,7 +33,7 @@ export function createPendingTextLayout(ctx: PendingTextLayoutContext) {
 
   function measure(renderer: PendingLayoutRenderer, node: SceneNode, maxWidth?: number) {
     const size = renderer.measureTextNode(node, maxWidth)
-    if (!size && node.type === 'TEXT' && node.text && !ready(renderer, node)) {
+    if (node.type === 'TEXT' && node.text && !ready(renderer, node)) {
       const graph = ctx.getGraph()
       pending.set(node.id, (pending.get(node.id) ?? true) && graph.isApplyingDerivedLayout)
     }

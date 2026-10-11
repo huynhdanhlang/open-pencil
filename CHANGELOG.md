@@ -185,6 +185,8 @@
 
 ### Fixed
 
+- Auto-sized text and Hug containers reflow when readable provisional emoji or script fallback metrics settle, without adding an Undo step.
+
 - Apply canonical stroke edits through the existing affected-node transaction, avoiding whole-document clones on large files; preserve paint bindings through scoped Undo and rollback.
 
 - Reject canceled or expired Undo/Redo and raster exports before their queued work starts, so an unstarted timed-out request cannot replay later.
